@@ -135,3 +135,4 @@ Testing/
 *.log
 *.bak
 *.swp
+/tmp

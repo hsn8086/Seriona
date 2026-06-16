@@ -66,6 +66,14 @@ Window {
             maskSource: rectMask
         }
 
+        // Global Drag Area
+        MouseArea {
+            anchors.fill: parent
+            z: -1
+            acceptedButtons: Qt.LeftButton
+            onPressed: window.startSystemMove()
+        }
+
         // 背景色 (使用 Theme.backgroundColor)
         Rectangle {
             anchors.fill: parent
@@ -80,6 +88,12 @@ Window {
             isDockCapable: window.isDockCapable
             isSidebarOpen: window.isSidebarOpen
             x: isSidebarOpen ? 0 : -width
+
+            onCloseClicked: {
+                window.isManualSidebarToggle = true;
+                window.isSidebarOpen = false;
+                manualAnimResetTimer.restart();
+            }
 
             Behavior on x {
                 enabled: window.layoutAnimEnabled

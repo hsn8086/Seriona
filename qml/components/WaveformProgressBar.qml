@@ -21,6 +21,9 @@ Item {
     // 进度 (0.0 - 1.0)
     property real progress: 0.0
 
+    // 扁平化模式 (用于切换到歌词界面时的动画)
+    property bool flatMode: false
+
     // 悬浮相关的内部属性
     property real hoverProgress: 0.0
     property bool isHovering: false
@@ -90,7 +93,14 @@ Item {
     Row {
         id: waveRow
         anchors.centerIn: parent
-        spacing: root.spacing
+        spacing: root.flatMode ? 0 : root.spacing
+
+        Behavior on spacing {
+            NumberAnimation {
+                duration: 300
+                easing.type: Easing.InOutQuad
+            }
+        }
 
         scale: root.contentScale
         transformOrigin: Item.Center
@@ -100,13 +110,33 @@ Item {
 
             Rectangle {
                 id: bar
-                width: root.barWidth > 0 ? root.barWidth : 4
+                width: root.flatMode ? (root.barWidth + root.spacing) : (root.barWidth > 0 ? root.barWidth : 4)
 
-                height: Math.max(0, modelData * root.globalMultiplier)
+                height: root.flatMode ? 4 : Math.max(0, modelData * root.globalMultiplier)
 
-                radius: width / 2
+                radius: root.flatMode ? 0 : width / 2
 
                 anchors.verticalCenter: parent.verticalCenter
+
+                // 高度、宽度和圆角变化平滑过渡
+                Behavior on height {
+                    NumberAnimation {
+                        duration: 300
+                        easing.type: Easing.InOutQuad
+                    }
+                }
+                Behavior on width {
+                    NumberAnimation {
+                        duration: 300
+                        easing.type: Easing.InOutQuad
+                    }
+                }
+                Behavior on radius {
+                    NumberAnimation {
+                        duration: 300
+                        easing.type: Easing.InOutQuad
+                    }
+                }
 
                 // 颜色逻辑
                 color: {

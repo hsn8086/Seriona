@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Effects
+import Qt5Compat.GraphicalEffects
 import Seriona
 
 Row {
@@ -33,11 +33,10 @@ Row {
                 visible: false
             }
 
-            MultiEffect {
+            ColorOverlay {
                 anchors.fill: minIcon
                 source: minIcon
-                colorizationColor: "black"
-                colorization: 1.0
+                color: "black"
                 opacity: minimizeBtn.hovered ? 0.8 : 0.0
                 Behavior on opacity { NumberAnimation { duration: 100 } }
             }
@@ -70,11 +69,10 @@ Row {
                 visible: false
             }
 
-            MultiEffect {
+            ColorOverlay {
                 anchors.fill: maxIcon
                 source: maxIcon
-                colorizationColor: "black"
-                colorization: 1.0
+                color: "black"
                 opacity: maximizeBtn.hovered ? 0.8 : 0.0
                 Behavior on opacity { NumberAnimation { duration: 100 } }
             }
@@ -113,11 +111,10 @@ Row {
                 visible: false
             }
 
-            MultiEffect {
+            ColorOverlay {
                 anchors.fill: closeIcon
                 source: closeIcon
-                colorizationColor: "black"
-                colorization: 1.0
+                color: "black"
                 opacity: closeBtn.hovered ? 0.8 : 0.0
                 Behavior on opacity { NumberAnimation { duration: 100 } }
             }

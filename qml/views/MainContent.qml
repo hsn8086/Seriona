@@ -20,6 +20,7 @@ Item {
     property real volume: 0.7
     property bool isShuffle: false
     property int repeatMode: 0 // 0: 顺序, 1: 列表循环, 2: 单曲循环
+    property int currentLyricIndex: 0
 
     property string songTitle: "Song Title"
     property string artistName: "Artist Name"
@@ -62,6 +63,18 @@ Item {
                 root.currentPosition += 1;
             } else {
                 root.currentPosition = 0;
+            }
+        }
+    }
+
+    // 歌词模拟定时器
+    Timer {
+        interval: 3000
+        running: root.isPlaying && root.state === "lyrics"
+        repeat: true
+        onTriggered: {
+            if (root.lyricsData.length > 0) {
+                root.currentLyricIndex = (root.currentLyricIndex + 1) % root.lyricsData.length;
             }
         }
     }
@@ -197,6 +210,11 @@ Item {
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         model: root.lyricsData
+        currentIndex: root.currentLyricIndex
+        preferredHighlightBegin: height / 2 - 30
+        preferredHighlightEnd: height / 2 + 30
+        highlightRangeMode: ListView.StrictlyEnforceRange
+        highlightMoveDuration: 400
         opacity: 0.0
         visible: opacity > 0.0
         z: 5
@@ -212,27 +230,49 @@ Item {
         delegate: Item {
             id: delegateItem
             required property string modelData
+            required property int index
             width: lyricsContainer.width
-            height: lyricText.implicitHeight + Theme.paddingMedium
+            height: lyricText.implicitHeight * lyricText.scale + Theme.paddingLarge
+
+            readonly property bool isActive: index === root.currentLyricIndex
 
             Text {
                 id: lyricText
                 text: delegateItem.modelData
                 color: Theme.textColor
-                font.pixelSize: 18
-                horizontalAlignment: Text.AlignHCenter
+                font.pixelSize: 32
+                font.weight: delegateItem.isActive ? Font.Bold : Font.Normal
+                opacity: delegateItem.isActive ? 1.0 : 0.4
+                horizontalAlignment: Text.AlignLeft
+                anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: parent.width - Theme.paddingLarge * 2
+                width: Math.min(parent.width - Theme.paddingLarge * 2, 600)
                 wrapMode: Text.WordWrap
+
+                transformOrigin: Item.TopLeft
+                scale: delegateItem.isActive ? 1.0 : 0.75
+
+                Behavior on scale {
+                    NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
+                }
+                Behavior on opacity {
+                    NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
+                }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.currentLyricIndex = index
             }
         }
     }
 
     // 5. 波形进度条区域 (仅在 playback 状态下显示)
-    ColumnLayout {
+    Item {
         id: waveformProgressContainer
         width: 320
-        spacing: 5
+        height: 80
         opacity: 1.0
         visible: opacity > 0.0
         z: 8
@@ -242,9 +282,10 @@ Item {
 
         WaveformProgressBar {
             id: waveProgress
-            Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: 320
-            Layout.preferredHeight: 60
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 320
+            height: 60
             waveformHeights: root.waveformHeights
             progress: root.totalDuration > 0 ? (root.currentPosition / root.totalDuration) : 0
             onSeekRequested: function (pos) {
@@ -252,22 +293,23 @@ Item {
             }
         }
 
-        RowLayout {
-            Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: 320
-            Layout.preferredHeight: 15
+        Item {
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 320
+            height: 15
 
             Text {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
                 text: waveProgress.isHovering ? root.formatTime(root.totalDuration * waveProgress.hoverProgress) : root.formatTime(root.currentPosition)
                 color: Theme.secondaryTextColor
                 font.pixelSize: 12
             }
 
-            Item {
-                Layout.fillWidth: true
-            }
-
             Text {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
                 text: {
                     if (waveProgress.isHovering) {
                         var remainingPreview = root.totalDuration * (1.0 - waveProgress.hoverProgress);
@@ -284,9 +326,9 @@ Item {
     }
 
     // 6. 线性进度条区域 (仅在 lyrics 状态下显示)
-    ColumnLayout {
+    Item {
         id: linearProgressContainer
-        spacing: Theme.paddingMedium
+        height: 40
         opacity: 0.0
         visible: opacity > 0.0
         z: 7
@@ -296,7 +338,10 @@ Item {
 
         Slider {
             id: progressSlider
-            Layout.fillWidth: true
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 20
             from: 0
             to: root.totalDuration
             value: root.currentPosition
@@ -331,20 +376,23 @@ Item {
             }
         }
 
-        RowLayout {
-            Layout.fillWidth: true
+        Item {
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 15
 
             Text {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
                 text: root.formatTime(root.currentPosition)
                 color: Theme.secondaryTextColor
                 font.pixelSize: 12
             }
 
-            Item {
-                Layout.fillWidth: true
-            }
-
             Text {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
                 text: "-" + root.formatTime(root.totalDuration - root.currentPosition)
                 color: Theme.secondaryTextColor
                 font.pixelSize: 12
@@ -424,11 +472,10 @@ Item {
                 sourceSize.height: 20
                 visible: false
             }
-            MultiEffect {
+            ColorOverlay {
                 anchors.fill: volDownIcon
                 source: volDownIcon
-                colorizationColor: Theme.secondaryTextColor
-                colorization: 1.0
+                color: Theme.secondaryTextColor
             }
         }
 
@@ -468,11 +515,10 @@ Item {
                 sourceSize.height: 20
                 visible: false
             }
-            MultiEffect {
+            ColorOverlay {
                 anchors.fill: volUpIcon
                 source: volUpIcon
-                colorizationColor: Theme.secondaryTextColor
-                colorization: 1.0
+                color: Theme.secondaryTextColor
             }
         }
     }
@@ -525,11 +571,26 @@ Item {
                 onClicked: root.repeatMode = (root.repeatMode + 1) % 3
             }
             StyleButton {
+                id: settingsBtn
                 buttonWidth: 40
                 buttonHeight: 40
                 iconSource: "qrc:/qt/qml/Seriona/qml/assets/settings.svg"
                 textColor: Theme.textColor
-                onClicked: console.log("Settings clicked")
+                onClicked: mainMenu.open()
+
+                BubbleMenu {
+                    id: mainMenu
+                    arrowDirection: "down"
+                    targetItem: settingsBtn
+                    
+                    x: (settingsBtn.width - width) / 2
+                    y: -height - 12
+
+                    MenuItem { text: qsTr("Settings") }
+                    MenuItem { text: qsTr("Equalizer") }
+                    MenuItem { text: qsTr("About Seriona") }
+                    MenuItem { text: qsTr("Exit") }
+                }
             }
         }
     }
@@ -581,6 +642,15 @@ Item {
                 target: nextButton
                 anchors.leftMargin: 40
             }
+            PropertyChanges {
+                target: waveformProgressContainer
+                height: 80
+            }
+            PropertyChanges {
+                target: waveProgress
+                flatMode: false
+                height: 60
+            }
         },
         State {
             name: "lyrics"
@@ -630,7 +700,9 @@ Item {
                 target: waveformProgressContainer
                 anchors.top: undefined
                 anchors.bottom: controlsContainer.top
-                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.horizontalCenter: undefined
             }
             PropertyChanges {
                 target: coverContainer
@@ -702,7 +774,16 @@ Item {
             }
             PropertyChanges {
                 target: waveformProgressContainer
+                anchors.leftMargin: Theme.paddingLarge
+                anchors.rightMargin: Theme.paddingLarge
+                anchors.bottomMargin: Theme.paddingMedium
                 opacity: 0.0
+                height: 60
+            }
+            PropertyChanges {
+                target: waveProgress
+                flatMode: true
+                height: 40
             }
             PropertyChanges {
                 target: volumeContainer
@@ -741,9 +822,23 @@ Item {
             }
 
             NumberAnimation {
-                targets: [waveformProgressContainer, volumeContainer, bottomRowContainer]
+                targets: [waveProgress, waveformProgressContainer]
+                property: "height"
+                duration: 400
+                easing.type: Easing.InOutCubic
+            }
+
+            NumberAnimation {
+                targets: [volumeContainer, bottomRowContainer]
                 property: "opacity"
                 duration: 180
+                easing.type: Easing.OutQuad
+            }
+
+            NumberAnimation {
+                target: waveformProgressContainer
+                property: "opacity"
+                duration: 300
                 easing.type: Easing.OutQuad
             }
 
@@ -777,6 +872,13 @@ Item {
             NumberAnimation {
                 targets: [coverRect, coverIcon, coverGlow, titleText, artistText, albumText, dashText, prevButton, nextButton]
                 properties: "radius,font.pixelSize,opacity,spacing,anchors.topMargin,anchors.leftMargin,anchors.rightMargin,anchors.bottomMargin"
+                duration: 400
+                easing.type: Easing.InOutCubic
+            }
+
+            NumberAnimation {
+                targets: [waveProgress, waveformProgressContainer]
+                property: "height"
                 duration: 400
                 easing.type: Easing.InOutCubic
             }

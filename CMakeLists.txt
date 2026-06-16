@@ -21,6 +21,7 @@ qt_add_qml_module(appSeriona
     QML_FILES
         qml/Main.qml
         qml/theme/Theme.qml
+        qml/components/BubbleMenu.qml
         qml/components/StyleButton.qml
         qml/components/Sidebar.qml
         qml/components/WindowControls.qml
@@ -46,6 +47,12 @@ qt_add_qml_module(appSeriona
         qml/assets/volume_down.svg
         qml/assets/volume_up.svg
         qml/assets/back.svg
+        qml/assets/arrow_back.svg
+        qml/assets/search.svg
+        qml/assets/more_vert.svg
+        qml/assets/folder.svg
+        qml/assets/music_note.svg
+        qml/assets/my_location.svg
 )
 
 # target_sources(appSeriona PRIVATE

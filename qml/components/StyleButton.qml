@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Effects
+import Qt5Compat.GraphicalEffects
 import Seriona
 
 RoundButton {
@@ -18,7 +18,7 @@ RoundButton {
     property url iconSource: ""
     property int buttonRadius: Math.min(control.width, control.height) / 2
     property color textColor: Theme.textColor
-    property real iconSize: Math.min(control.width, control.height) * 0.5
+    property real iconSize: Math.min(control.width, control.height) * 0.65
 
     checkable: false
 
@@ -71,11 +71,10 @@ RoundButton {
             visible: false
         }
 
-        MultiEffect {
+        ColorOverlay {
             anchors.fill: iconImage
             source: iconImage
-            colorizationColor: control.textColor
-            colorization: 1.0
+            color: control.textColor
             visible: control.iconSource.toString() !== ""
         }
     }
