@@ -22,6 +22,8 @@ qt_add_qml_module(appSeriona
         qml/Main.qml
         qml/theme/Theme.qml
         qml/components/BubbleMenu.qml
+        qml/components/BubbleMenuItem.qml
+        qml/components/BubbleSubMenuItem.qml
         qml/components/StyleButton.qml
         qml/components/Sidebar.qml
         qml/components/WindowControls.qml

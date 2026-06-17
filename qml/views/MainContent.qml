@@ -9,9 +9,11 @@ Item {
     id: root
 
     signal coverClicked()
+    signal coverDragRequested()
     signal backClicked()
     signal playlistToggled()
     property bool isSidebarOpen: false
+    readonly property bool hasOpenMenu: mainMenu.visible
 
     // 播放状态属性 (Mock Data)
     property bool isPlaying: false
@@ -51,6 +53,10 @@ Item {
         var m = Math.floor(seconds / 60);
         var s = Math.floor(seconds % 60);
         return (m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s);
+    }
+
+    function closeMenus() {
+        mainMenu.close();
     }
 
     // 播放进度模拟定时器
@@ -127,7 +133,33 @@ Item {
             MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
+                property real pressX: 0
+                property real pressY: 0
+                property bool suppressClick: false
+
+                onPressed: function (mouse) {
+                    pressX = mouse.x;
+                    pressY = mouse.y;
+                    suppressClick = false;
+                }
+
+                onPositionChanged: function (mouse) {
+                    if (pressed && root.state === "playback" && !root.hasOpenMenu && !suppressClick) {
+                        var dx = mouse.x - pressX;
+                        var dy = mouse.y - pressY;
+                        if (Math.sqrt(dx * dx + dy * dy) >= Qt.styleHints.startDragDistance) {
+                            suppressClick = true;
+                            root.coverDragRequested();
+                        }
+                    }
+                }
+
                 onClicked: {
+                    if (suppressClick) {
+                        suppressClick = false;
+                        return;
+                    }
+
                     if (root.state === "playback") {
                         root.coverClicked();
                     } else {
@@ -576,20 +608,31 @@ Item {
                 buttonHeight: 40
                 iconSource: "qrc:/qt/qml/Seriona/qml/assets/settings.svg"
                 textColor: Theme.textColor
-                onClicked: mainMenu.open()
+                onClicked: mainMenu.toggle()
 
                 BubbleMenu {
                     id: mainMenu
                     arrowDirection: "down"
                     targetItem: settingsBtn
-                    
-                    x: (settingsBtn.width - width) / 2
-                    y: -height - 12
 
-                    MenuItem { text: qsTr("Settings") }
-                    MenuItem { text: qsTr("Equalizer") }
-                    MenuItem { text: qsTr("About Seriona") }
-                    MenuItem { text: qsTr("Exit") }
+                    BubbleMenuItem { text: qsTr("Settings"); onTriggered: mainMenu.close() }
+                    BubbleSubMenuItem {
+                        text: qsTr("Playback")
+                        title: qsTr("Playback")
+                        page: Component {
+                            Column {
+                                width: parent ? parent.width : 160
+                                spacing: 0
+
+                                BubbleMenuItem { text: qsTr("Crossfade"); onTriggered: mainMenu.close() }
+                                BubbleMenuItem { text: qsTr("Gapless Playback"); onTriggered: mainMenu.close() }
+                                BubbleMenuItem { text: qsTr("ReplayGain"); onTriggered: mainMenu.close() }
+                            }
+                        }
+                    }
+                    BubbleMenuItem { text: qsTr("Equalizer"); onTriggered: mainMenu.close() }
+                    BubbleMenuItem { text: qsTr("About Seriona"); onTriggered: mainMenu.close() }
+                    BubbleMenuItem { text: qsTr("Exit"); onTriggered: mainMenu.close() }
                 }
             }
         }

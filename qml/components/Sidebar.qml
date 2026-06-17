@@ -13,6 +13,16 @@ Item {
     // Properties to control shadow visibility
     property bool isDockCapable: false
     property bool isSidebarOpen: false
+    readonly property bool hasOpenMenu: sidebarMenu.visible
+
+    onIsSidebarOpenChanged: {
+        if (!isSidebarOpen)
+            closeMenus();
+    }
+
+    function closeMenus() {
+        sidebarMenu.close();
+    }
 
     RectangularGlow {
         id: shadow
@@ -44,15 +54,24 @@ Item {
 
             // Top Bar
             Rectangle {
+                z: 2
                 Layout.fillWidth: true
                 height: 50
                 color: "transparent"
 
+                MouseArea {
+                    anchors.fill: parent
+                    visible: root.hasOpenMenu
+                    enabled: visible
+                    onClicked: root.closeMenus()
+                }
+
                 RowLayout {
+                    z: 1
                     anchors.fill: parent
                     anchors.leftMargin: 15
                     anchors.rightMargin: 15
-                    spacing: 8
+                    spacing: 14
 
                     StyleButton {
                         iconSource: "qrc:/qt/qml/Seriona/qml/assets/arrow_back.svg"
@@ -88,18 +107,15 @@ Item {
                         buttonWidth: 40
                         buttonHeight: 40
                         iconSize: 20
-                        onClicked: sidebarMenu.open()
+                        onClicked: sidebarMenu.toggle()
 
                         BubbleMenu {
                             id: sidebarMenu
                             targetItem: sidebarMoreBtn
-                            
-                            x: (sidebarMoreBtn.width - width) / 2
-                            y: sidebarMoreBtn.height + 12
 
-                            MenuItem { text: qsTr("Sort by Name") }
-                            MenuItem { text: qsTr("Sort by Date") }
-                            MenuItem { text: qsTr("Refresh") }
+                            BubbleMenuItem { text: qsTr("Sort by Name"); onTriggered: sidebarMenu.close() }
+                            BubbleMenuItem { text: qsTr("Sort by Date"); onTriggered: sidebarMenu.close() }
+                            BubbleMenuItem { text: qsTr("Refresh"); onTriggered: sidebarMenu.close() }
                         }
                     }
 
@@ -108,7 +124,10 @@ Item {
                         buttonWidth: 40
                         buttonHeight: 40
                         iconSize: 20
-                        onClicked: root.closeClicked()
+                        onClicked: {
+                            root.closeMenus();
+                            root.closeClicked();
+                        }
                     }
                 }
 
@@ -123,6 +142,7 @@ Item {
 
             StackView {
                 id: pageStack
+                z: 0
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
@@ -165,6 +185,18 @@ Item {
                     }
                 }
             }
+        }
+
+        MouseArea {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.topMargin: 50
+            anchors.bottom: parent.bottom
+            z: 9
+            visible: root.hasOpenMenu
+            enabled: visible
+            onClicked: root.closeMenus()
         }
 
         // Floating Action Button (FAB)
@@ -428,4 +460,3 @@ Item {
         ListElement { type: "folder"; name: "Jazz Essentials"; parentName: "Music"; songCount: 32; duration: "02:45:15" }
     }
 }
-

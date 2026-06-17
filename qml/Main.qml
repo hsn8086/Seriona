@@ -90,6 +90,7 @@ Window {
             x: isSidebarOpen ? 0 : -width
 
             onCloseClicked: {
+                sidebarContainer.closeMenus();
                 window.isManualSidebarToggle = true;
                 window.isSidebarOpen = false;
                 manualAnimResetTimer.restart();
@@ -109,11 +110,10 @@ Window {
             id: clickMask
             anchors.fill: parent
             z: 499
-            visible: !window.isDockCapable && window.isSidebarOpen
+            visible: (!window.isDockCapable && window.isSidebarOpen) || sidebarContainer.hasOpenMenu || mainContent.hasOpenMenu
             onClicked: {
-                window.isManualSidebarToggle = true;
-                window.isSidebarOpen = false;
-                manualAnimResetTimer.restart();
+                sidebarContainer.closeMenus();
+                mainContent.closeMenus();
             }
         }
 
@@ -185,11 +185,19 @@ Window {
                         window.currentView = "lyrics"
                     }
 
+                    onCoverDragRequested: {
+                        window.startSystemMove();
+                    }
+
                     onBackClicked: {
                         window.currentView = "playback"
                     }
 
                     onPlaylistToggled: {
+                        if (!window.isSidebarOpen)
+                            mainContent.closeMenus();
+                        if (window.isSidebarOpen)
+                            sidebarContainer.closeMenus();
                         window.isManualSidebarToggle = true;
                         window.isSidebarOpen = !window.isSidebarOpen;
                         manualAnimResetTimer.restart();
