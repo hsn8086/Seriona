@@ -55,6 +55,7 @@ qt_add_qml_module(appSeriona
         qml/assets/folder.svg
         qml/assets/music_note.svg
         qml/assets/my_location.svg
+        qml/assets/translate.svg
 )
 
 # target_sources(appSeriona PRIVATE

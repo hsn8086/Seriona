@@ -23,6 +23,24 @@ Item {
     property bool isShuffle: false
     property int repeatMode: 0 // 0: 顺序, 1: 列表循环, 2: 单曲循环
     property int currentLyricIndex: 0
+    property bool showTranslation: true
+    property string lyricDelimiter: " / "
+    property bool isTogglingTranslation: false
+    readonly property real currentItemHeight: lyricsContainer.currentItem ? lyricsContainer.currentItem.height : 0
+    readonly property real currentItemOriginalHeight: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.originalHeight !== "undefined") ? lyricsContainer.currentItem.originalHeight : 0
+    readonly property real currentItemHeightUnscaled: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.fullHeightUnscaled !== "undefined") ? lyricsContainer.currentItem.fullHeightUnscaled : 0
+    readonly property real currentItemOriginalHeightUnscaled: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.originalHeightUnscaled !== "undefined") ? lyricsContainer.currentItem.originalHeightUnscaled : 0
+
+    onShowTranslationChanged: {
+        isTogglingTranslation = true;
+        toggleTranslationTimer.restart();
+    }
+
+    Timer {
+        id: toggleTranslationTimer
+        interval: 350
+        onTriggered: root.isTogglingTranslation = false
+    }
 
     property string songTitle: "Song Title"
     property string artistName: "Artist Name"
@@ -37,14 +55,14 @@ Item {
 
     // 歌词数据
     readonly property var lyricsData: [
-        qsTr("Music playing in the night..."),
-        qsTr("Seriona shines so bright..."),
-        qsTr("A melody that guides the way..."),
-        qsTr("Through the dark and into day..."),
-        qsTr("Feel the rhythm, feel the beat..."),
-        qsTr("Walking down this lonely street..."),
-        qsTr("But with music in my soul..."),
-        qsTr("I am happy, I am whole...")
+        qsTr("Music playing in the night... / 音乐在夜空中回荡..."),
+        qsTr("Seriona shines so bright... / Seriona 闪耀着光芒..."),
+        qsTr("A melody that guides the way... / 指引道路的旋律..."),
+        qsTr("Through the dark and into day... / 穿过黑暗迎来黎明..."),
+        qsTr("Feel the rhythm, feel the beat... / 感受旋律，感受节拍..."),
+        qsTr("Walking down this lonely street... / 走在这条孤独的街上..."),
+        qsTr("But with music in my soul... / 但只要我的灵魂有音乐..."),
+        qsTr("I am happy, I am whole... / 我就快乐，我就完整...")
     ]
 
     // 时间格式化辅助函数
@@ -243,10 +261,29 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         model: root.lyricsData
         currentIndex: root.currentLyricIndex
-        preferredHighlightBegin: height / 2 - 30
-        preferredHighlightEnd: height / 2 + 30
+        preferredHighlightBegin: height / 2 - root.currentItemHeightUnscaled / 2 - 30
+        preferredHighlightEnd: preferredHighlightBegin
+        
+        Behavior on preferredHighlightBegin {
+            id: highlightBehavior
+            enabled: false
+            NumberAnimation { duration: 400; easing.type: Easing.InOutQuad }
+        }
+
+        onCurrentIndexChanged: {
+            if (!root.isTogglingTranslation) {
+                highlightBehavior.enabled = true;
+                disableBehaviorTimer.restart();
+            }
+        }
+
+        Timer {
+            id: disableBehaviorTimer
+            interval: 450
+            onTriggered: highlightBehavior.enabled = false
+        }
         highlightRangeMode: ListView.StrictlyEnforceRange
-        highlightMoveDuration: 400
+        highlightMoveDuration: root.isTogglingTranslation ? 0 : 400
         opacity: 0.0
         visible: opacity > 0.0
         z: 5
@@ -264,22 +301,31 @@ Item {
             required property string modelData
             required property int index
             width: lyricsContainer.width
-            height: lyricText.implicitHeight * lyricText.scale + Theme.paddingLarge
+            height: lyricColumn.implicitHeight * lyricColumn.scale + Theme.paddingLarge
 
             readonly property bool isActive: index === root.currentLyricIndex
+            readonly property real originalHeight: lyricText.implicitHeight * lyricColumn.scale + Theme.paddingLarge
+            readonly property real originalHeightUnscaled: lyricText.implicitHeight + Theme.paddingLarge
+            readonly property real fullHeightUnscaled: lyricColumn.implicitHeight + Theme.paddingLarge
 
-            Text {
-                id: lyricText
-                text: delegateItem.modelData
-                color: Theme.textColor
-                font.pixelSize: 32
-                font.weight: delegateItem.isActive ? Font.Bold : Font.Normal
-                opacity: delegateItem.isActive ? 1.0 : 0.4
-                horizontalAlignment: Text.AlignLeft
+            readonly property string originalText: {
+                if (root.lyricDelimiter === "") return modelData;
+                var idx = modelData.indexOf(root.lyricDelimiter);
+                return idx !== -1 ? modelData.substring(0, idx).trim() : modelData;
+            }
+
+            readonly property string translationText: {
+                if (root.lyricDelimiter === "") return "";
+                var idx = modelData.indexOf(root.lyricDelimiter);
+                return idx !== -1 ? modelData.substring(idx + root.lyricDelimiter.length).trim() : "";
+            }
+
+            Column {
+                id: lyricColumn
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: Math.min(parent.width - Theme.paddingLarge * 2, 600)
-                wrapMode: Text.WordWrap
+                spacing: 4
 
                 transformOrigin: Item.TopLeft
                 scale: delegateItem.isActive ? 1.0 : 0.75
@@ -287,8 +333,43 @@ Item {
                 Behavior on scale {
                     NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
                 }
-                Behavior on opacity {
-                    NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
+
+                Text {
+                    id: lyricText
+                    width: parent.width
+                    text: delegateItem.originalText
+                    color: Theme.textColor
+                    font.pixelSize: 32
+                    font.weight: delegateItem.isActive ? Font.Bold : Font.Normal
+                    opacity: delegateItem.isActive ? 1.0 : 0.4
+                    horizontalAlignment: Text.AlignLeft
+                    wrapMode: Text.WordWrap
+                    Behavior on opacity {
+                        NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
+                    }
+                }
+
+                Text {
+                    id: translationTextCtrl
+                    width: parent.width
+                    text: delegateItem.translationText
+                    color: Theme.secondaryTextColor
+                    font.pixelSize: 22
+                    font.weight: delegateItem.isActive ? Font.Bold : Font.Normal
+                    horizontalAlignment: Text.AlignLeft
+                    wrapMode: Text.WordWrap
+                    clip: true
+                    
+                    height: (root.showTranslation && delegateItem.translationText !== "") ? implicitHeight : 0
+                    opacity: (root.showTranslation && delegateItem.translationText !== "") ? (delegateItem.isActive ? 0.8 : 0.3) : 0.0
+                    visible: height > 0
+
+                    Behavior on height {
+                        NumberAnimation { duration: 300; easing.type: Easing.InOutQuad }
+                    }
+                    Behavior on opacity {
+                        NumberAnimation { duration: 300; easing.type: Easing.InOutQuad }
+                    }
                 }
             }
 
@@ -612,10 +693,100 @@ Item {
 
                 BubbleMenu {
                     id: mainMenu
+                    menuWidth: 180
                     arrowDirection: "down"
                     targetItem: settingsBtn
 
-                    BubbleMenuItem { text: qsTr("Settings"); onTriggered: mainMenu.close() }
+                    BubbleSubMenuItem {
+                        text: qsTr("Settings")
+                        title: qsTr("Settings")
+                        page: Component {
+                            Column {
+                                width: parent ? parent.width : 180
+                                spacing: 12
+
+                                Item {
+                                    width: parent.width
+                                    height: 140
+
+                                    Column {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 12
+                                        anchors.rightMargin: 12
+                                        anchors.topMargin: 8
+                                        spacing: 8
+
+                                        Text {
+                                            text: qsTr("Lyric Delimiter")
+                                            color: Theme.textColor
+                                            font.pixelSize: 13
+                                            font.bold: true
+                                        }
+
+                                        TextField {
+                                            id: customInput
+                                            width: parent.width
+                                            height: 28
+                                            font.pixelSize: 12
+                                            text: root.lyricDelimiter
+                                            color: Theme.textColor
+                                            placeholderText: "e.g. /"
+                                            placeholderTextColor: "#80FFFFFF"
+                                            background: Rectangle {
+                                                color: "#15FFFFFF"
+                                                border.color: customInput.activeFocus ? Theme.accentColor : "#30FFFFFF"
+                                                border.width: 1
+                                                radius: 4
+                                            }
+                                            onTextChanged: {
+                                                root.lyricDelimiter = text;
+                                            }
+                                        }
+
+                                        Text {
+                                            text: qsTr("Presets:")
+                                            color: Theme.secondaryTextColor
+                                            font.pixelSize: 11
+                                        }
+
+                                        Row {
+                                            spacing: 6
+                                            width: parent.width
+
+                                            Repeater {
+                                                model: [" / ", " | ", " - ", " // "]
+                                                
+                                                Rectangle {
+                                                    width: 32
+                                                    height: 22
+                                                    radius: 4
+                                                    color: root.lyricDelimiter === modelData ? Theme.accentColor : "#15FFFFFF"
+                                                    border.color: "#30FFFFFF"
+                                                    border.width: 1
+                                                    
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: modelData.trim() === "" ? modelData : modelData.trim()
+                                                        color: Theme.textColor
+                                                        font.pixelSize: 11
+                                                    }
+
+                                                    MouseArea {
+                                                        anchors.fill: parent
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: {
+                                                            root.lyricDelimiter = modelData;
+                                                            customInput.text = modelData;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     BubbleSubMenuItem {
                         text: qsTr("Playback")
                         title: qsTr("Playback")
@@ -636,6 +807,27 @@ Item {
                 }
             }
         }
+    }
+
+    // 10. 打开/关闭翻译按钮 (仅在 lyrics 状态下显示，位于右下角)
+    StyleButton {
+        id: toggleTranslationBtn
+        buttonWidth: 36
+        buttonHeight: 36
+        iconSource: "qrc:/qt/qml/Seriona/qml/assets/translate.svg"
+        textColor: Theme.textColor
+        checkable: true
+        checked: root.showTranslation
+        z: 100
+        opacity: 0.0
+        visible: opacity > 0.0
+        
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.paddingLarge
+        anchors.bottom: linearProgressContainer.top
+        anchors.bottomMargin: Theme.paddingMedium
+
+        onClicked: root.showTranslation = !root.showTranslation
     }
 
     // 状态定义
@@ -693,6 +885,10 @@ Item {
                 target: waveProgress
                 flatMode: false
                 height: 60
+            }
+            PropertyChanges {
+                target: toggleTranslationBtn
+                opacity: 0.0
             }
         },
         State {
@@ -836,6 +1032,10 @@ Item {
                 target: bottomRowContainer
                 opacity: 0.0
             }
+            PropertyChanges {
+                target: toggleTranslationBtn
+                opacity: 0.8
+            }
         }
     ]
 
@@ -888,7 +1088,7 @@ Item {
             SequentialAnimation {
                 PauseAnimation { duration: 150 }
                 NumberAnimation {
-                    targets: [lyricsContainer, linearProgressContainer]
+                    targets: [lyricsContainer, linearProgressContainer, toggleTranslationBtn]
                     property: "opacity"
                     duration: 250
                     easing.type: Easing.OutQuad
@@ -927,7 +1127,7 @@ Item {
             }
 
             NumberAnimation {
-                targets: [lyricsContainer, linearProgressContainer]
+                targets: [lyricsContainer, linearProgressContainer, toggleTranslationBtn]
                 property: "opacity"
                 duration: 180
                 easing.type: Easing.OutQuad
