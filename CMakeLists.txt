@@ -30,6 +30,7 @@ qt_add_qml_module(appSeriona
         qml/components/WaveformProgressBar.qml
         qml/components/MarqueeText.qml
         qml/views/MainContent.qml
+        qml/views/StartupView.qml
     RESOURCES
         qml/assets/play.svg
         qml/assets/pause.svg

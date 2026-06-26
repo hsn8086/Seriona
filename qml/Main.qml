@@ -18,6 +18,7 @@ Window {
 
     property string currentView: "playback"
     property bool isSidebarOpen: false
+    property bool showStartupScreen: true
 
     readonly property int sidebarWidth: 350
     readonly property int playerMinWidth: 450
@@ -85,6 +86,7 @@ Window {
             id: sidebarContainer
             height: parent.height
             z: 500
+            visible: !window.showStartupScreen
             isDockCapable: window.isDockCapable
             isSidebarOpen: window.isSidebarOpen
             x: isSidebarOpen ? 0 : -width
@@ -121,7 +123,7 @@ Window {
         Item {
             id: playerContainer
             height: parent.height
-            property bool isDocked: window.isDockCapable && window.isSidebarOpen
+            property bool isDocked: !window.showStartupScreen && window.isDockCapable && window.isSidebarOpen
             x: isDocked ? window.sidebarWidth : 0
             width: isDocked ? (window.width - window.sidebarWidth) : window.width
 
@@ -173,34 +175,48 @@ Window {
                     }
                 }
 
-                // Main Content (Playback & Lyrics with shared element transition)
-                MainContent {
-                    id: mainContent
+                Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    state: window.currentView
-                    isSidebarOpen: window.isSidebarOpen
 
-                    onCoverClicked: {
-                        window.currentView = "lyrics"
+                    // Main Content (Playback & Lyrics with shared element transition)
+                    MainContent {
+                        id: mainContent
+                        anchors.fill: parent
+                        visible: !window.showStartupScreen
+                        enabled: !window.showStartupScreen
+                        state: window.currentView
+                        isSidebarOpen: window.isSidebarOpen
+
+                        onCoverClicked: {
+                            window.currentView = "lyrics"
+                        }
+
+                        onCoverDragRequested: {
+                            window.startSystemMove();
+                        }
+
+                        onBackClicked: {
+                            window.currentView = "playback"
+                        }
+
+                        onPlaylistToggled: {
+                            if (!window.isSidebarOpen)
+                                mainContent.closeMenus();
+                            if (window.isSidebarOpen)
+                                sidebarContainer.closeMenus();
+                            window.isManualSidebarToggle = true;
+                            window.isSidebarOpen = !window.isSidebarOpen;
+                            manualAnimResetTimer.restart();
+                        }
                     }
 
-                    onCoverDragRequested: {
-                        window.startSystemMove();
-                    }
-
-                    onBackClicked: {
-                        window.currentView = "playback"
-                    }
-
-                    onPlaylistToggled: {
-                        if (!window.isSidebarOpen)
-                            mainContent.closeMenus();
-                        if (window.isSidebarOpen)
-                            sidebarContainer.closeMenus();
-                        window.isManualSidebarToggle = true;
-                        window.isSidebarOpen = !window.isSidebarOpen;
-                        manualAnimResetTimer.restart();
+                    StartupView {
+                        anchors.fill: parent
+                        visible: window.showStartupScreen
+                        enabled: window.showStartupScreen
+                        onRestorePlaylistRequested: window.showStartupScreen = false
+                        onAddFolderRequested: window.showStartupScreen = false
                     }
                 }
             }
