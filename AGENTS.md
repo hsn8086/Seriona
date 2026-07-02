@@ -1,32 +1,25 @@
 # Seriona 代理说明
 
-为后续 OpenCode 会话提供精简、已验证的项目上下文。所有面向用户的回答以及本仓库内的文档编写均使用中文。优先相信可执行来源（`CMakeLists.txt`、`.qmlls.ini`、`src/main.cpp`、`qml/`），不要依赖 `build/` 中可能过期的复制文件。
+所有面向用户的回复，以及本仓库内新写的文档，都使用中文。优先相信可执行来源：`CMakeLists.txt`、`.qmlls.ini`、`src/main.cpp`、`qml/`；不要从 `build/` 里的生成副本推断真实源码状态。
 
-## 项目结构与入口
-- **开发与构建环境**：这是一个基于 CMake 和 Qt 6.8+ (当前本地构建检测为 Qt 6.11) 的 Qt Quick 音乐播放器原型。
-- **运行入口**：`src/main.cpp`。它设置了 `QT_IM_MODULE=qtvirtualkeyboard`，创建 `QQmlApplicationEngine` 并通过 `engine.loadFromModule("Seriona", "Main")` 加载主界面。
-- **UI 源码入口**：`qml/Main.qml`。
-- **状态与模拟数据**：播放/歌词状态及大部分模拟数据在 `qml/views/MainContent.qml`；侧边栏模拟曲库数据在 `qml/components/Sidebar.qml`。
-- **实验与测试**：仓库无内置测试或 CI 校验。`test_popup.qml` 为独立的弹窗测试文件，未接入 CMake。
+## 入口与结构
+- 这是单可执行 Qt Quick 项目，不是多包仓库；应用入口是 `src/main.cpp`，通过 `engine.loadFromModule("Seriona", "Main")` 加载 `qml/Main.qml`。
+- 主要 UI 状态集中在 `qml/Main.qml` 和 `qml/views/MainContent.qml`；侧边栏自己的模拟数据和导航在 `qml/components/Sidebar.qml`。
+- `qml/theme/Theme.qml` 是在 `CMakeLists.txt` 里注册的 singleton；共享颜色、尺寸、动画参数优先复用 `Theme.*`，不要在组件里再发明一套常量。
 
-## 构建与运行命令
-```bash
-cmake -B build
-cmake --build build
-./build/appSeriona
-```
-- **LSP / QML 工具链**：在依赖 QML 语言工具或 LSP 诊断前，先执行 `cmake -B build`。本地 `.qmlls.ini` 指向了仓库的 `build` 目录、`/usr/share/doc/qt6` 和 `/usr/lib/qt6/qml`。
-- **虚拟键盘插件错误**：如果在精简 Linux 环境中运行遇到虚拟键盘插件加载失败/警告，直接检查 `src/main.cpp` 里的 `QT_IM_MODULE=qtvirtualkeyboard` 设置，切勿误判为 QML 代码错误。
+## 构建与验证
+- 基本命令：`cmake -B build`、`cmake --build build`、`./build/appSeriona`。
+- 中间层验证脚本：运行 `./scripts/verify-middle-layer.sh` 可以执行验证（若需要验证 C++ 层数据和模型是否正常）。
+- 先跑一次 `cmake -B build` 再做 QML LSP / qmlls 相关诊断；`.qmlls.ini` 的 `buildDir` 就指向本仓库的 `build/`。
+- 仓库里没有现成的测试或 CI；`test_popup.qml` 也没有接入 CMake，不要把它当成可直接运行的正式测试入口。
 
-## QML 模块与资源规则
-- **QML 模块名**：URI 为 `Seriona`（由 `qt_add_qml_module(appSeriona URI Seriona ...)` 声明）。导入本地组件必须使用 `import Seriona`，禁止使用相对路径导入。
-- **CMake 文件同步**：新增 QML、C++ 源文件或资源资源（如 SVG）时，必须同步在 `CMakeLists.txt` 中注册。否则 `loadFromModule` 和 QRC 资源路径将无法识别。
-- **全局单例**：`qml/theme/Theme.qml` 是通过 `set_source_files_properties` 注册的单例类型。共享的颜色、间距、动画时长等配置必须统一通过 `Theme.*` 引用。
-- **SVG 资源引用**：必须使用绝对 Qt 资源路径引用，例如：`qrc:/qt/qml/Seriona/qml/assets/play.svg`。
+## QML 模块规则
+- 本地 QML 模块 URI 是 `Seriona`；仓库内组件统一 `import Seriona`，不要改成相对路径导入。
+- 新增 QML、C++ 或资源文件时，必须同步更新 `CMakeLists.txt` 里的 `qt_add_qml_module(...)`，否则模块加载和资源解析都会失效。
+- SVG 资源当前都走绝对 QRC 路径，例如 `qrc:/qt/qml/Seriona/qml/assets/play.svg`；新增资源时沿用这一模式。
 
-## UI 开发与集成注意事项
-- **源码修改限制**：只修改根目录 `qml/` 下的源文件。**绝不要**修改 `build/Seriona/qml/` 中生成的缓存副本，因为该目录在重新构建时会被覆盖。
-- **窗口无边框与交互**：`qml/Main.qml` 声明了无边框窗口 `Qt.FramelessWindowHint`。窗口的拖拽移动通过 `window.startSystemMove()` 实现，边缘缩放通过本地的 `ResizeArea` 组件调用 `window.startSystemResize(edgeFlag)` 实现。
-- **响应式侧边栏**：当 `width >= sidebarWidth + playerMinWidth` 时，侧边栏停靠显示；否则自动转为带半透明点击遮罩的浮层。
-- **图形效果库**：当前项目同时使用了旧版的 `Qt5Compat.GraphicalEffects`（`ColorOverlay`、`OpacityMask` 等）和新版的 `QtQuick.Effects`（在 `MainContent.qml` 中）。请根据上下文谨慎选择，不要假设其中一方不可用。
-- **C++ 与 QML 集成**：目前项目完全由 QML 模拟数据驱动。若未来需新增 C++ 后端类，优先使用 Modern Qt 6 方式（在类声明中添加 `QML_ELEMENT` / `QML_SINGLETON` 并编译 target，而非调用 `setContextProperty`）。
+## 易踩坑
+- 只改根目录 `qml/` 下的源文件；`build/Seriona/qml/` 是构建产物，改了也会被覆盖。
+- `src/main.cpp` 强制设置了 `QT_IM_MODULE=qtvirtualkeyboard`；如果运行时看到虚拟键盘插件相关警告，先排查这里，不要误判成 QML 逻辑问题。
+- `qml/Main.qml` 是无边框窗口，拖拽和缩放分别依赖 `window.startSystemMove()` 与 `window.startSystemResize(...)`；改标题栏、边框或遮罩时要保住这些交互。
+- 这个项目同时用了 `Qt5Compat.GraphicalEffects` 和 `QtQuick.Effects`；改图形效果前先看当前文件依赖哪套，不要假设可以随意互换。

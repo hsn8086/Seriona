@@ -18,6 +18,13 @@ set_source_files_properties(qml/theme/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE
 
 qt_add_qml_module(appSeriona
     URI Seriona
+    SOURCES
+        src/app/app_facade.cpp
+        src/app/app_facade.h
+        src/app/lyrics_model.cpp
+        src/app/lyrics_model.h
+        src/app/library_model.cpp
+        src/app/library_model.h
     QML_FILES
         qml/Main.qml
         qml/theme/Theme.qml
@@ -57,6 +64,10 @@ qt_add_qml_module(appSeriona
         qml/assets/music_note.svg
         qml/assets/my_location.svg
         qml/assets/translate.svg
+)
+
+target_include_directories(appSeriona
+    PRIVATE src/app
 )
 
 # target_sources(appSeriona PRIVATE

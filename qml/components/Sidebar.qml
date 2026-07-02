@@ -8,12 +8,17 @@ Item {
     id: root
     width: Theme.sidebarWidth
 
-    signal closeClicked()
+    signal closeClicked
 
     // Properties to control shadow visibility
     property bool isDockCapable: false
     property bool isSidebarOpen: false
+    property bool isSearching: false
     readonly property bool hasOpenMenu: sidebarMenu.visible
+
+    LibraryController {
+        id: libraryController
+    }
 
     onIsSidebarOpenChanged: {
         if (!isSidebarOpen)
@@ -22,6 +27,11 @@ Item {
 
     function closeMenus() {
         sidebarMenu.close();
+    }
+
+    function openFolder(index) {
+        libraryController.enterFolder(index);
+        pageStack.push(playlistPageComponent);
     }
 
     RectangularGlow {
@@ -56,87 +66,234 @@ Item {
             Rectangle {
                 z: 2
                 Layout.fillWidth: true
-                height: 50
+                Layout.preferredHeight: root.isSearching ? 100 : 50
                 color: "transparent"
 
-                MouseArea {
-                    anchors.fill: parent
-                    visible: root.hasOpenMenu
-                    enabled: visible
-                    onClicked: root.closeMenus()
-                }
-
-                RowLayout {
-                    z: 1
-                    anchors.fill: parent
-                    anchors.leftMargin: 15
-                    anchors.rightMargin: 15
-                    spacing: 14
-
-                    StyleButton {
-                        iconSource: "qrc:/qt/qml/Seriona/qml/assets/arrow_back.svg"
-                        buttonWidth: 40
-                        buttonHeight: 40
-                        iconSize: 20
-                        enabled: pageStack.depth > 1
-                        opacity: enabled ? 1.0 : 0.3
-                        Behavior on opacity { NumberAnimation { duration: Theme.animationDuration } }
-                        onClicked: pageStack.pop()
-                    }
-
-                    StyleButton {
-                        iconSource: "qrc:/qt/qml/Seriona/qml/assets/search.svg"
-                        buttonWidth: 40
-                        buttonHeight: 40
-                        iconSize: 20
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: pageStack.currentItem ? pageStack.currentItem.folderName : qsTr("My Music")
-                        color: Theme.textColor
-                        font.pixelSize: 15
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        elide: Text.ElideRight
-                    }
-
-                    StyleButton {
-                        id: sidebarMoreBtn
-                        iconSource: "qrc:/qt/qml/Seriona/qml/assets/more_vert.svg"
-                        buttonWidth: 40
-                        buttonHeight: 40
-                        iconSize: 20
-                        onClicked: sidebarMenu.toggle()
-
-                        BubbleMenu {
-                            id: sidebarMenu
-                            targetItem: sidebarMoreBtn
-
-                            BubbleMenuItem { text: qsTr("Sort by Name"); onTriggered: sidebarMenu.close() }
-                            BubbleMenuItem { text: qsTr("Sort by Date"); onTriggered: sidebarMenu.close() }
-                            BubbleMenuItem { text: qsTr("Refresh"); onTriggered: sidebarMenu.close() }
-                        }
-                    }
-
-                    StyleButton {
-                        iconSource: "qrc:/qt/qml/Seriona/qml/assets/close.svg"
-                        buttonWidth: 40
-                        buttonHeight: 40
-                        iconSize: 20
-                        onClicked: {
-                            root.closeMenus();
-                            root.closeClicked();
-                        }
+                Behavior on Layout.preferredHeight {
+                    NumberAnimation {
+                        duration: 250
+                        easing.type: Easing.OutCubic
                     }
                 }
 
-                // Bottom separator for top bar
-                Rectangle {
-                    anchors.bottom: parent.bottom
-                    width: parent.width
-                    height: 1
-                    color: "#10FFFFFF"
+                Column {
+                    anchors.fill: parent
+
+                    Item {
+                        width: parent.width
+                        height: 50
+
+                        MouseArea {
+                            anchors.fill: parent
+                            visible: root.hasOpenMenu
+                            enabled: visible
+                            onClicked: root.closeMenus()
+                        }
+
+                        RowLayout {
+                            z: 1
+                            anchors.fill: parent
+                            anchors.leftMargin: 15
+                            anchors.rightMargin: 15
+                            spacing: 14
+
+                            StyleButton {
+                                Layout.preferredWidth: 20
+                                Layout.preferredHeight: 20
+                                iconSource: "qrc:/qt/qml/Seriona/qml/assets/arrow_back.svg"
+                                buttonWidth: 20
+                                buttonHeight: 20
+                                iconSize: 14
+                                enabled: libraryController.canGoBack
+                                opacity: enabled ? 1.0 : 0.3
+                                Behavior on opacity {
+                                    NumberAnimation {
+                                        duration: Theme.animationDuration
+                                    }
+                                }
+                                onClicked: {
+                                    libraryController.goBack();
+                                    pageStack.pop();
+                                }
+                            }
+
+                            StyleButton {
+                                id: searchButton
+                                Layout.preferredWidth: 20
+                                Layout.preferredHeight: 20
+                                iconSource: "qrc:/qt/qml/Seriona/qml/assets/search.svg"
+                                buttonWidth: 20
+                                buttonHeight: 20
+                                iconSize: 14
+                                checkable: true
+                                checked: root.isSearching
+                                textColor: root.isSearching ? Theme.accentColor : Theme.textColor
+                                onClicked: {
+                                    root.closeMenus();
+                                    root.isSearching = !root.isSearching;
+                                     if (root.isSearching) {
+                                         searchInput.forceActiveFocus();
+                                     } else {
+                                         libraryController.clearSearch();
+                                     }
+                                 }
+                             }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: libraryController.currentFolderName
+                                color: Theme.textColor
+                                font.pixelSize: 15
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                            }
+
+                            StyleButton {
+                                id: sidebarMoreBtn
+                                Layout.preferredWidth: 20
+                                Layout.preferredHeight: 20
+                                iconSource: "qrc:/qt/qml/Seriona/qml/assets/more_vert.svg"
+                                buttonWidth: 20
+                                buttonHeight: 20
+                                iconSize: 14
+                                onClicked: sidebarMenu.toggle()
+
+                                BubbleMenu {
+                                    id: sidebarMenu
+                                    targetItem: sidebarMoreBtn
+
+                                    BubbleMenuItem {
+                                        text: qsTr("Sort by Name")
+                                        onTriggered: sidebarMenu.close()
+                                    }
+                                    BubbleMenuItem {
+                                        text: qsTr("Sort by Date")
+                                        onTriggered: sidebarMenu.close()
+                                    }
+                                    BubbleMenuItem {
+                                        text: qsTr("Refresh")
+                                        onTriggered: {
+                                            libraryController.refresh();
+                                            sidebarMenu.close();
+                                        }
+                                    }
+                                }
+                            }
+
+                            StyleButton {
+                                Layout.preferredWidth: 20
+                                Layout.preferredHeight: 20
+                                iconSource: "qrc:/qt/qml/Seriona/qml/assets/close.svg"
+                                buttonWidth: 20
+                                buttonHeight: 20
+                                iconSize: 14
+                                onClicked: {
+                                    root.closeMenus();
+                                    root.closeClicked();
+                                }
+                            }
+                        }
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 50
+                        visible: opacity > 0.0
+                        opacity: root.isSearching ? 1.0 : 0.0
+                        z: 10
+
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: 200
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: parent.width - 20
+                            height: 36
+                            color: Theme.baseColor
+                            radius: 18
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                spacing: 8
+
+                                Item {
+                                    Layout.preferredWidth: 18
+                                    Layout.preferredHeight: 18
+
+                                    Image {
+                                        id: searchFieldIcon
+                                        anchors.fill: parent
+                                        source: "qrc:/qt/qml/Seriona/qml/assets/search.svg"
+                                        sourceSize.width: 18
+                                        sourceSize.height: 18
+                                        fillMode: Image.PreserveAspectFit
+                                        visible: false
+                                    }
+
+                                    ColorOverlay {
+                                        anchors.fill: searchFieldIcon
+                                        source: searchFieldIcon
+                                        color: Theme.secondaryTextColor
+                                    }
+                                }
+
+                                TextField {
+                                    id: searchInput
+                                    Layout.fillWidth: true
+                                    background: null
+                                    color: Theme.textColor
+                                    font.pixelSize: 14
+                                    placeholderText: qsTr("搜索当前文件夹及子目录...")
+                                     placeholderTextColor: "#60FFFFFF"
+                                     selectByMouse: true
+                                     text: libraryController.searchQuery
+                                     verticalAlignment: Text.AlignVCenter
+                                     onTextEdited: libraryController.searchQuery = text
+                                     onAccepted: libraryController.submitSearch()
+                                 }
+
+                                 Item {
+                                     Layout.preferredWidth: 16
+                                     Layout.preferredHeight: 16
+                                     visible: libraryController.searchQuery.length > 0
+
+                                    Image {
+                                        id: clearFieldIcon
+                                        anchors.fill: parent
+                                        source: "qrc:/qt/qml/Seriona/qml/assets/close.svg"
+                                        sourceSize.width: 16
+                                        sourceSize.height: 16
+                                        fillMode: Image.PreserveAspectFit
+                                        visible: false
+                                    }
+
+                                    ColorOverlay {
+                                        anchors.fill: clearFieldIcon
+                                        source: clearFieldIcon
+                                        color: Theme.secondaryTextColor
+                                    }
+
+                                     MouseArea {
+                                         anchors.fill: parent
+                                         cursorShape: Qt.PointingHandCursor
+                                         onClicked: libraryController.clearSearch()
+                                     }
+                                 }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 1
+                        color: "#10FFFFFF"
+                    }
                 }
             }
 
@@ -213,7 +370,7 @@ Item {
             textColor: "white"
             z: 10
 
-            onClicked: console.log("Locate playing song")
+            onClicked: libraryController.locateCurrentSong()
 
             // Shadow for FAB
             layer.enabled: true
@@ -232,17 +389,15 @@ Item {
         id: playlistPageComponent
         ListView {
             id: playlistView
-            property string folderName: "My Music"
-            property var pageModel: mockModel
-            model: pageModel
+            model: libraryController.model
             spacing: 2
             topMargin: Theme.paddingMedium
             bottomMargin: 80 // Space for FAB
             clip: true
 
-            delegate: ItemDelegate {
-                id: delegate
-                width: playlistView.width
+                delegate: ItemDelegate {
+                    id: delegate
+                    width: playlistView.width
                 topPadding: 8
                 bottomPadding: 8
                 leftPadding: 15
@@ -250,15 +405,19 @@ Item {
 
                 onClicked: {
                     if (model.type === "folder") {
-                        pageStack.push(playlistPageComponent, { "folderName": model.name, "pageModel": mockSubModel })
+                        root.openFolder(index);
                     } else {
-                        console.log("Play " + model.title)
+                        libraryController.playItem(index);
                     }
                 }
 
                 background: Rectangle {
                     color: delegate.visualFocus || delegate.hovered ? Theme.hoverColor : "transparent"
-                    Behavior on color { ColorAnimation { duration: 150 } }
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 150
+                        }
+                    }
                 }
 
                 contentItem: RowLayout {
@@ -281,7 +440,7 @@ Item {
                             fillMode: Image.PreserveAspectFit
                             visible: false
                         }
-                        
+
                         ColorOverlay {
                             anchors.fill: folderThumbIcon
                             source: folderThumbIcon
@@ -381,28 +540,28 @@ Item {
                             }
 
                             // Folder specific info
-                                RowLayout {
-                                    visible: model.type === "folder"
-                                    spacing: 6
-                                    Item {
-                                        Layout.preferredWidth: 10
-                                        Layout.preferredHeight: 10
-                                        Image {
-                                            id: musicNoteIcon
-                                            anchors.fill: parent
-                                            source: "qrc:/qt/qml/Seriona/qml/assets/music_note.svg"
-                                            sourceSize: Qt.size(10, 10)
-                                            fillMode: Image.PreserveAspectFit
-                                            visible: false
-                                        }
-                                        ColorOverlay {
-                                            anchors.fill: musicNoteIcon
-                                            source: musicNoteIcon
-                                            color: Theme.secondaryTextColor
-                                            opacity: 0.7
-                                        }
+                            RowLayout {
+                                visible: model.type === "folder"
+                                spacing: 6
+                                Item {
+                                    Layout.preferredWidth: 10
+                                    Layout.preferredHeight: 10
+                                    Image {
+                                        id: musicNoteIcon
+                                        anchors.fill: parent
+                                        source: "qrc:/qt/qml/Seriona/qml/assets/music_note.svg"
+                                        sourceSize: Qt.size(10, 10)
+                                        fillMode: Image.PreserveAspectFit
+                                        visible: false
                                     }
-                                    Text {
+                                    ColorOverlay {
+                                        anchors.fill: musicNoteIcon
+                                        source: musicNoteIcon
+                                        color: Theme.secondaryTextColor
+                                        opacity: 0.7
+                                    }
+                                }
+                                Text {
                                     text: model.songCount + " Songs"
                                     color: Theme.secondaryTextColor
                                     font.pixelSize: 10
@@ -443,20 +602,4 @@ Item {
         }
     }
 
-    ListModel {
-        id: mockSubModel
-        ListElement { type: "file"; title: "Sub Song 1"; artist: "Artist A"; album: "Album X"; duration: "03:45"; format: "FLAC"; sampleRate: 44100; bitDepth: 16 }
-        ListElement { type: "file"; title: "Sub Song 2"; artist: "Artist B"; album: "Album Y"; duration: "04:20"; format: "MP3"; sampleRate: 44100; bitDepth: 16 }
-    }
-
-    ListModel {
-        id: mockModel
-        ListElement { type: "folder"; name: "Hi-Res Collection"; parentName: "Music"; songCount: 128; duration: "12:45:30" }
-        ListElement { type: "file"; title: "Stairway to Heaven"; artist: "Led Zeppelin"; album: "Led Zeppelin IV"; duration: "08:02"; format: "FLAC"; sampleRate: 96000; bitDepth: 24 }
-        ListElement { type: "file"; title: "Bohemian Rhapsody"; artist: "Queen"; album: "A Night at the Opera"; duration: "05:55"; format: "WAV"; sampleRate: 192000; bitDepth: 24 }
-        ListElement { type: "folder"; name: "Rock Classics"; parentName: "Music"; songCount: 45; duration: "03:12:00" }
-        ListElement { type: "file"; title: "Imagine"; artist: "John Lennon"; album: "Imagine"; duration: "03:03"; format: "MP3"; sampleRate: 44100; bitDepth: 16 }
-        ListElement { type: "file"; title: "Hotel California"; artist: "Eagles"; album: "Hotel California"; duration: "06:30"; format: "FLAC"; sampleRate: 48000; bitDepth: 24 }
-        ListElement { type: "folder"; name: "Jazz Essentials"; parentName: "Music"; songCount: 32; duration: "02:45:15" }
-    }
 }

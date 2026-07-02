@@ -6,8 +6,7 @@ import Seriona
 Item {
     id: root
 
-    signal restorePlaylistRequested()
-    signal addFolderRequested()
+    required property var navigationController
 
     Rectangle {
         anchors.fill: parent
@@ -100,7 +99,7 @@ Item {
             Layout.preferredHeight: 48
             text: qsTr("恢复播放列表")
             hoverEnabled: true
-            onClicked: root.restorePlaylistRequested()
+            onClicked: root.navigationController.restorePlaylistFromStartup()
 
             contentItem: Text {
                 text: restoreButton.text
@@ -124,7 +123,7 @@ Item {
             Layout.preferredHeight: 48
             text: qsTr("添加文件夹")
             hoverEnabled: true
-            onClicked: root.addFolderRequested()
+            onClicked: root.navigationController.addFolderFromStartup()
 
             contentItem: Text {
                 text: addFolderButton.text

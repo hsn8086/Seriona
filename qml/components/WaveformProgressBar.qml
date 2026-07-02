@@ -8,15 +8,15 @@ Item {
     // --- 公共属性 ---
     // 从 C++ 接收的原始数据
     property var waveformHeights: []
-    property int barWidth: 4
-    property int spacing: 2
+    property int barWidth: 3
+    property int spacing: 3
 
     // 颜色配置
     property color playedColor: "white" // 正常播放时的颜色
-    property color remainingColor: "#60FFFFFF"// 未播放部分的颜色
+    property color remainingColor: "#30FFFFFF"// 未播放部分的颜色，降低透明度，提升对比
 
     // 悬浮时的预览颜色
-    property color hoverColor: "#C0FFFFFF"
+    property color hoverColor: "#80FFFFFF"
 
     // 进度 (0.0 - 1.0)
     property real progress: 0.0

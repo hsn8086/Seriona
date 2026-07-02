@@ -16,16 +16,13 @@ Window {
     color: "transparent"
     flags: Qt.Window | Qt.FramelessWindowHint
 
-    property string currentView: "playback"
-    property bool isSidebarOpen: false
-    property bool showStartupScreen: true
-
     readonly property int sidebarWidth: 350
     readonly property int playerMinWidth: 450
     readonly property bool isDockCapable: width >= (sidebarWidth + playerMinWidth)
     property bool layoutAnimEnabled: true
-    property bool isManualSidebarToggle: false
-    readonly property bool isDocked: isDockCapable && isSidebarOpen
+
+    readonly property AppFacade appFacade: AppFacade {}
+    readonly property var navigationController: appFacade.navigation
 
     Timer {
         id: animResetTimer
@@ -36,17 +33,12 @@ Window {
     Timer {
         id: manualAnimResetTimer
         interval: 310
-        onTriggered: window.isManualSidebarToggle = false
+        onTriggered: window.navigationController.clearManualSidebarToggle()
     }
 
     onIsDockCapableChanged: {
         layoutAnimEnabled = false;
-        isManualSidebarToggle = false;
-        if (isDockCapable) {
-            isSidebarOpen = true;
-        } else {
-            isSidebarOpen = false;
-        }
+        navigationController.syncSidebarForDockCapability(isDockCapable);
         animResetTimer.restart();
     }
 
@@ -86,15 +78,14 @@ Window {
             id: sidebarContainer
             height: parent.height
             z: 500
-            visible: !window.showStartupScreen
+            visible: !window.navigationController.startupScreenVisible
             isDockCapable: window.isDockCapable
-            isSidebarOpen: window.isSidebarOpen
+            isSidebarOpen: window.navigationController.sidebarOpen
             x: isSidebarOpen ? 0 : -width
 
             onCloseClicked: {
                 sidebarContainer.closeMenus();
-                window.isManualSidebarToggle = true;
-                window.isSidebarOpen = false;
+                window.navigationController.closeSidebar();
                 manualAnimResetTimer.restart();
             }
 
@@ -112,7 +103,7 @@ Window {
             id: clickMask
             anchors.fill: parent
             z: 499
-            visible: (!window.isDockCapable && window.isSidebarOpen) || sidebarContainer.hasOpenMenu || mainContent.hasOpenMenu
+            visible: (!window.isDockCapable && window.navigationController.sidebarOpen) || sidebarContainer.hasOpenMenu || mainContent.hasOpenMenu
             onClicked: {
                 sidebarContainer.closeMenus();
                 mainContent.closeMenus();
@@ -123,7 +114,7 @@ Window {
         Item {
             id: playerContainer
             height: parent.height
-            property bool isDocked: !window.showStartupScreen && window.isDockCapable && window.isSidebarOpen
+            property bool isDocked: !window.navigationController.startupScreenVisible && window.isDockCapable && window.navigationController.sidebarOpen
             x: isDocked ? window.sidebarWidth : 0
             width: isDocked ? (window.width - window.sidebarWidth) : window.width
 
@@ -136,7 +127,7 @@ Window {
             }
 
             Behavior on width {
-                enabled: window.layoutAnimEnabled && window.isManualSidebarToggle
+                enabled: window.layoutAnimEnabled && window.navigationController.manualSidebarToggle
                 NumberAnimation {
                     duration: 300
                     easing.type: Easing.OutCubic
@@ -161,16 +152,16 @@ Window {
 
                     Text {
                         text: qsTr("Seriona")
-                        color: Theme.textColor
-                        font.pixelSize: 14
-                        font.bold: true
+                        color: Theme.secondaryTextColor
+                        font.pixelSize: 13
+                        font.letterSpacing: 1.0
                         anchors.centerIn: parent
                     }
 
                     WindowControls {
                         targetWindow: window
                         anchors.right: parent.right
-                        anchors.rightMargin: Theme.paddingLarge
+                        anchors.rightMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }
@@ -183,13 +174,14 @@ Window {
                     MainContent {
                         id: mainContent
                         anchors.fill: parent
-                        visible: !window.showStartupScreen
-                        enabled: !window.showStartupScreen
-                        state: window.currentView
-                        isSidebarOpen: window.isSidebarOpen
+                        visible: !window.navigationController.startupScreenVisible
+                        enabled: !window.navigationController.startupScreenVisible
+                        state: window.navigationController.currentView
+                        isSidebarOpen: window.navigationController.sidebarOpen
+                        playbackController: window.appFacade.playback
 
                         onCoverClicked: {
-                            window.currentView = "lyrics"
+                            window.navigationController.showLyricsView();
                         }
 
                         onCoverDragRequested: {
@@ -197,26 +189,24 @@ Window {
                         }
 
                         onBackClicked: {
-                            window.currentView = "playback"
+                            window.navigationController.showPlaybackView();
                         }
 
                         onPlaylistToggled: {
-                            if (!window.isSidebarOpen)
+                            if (!window.navigationController.sidebarOpen)
                                 mainContent.closeMenus();
-                            if (window.isSidebarOpen)
+                            if (window.navigationController.sidebarOpen)
                                 sidebarContainer.closeMenus();
-                            window.isManualSidebarToggle = true;
-                            window.isSidebarOpen = !window.isSidebarOpen;
+                            window.navigationController.toggleSidebar();
                             manualAnimResetTimer.restart();
                         }
                     }
 
                     StartupView {
                         anchors.fill: parent
-                        visible: window.showStartupScreen
-                        enabled: window.showStartupScreen
-                        onRestorePlaylistRequested: window.showStartupScreen = false
-                        onAddFolderRequested: window.showStartupScreen = false
+                        visible: window.navigationController.startupScreenVisible
+                        enabled: window.navigationController.startupScreenVisible
+                        navigationController: window.navigationController
                     }
                 }
             }

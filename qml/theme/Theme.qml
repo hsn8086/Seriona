@@ -14,17 +14,17 @@ QtObject {
     readonly property color pressedColor: "#40FFFFFF"
     readonly property color checkedColor: "#60FFFFFF"
     readonly property color textColor: "white"
-    readonly property color secondaryTextColor: "#aaaaaa"
+    readonly property color secondaryTextColor: "#cccccc" // 增加对比度
     readonly property color playButtonBg: "white"
     readonly property color playButtonText: "black"
 
     // 窗口控制按钮颜色 (Window Control Colors)
-    readonly property color closeColor: "#ff5f56"
-    readonly property color closeHoverColor: "#ff3b30"
-    readonly property color minimizeColor: "#ffbd2e"
-    readonly property color minimizeHoverColor: "#ffcc00"
-    readonly property color maximizeColor: "#27c93f"
-    readonly property color maximizeHoverColor: "#34c759"
+    readonly property color closeColor: "#e05c5c" // 降低饱和度
+    readonly property color closeHoverColor: "#ff4d4d"
+    readonly property color minimizeColor: "#e0b04c"
+    readonly property color minimizeHoverColor: "#ffc13b"
+    readonly property color maximizeColor: "#4ca656"
+    readonly property color maximizeHoverColor: "#32b842"
 
     // 尺寸与间距 (Sizes and Spacing)
     readonly property int paddingSmall: 4

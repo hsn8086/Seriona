@@ -13,27 +13,27 @@ Item {
     signal backClicked()
     signal playlistToggled()
     property bool isSidebarOpen: false
+    required property PlaybackController playbackController
     readonly property bool hasOpenMenu: mainMenu.visible
 
-    // 播放状态属性 (Mock Data)
-    property bool isPlaying: false
-    property real currentPosition: 34 // 秒
-    property real totalDuration: 225 // 秒
-    property real volume: 0.7
-    property bool isShuffle: false
-    property int repeatMode: 0 // 0: 顺序, 1: 列表循环, 2: 单曲循环
-    property int currentLyricIndex: 0
-    property bool showTranslation: true
-    property string lyricDelimiter: " / "
     property bool isTogglingTranslation: false
     readonly property real currentItemHeight: lyricsContainer.currentItem ? lyricsContainer.currentItem.height : 0
     readonly property real currentItemOriginalHeight: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.originalHeight !== "undefined") ? lyricsContainer.currentItem.originalHeight : 0
     readonly property real currentItemHeightUnscaled: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.fullHeightUnscaled !== "undefined") ? lyricsContainer.currentItem.fullHeightUnscaled : 0
     readonly property real currentItemOriginalHeightUnscaled: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.originalHeightUnscaled !== "undefined") ? lyricsContainer.currentItem.originalHeightUnscaled : 0
 
-    onShowTranslationChanged: {
-        isTogglingTranslation = true;
-        toggleTranslationTimer.restart();
+    LyricsModel {
+        id: lyricsState
+        advancing: root.playbackController.isPlaying && root.state === "lyrics"
+    }
+
+    Connections {
+        target: lyricsState
+
+        function onShowTranslationChanged() {
+            root.isTogglingTranslation = true;
+            toggleTranslationTimer.restart();
+        }
     }
 
     Timer {
@@ -41,29 +41,6 @@ Item {
         interval: 350
         onTriggered: root.isTogglingTranslation = false
     }
-
-    property string songTitle: "Song Title"
-    property string artistName: "Artist Name"
-    property string albumName: "Album Name"
-
-    // 模拟波形数据
-    property var waveformHeights: [
-        20, 30, 40, 35, 25, 15, 10, 20, 30, 45, 50, 40, 30, 20, 15, 25, 35, 40, 30, 20,
-        15, 10, 20, 35, 45, 40, 30, 25, 35, 45, 50, 40, 30, 20, 15, 25, 35, 40, 30, 20,
-        15, 10, 20, 35, 45, 40, 30, 25, 35, 45, 50, 40, 30, 20, 15, 25, 35, 40, 30, 20
-    ]
-
-    // 歌词数据
-    readonly property var lyricsData: [
-        qsTr("Music playing in the night... / 音乐在夜空中回荡..."),
-        qsTr("Seriona shines so bright... / Seriona 闪耀着光芒..."),
-        qsTr("A melody that guides the way... / 指引道路的旋律..."),
-        qsTr("Through the dark and into day... / 穿过黑暗迎来黎明..."),
-        qsTr("Feel the rhythm, feel the beat... / 感受旋律，感受节拍..."),
-        qsTr("Walking down this lonely street... / 走在这条孤独的街上..."),
-        qsTr("But with music in my soul... / 但只要我的灵魂有音乐..."),
-        qsTr("I am happy, I am whole... / 我就快乐，我就完整...")
-    ]
 
     // 时间格式化辅助函数
     function formatTime(seconds) {
@@ -77,57 +54,31 @@ Item {
         mainMenu.close();
     }
 
-    // 播放进度模拟定时器
-    Timer {
-        interval: 1000
-        running: root.isPlaying
-        repeat: true
-        onTriggered: {
-            if (root.currentPosition < root.totalDuration) {
-                root.currentPosition += 1;
-            } else {
-                root.currentPosition = 0;
-            }
-        }
-    }
-
-    // 歌词模拟定时器
-    Timer {
-        interval: 3000
-        running: root.isPlaying && root.state === "lyrics"
-        repeat: true
-        onTriggered: {
-            if (root.lyricsData.length > 0) {
-                root.currentLyricIndex = (root.currentLyricIndex + 1) % root.lyricsData.length;
-            }
-        }
-    }
-
     // 1. 播放布局定位辅助器 (仅在 playback 状态下用于定位)
     Item {
         id: positionHelper
         anchors.centerIn: parent
         width: 320
-        height: 612
+        height: 604
         visible: false
     }
 
     // 2. 封面组件 (共享元素)
     Item {
         id: coverContainer
-        width: 240
-        height: 240
+        width: 250
+        height: 250
         z: 10
-        x: (parent.width - 240) / 2
+        x: (parent.width - 250) / 2
         y: positionHelper.y
 
         RectangularGlow {
             id: coverGlow
             anchors.fill: coverRect
-            glowRadius: 30
-            spread: 0.0
-            color: "#50000000"
-            cornerRadius: coverRect.radius
+            glowRadius: 40
+            spread: 0.1
+            color: "#40000000"
+            cornerRadius: coverRect.radius + 15
             z: -1
             opacity: 1.0
         }
@@ -135,14 +86,14 @@ Item {
         Rectangle {
             id: coverRect
             anchors.fill: parent
-            radius: 12
+            radius: 16
             color: Theme.mainColor
             clip: true
 
             Text {
                 id: coverIcon
                 anchors.centerIn: parent
-                text: "🎵"
+                text: root.playbackController.coverPlaceholderText
                 font.pixelSize: 72
                 color: Theme.textColor
                 opacity: 0.6
@@ -192,10 +143,10 @@ Item {
     Item {
         id: metadataContainer
         width: 320
-        height: 80
+        height: 64
         z: 9
         anchors.top: coverContainer.bottom
-        anchors.topMargin: 20
+        anchors.topMargin: 30
         anchors.horizontalCenter: positionHelper.horizontalCenter
 
         Item {
@@ -205,10 +156,11 @@ Item {
             MarqueeText {
                 id: titleText
                 width: Math.min(implicitWidth, parent.width)
-                text: root.songTitle
+                text: root.playbackController.songTitle
                 color: Theme.textColor
-                font.pixelSize: 24
+                font.pixelSize: 22
                 font.bold: true
+                font.letterSpacing: 0.5
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
             }
@@ -216,11 +168,12 @@ Item {
             MarqueeText {
                 id: artistText
                 width: Math.min(implicitWidth, parent.width)
-                text: root.artistName
+                text: root.playbackController.artistName
                 color: Theme.secondaryTextColor
-                font.pixelSize: 16
+                font.pixelSize: 14
+                font.weight: Font.Medium
                 anchors.top: titleText.bottom
-                anchors.topMargin: 5
+                anchors.topMargin: 6
                 anchors.horizontalCenter: parent.horizontalCenter
             }
 
@@ -229,7 +182,7 @@ Item {
                 width: Math.min(implicitWidth, parent.width)
                 text: " — "
                 color: Theme.secondaryTextColor
-                font.pixelSize: 12
+                font.pixelSize: 14
                 opacity: 0.0
                 anchors.verticalCenter: artistText.verticalCenter
             }
@@ -237,11 +190,12 @@ Item {
             MarqueeText {
                 id: albumText
                 width: Math.min(implicitWidth, parent.width)
-                text: root.albumName
+                text: root.playbackController.albumName
                 color: Theme.secondaryTextColor
-                font.pixelSize: 12
+                font.pixelSize: 13
+                opacity: 0.8
                 anchors.top: artistText.bottom
-                anchors.topMargin: 5
+                anchors.topMargin: 4
                 anchors.horizontalCenter: parent.horizontalCenter
             }
         }
@@ -259,8 +213,8 @@ Item {
         id: lyricsContainer
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        model: root.lyricsData
-        currentIndex: root.currentLyricIndex
+        model: lyricsState
+        currentIndex: lyricsState.currentIndex
         preferredHighlightBegin: height / 2 - root.currentItemHeightUnscaled / 2 - 30
         preferredHighlightEnd: preferredHighlightBegin
         
@@ -298,27 +252,17 @@ Item {
 
         delegate: Item {
             id: delegateItem
-            required property string modelData
             required property int index
+            required property string displayLine
+            required property string translation
+            required property bool isCurrent
             width: lyricsContainer.width
             height: lyricColumn.implicitHeight * lyricColumn.scale + Theme.paddingLarge
 
-            readonly property bool isActive: index === root.currentLyricIndex
+            readonly property bool isActive: isCurrent
             readonly property real originalHeight: lyricText.implicitHeight * lyricColumn.scale + Theme.paddingLarge
             readonly property real originalHeightUnscaled: lyricText.implicitHeight + Theme.paddingLarge
             readonly property real fullHeightUnscaled: lyricColumn.implicitHeight + Theme.paddingLarge
-
-            readonly property string originalText: {
-                if (root.lyricDelimiter === "") return modelData;
-                var idx = modelData.indexOf(root.lyricDelimiter);
-                return idx !== -1 ? modelData.substring(0, idx).trim() : modelData;
-            }
-
-            readonly property string translationText: {
-                if (root.lyricDelimiter === "") return "";
-                var idx = modelData.indexOf(root.lyricDelimiter);
-                return idx !== -1 ? modelData.substring(idx + root.lyricDelimiter.length).trim() : "";
-            }
 
             Column {
                 id: lyricColumn
@@ -337,7 +281,7 @@ Item {
                 Text {
                     id: lyricText
                     width: parent.width
-                    text: delegateItem.originalText
+                    text: delegateItem.displayLine
                     color: Theme.textColor
                     font.pixelSize: 32
                     font.weight: delegateItem.isActive ? Font.Bold : Font.Normal
@@ -352,7 +296,7 @@ Item {
                 Text {
                     id: translationTextCtrl
                     width: parent.width
-                    text: delegateItem.translationText
+                    text: delegateItem.translation
                     color: Theme.secondaryTextColor
                     font.pixelSize: 22
                     font.weight: delegateItem.isActive ? Font.Bold : Font.Normal
@@ -360,8 +304,8 @@ Item {
                     wrapMode: Text.WordWrap
                     clip: true
                     
-                    height: (root.showTranslation && delegateItem.translationText !== "") ? implicitHeight : 0
-                    opacity: (root.showTranslation && delegateItem.translationText !== "") ? (delegateItem.isActive ? 0.8 : 0.3) : 0.0
+                    height: (lyricsState.showTranslation && delegateItem.translation !== "") ? implicitHeight : 0
+                    opacity: (lyricsState.showTranslation && delegateItem.translation !== "") ? (delegateItem.isActive ? 0.8 : 0.3) : 0.0
                     visible: height > 0
 
                     Behavior on height {
@@ -376,7 +320,7 @@ Item {
             MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.currentLyricIndex = index
+                onClicked: lyricsState.selectLyric(index)
             }
         }
     }
@@ -385,7 +329,7 @@ Item {
     Item {
         id: waveformProgressContainer
         width: 320
-        height: 80
+        height: 60
         opacity: 1.0
         visible: opacity > 0.0
         z: 8
@@ -398,11 +342,11 @@ Item {
             anchors.top: parent.top
             anchors.horizontalCenter: parent.horizontalCenter
             width: 320
-            height: 60
-            waveformHeights: root.waveformHeights
-            progress: root.totalDuration > 0 ? (root.currentPosition / root.totalDuration) : 0
+            height: 44
+            waveformHeights: root.playbackController.waveformHeights
+            progress: root.playbackController.totalDuration > 0 ? (root.playbackController.currentPosition / root.playbackController.totalDuration) : 0
             onSeekRequested: function (pos) {
-                root.currentPosition = pos * root.totalDuration;
+                root.playbackController.seek(pos * root.playbackController.totalDuration);
             }
         }
 
@@ -415,9 +359,10 @@ Item {
             Text {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: waveProgress.isHovering ? root.formatTime(root.totalDuration * waveProgress.hoverProgress) : root.formatTime(root.currentPosition)
+                text: waveProgress.isHovering ? root.formatTime(root.playbackController.totalDuration * waveProgress.hoverProgress) : root.playbackController.currentPositionText
                 color: Theme.secondaryTextColor
-                font.pixelSize: 12
+                font.pixelSize: 11
+                font.weight: Font.Medium
             }
 
             Text {
@@ -425,15 +370,15 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: {
                     if (waveProgress.isHovering) {
-                        var remainingPreview = root.totalDuration * (1.0 - waveProgress.hoverProgress);
+                        var remainingPreview = root.playbackController.totalDuration * (1.0 - waveProgress.hoverProgress);
                         return "-" + root.formatTime(remainingPreview);
                     } else {
-                        var remaining = root.totalDuration - root.currentPosition;
-                        return "-" + root.formatTime(remaining);
+                        return root.playbackController.remainingDurationText;
                     }
                 }
                 color: Theme.secondaryTextColor
-                font.pixelSize: 12
+                font.pixelSize: 11
+                font.weight: Font.Medium
             }
         }
     }
@@ -456,10 +401,10 @@ Item {
             anchors.right: parent.right
             height: 20
             from: 0
-            to: root.totalDuration
-            value: root.currentPosition
+            to: root.playbackController.totalDuration
+            value: root.playbackController.currentPosition
             onMoved: {
-                root.currentPosition = value;
+                root.playbackController.seek(value);
             }
 
             background: Rectangle {
@@ -498,17 +443,19 @@ Item {
             Text {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.formatTime(root.currentPosition)
+                text: root.playbackController.currentPositionText
                 color: Theme.secondaryTextColor
-                font.pixelSize: 12
+                font.pixelSize: 11
+                font.weight: Font.Medium
             }
 
             Text {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: "-" + root.formatTime(root.totalDuration - root.currentPosition)
+                text: root.playbackController.remainingDurationText
                 color: Theme.secondaryTextColor
-                font.pixelSize: 12
+                font.pixelSize: 11
+                font.weight: Font.Medium
             }
         }
     }
@@ -529,23 +476,22 @@ Item {
             height: 45
             anchors.verticalCenter: playButton.verticalCenter
             anchors.right: playButton.left
-            anchors.rightMargin: 40
+            anchors.rightMargin: 35
             iconSource: "qrc:/qt/qml/Seriona/qml/assets/prev.svg"
             textColor: Theme.textColor
-            onClicked: console.log("Prev clicked")
         }
 
         StyleButton {
             id: playButton
-            width: 60
-            height: 60
+            width: 56
+            height: 56
             anchors.centerIn: parent
-            iconSource: root.isPlaying ? "qrc:/qt/qml/Seriona/qml/assets/pause.svg" : "qrc:/qt/qml/Seriona/qml/assets/play.svg"
+            iconSource: root.playbackController.isPlaying ? "qrc:/qt/qml/Seriona/qml/assets/pause.svg" : "qrc:/qt/qml/Seriona/qml/assets/play.svg"
             baseColor: Theme.playButtonBg
             hoverColor: Qt.darker(Theme.playButtonBg, 1.1)
             pressedColor: Qt.darker(Theme.playButtonBg, 1.2)
             textColor: Theme.playButtonText
-            onClicked: root.isPlaying = !root.isPlaying
+            onClicked: root.playbackController.togglePlay()
         }
 
         StyleButton {
@@ -554,10 +500,9 @@ Item {
             height: 45
             anchors.verticalCenter: playButton.verticalCenter
             anchors.left: playButton.right
-            anchors.leftMargin: 40
+            anchors.leftMargin: 35
             iconSource: "qrc:/qt/qml/Seriona/qml/assets/next.svg"
             textColor: Theme.textColor
-            onClicked: console.log("Next clicked")
         }
     }
 
@@ -565,8 +510,8 @@ Item {
     RowLayout {
         id: volumeContainer
         width: 320
-        height: 40
-        spacing: 15
+        height: 30
+        spacing: 12
         opacity: 1.0
         visible: opacity > 0.0
         z: 4
@@ -575,14 +520,14 @@ Item {
         anchors.horizontalCenter: positionHelper.horizontalCenter
 
         Item {
-            Layout.preferredWidth: 20
-            Layout.preferredHeight: 20
+            Layout.preferredWidth: 16
+            Layout.preferredHeight: 16
             Image {
                 id: volDownIcon
                 anchors.fill: parent
                 source: "qrc:/qt/qml/Seriona/qml/assets/volume_down.svg"
-                sourceSize.width: 20
-                sourceSize.height: 20
+                sourceSize.width: 16
+                sourceSize.height: 16
                 visible: false
             }
             ColorOverlay {
@@ -594,38 +539,46 @@ Item {
 
         Slider {
             id: volumeSlider
-            Layout.preferredWidth: 240
+            Layout.fillWidth: true
             Layout.alignment: Qt.AlignVCenter
             from: 0.0
             to: 1.0
-            value: root.volume
-            onValueChanged: root.volume = value
+            value: root.playbackController.volume
+            onMoved: root.playbackController.volume = value
             background: Rectangle {
                 x: volumeSlider.leftPadding
                 y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
                 width: volumeSlider.availableWidth
-                height: 12
-                radius: 6
+                height: 4
+                radius: 2
                 color: Theme.baseColor
                 Rectangle {
                     width: volumeSlider.visualPosition * parent.width
                     height: parent.height
-                    color: Theme.checkedColor
-                    radius: 6
+                    color: Theme.textColor
+                    radius: 2
                 }
             }
-            handle: Item {}
+            handle: Rectangle {
+                x: volumeSlider.leftPadding + volumeSlider.visualPosition * (volumeSlider.availableWidth - width)
+                y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
+                width: 10
+                height: 10
+                radius: 5
+                color: Theme.textColor
+                visible: volumeSlider.hovered || volumeSlider.pressed
+            }
         }
 
         Item {
-            Layout.preferredWidth: 20
-            Layout.preferredHeight: 20
+            Layout.preferredWidth: 16
+            Layout.preferredHeight: 16
             Image {
                 id: volUpIcon
                 anchors.fill: parent
                 source: "qrc:/qt/qml/Seriona/qml/assets/volume_up.svg"
-                sourceSize.width: 20
-                sourceSize.height: 20
+                sourceSize.width: 16
+                sourceSize.height: 16
                 visible: false
             }
             ColorOverlay {
@@ -649,10 +602,10 @@ Item {
         anchors.horizontalCenter: positionHelper.horizontalCenter
 
         Row {
-            spacing: 20
+            spacing: 16
             StyleButton {
-                buttonWidth: 40
-                buttonHeight: 40
+                buttonWidth: 36
+                buttonHeight: 36
                 iconSource: "qrc:/qt/qml/Seriona/qml/assets/playlist.svg"
                 textColor: Theme.textColor
                 checkable: true
@@ -660,13 +613,13 @@ Item {
                 onClicked: root.playlistToggled()
             }
             StyleButton {
-                buttonWidth: 40
-                buttonHeight: 40
-                iconSource: root.isShuffle ? "qrc:/qt/qml/Seriona/qml/assets/shuffle_on.svg" : "qrc:/qt/qml/Seriona/qml/assets/shuffle_off.svg"
+                buttonWidth: 36
+                buttonHeight: 36
+                iconSource: root.playbackController.isShuffle ? "qrc:/qt/qml/Seriona/qml/assets/shuffle_on.svg" : "qrc:/qt/qml/Seriona/qml/assets/shuffle_off.svg"
                 textColor: Theme.textColor
                 checkable: true
-                checked: root.isShuffle
-                onClicked: root.isShuffle = !root.isShuffle
+                checked: root.playbackController.isShuffle
+                onClicked: root.playbackController.toggleShuffle()
             }
         }
 
@@ -675,18 +628,18 @@ Item {
         }
 
         Row {
-            spacing: 20
+            spacing: 16
             StyleButton {
-                iconSource: root.repeatMode === 1 ? "qrc:/qt/qml/Seriona/qml/assets/repeat_list.svg" : root.repeatMode === 2 ? "qrc:/qt/qml/Seriona/qml/assets/repeat_one.svg" : "qrc:/qt/qml/Seriona/qml/assets/repeat_off.svg"
-                buttonWidth: 40
-                buttonHeight: 40
+                iconSource: root.playbackController.repeatMode === 1 ? "qrc:/qt/qml/Seriona/qml/assets/repeat_list.svg" : root.playbackController.repeatMode === 2 ? "qrc:/qt/qml/Seriona/qml/assets/repeat_one.svg" : "qrc:/qt/qml/Seriona/qml/assets/repeat_off.svg"
+                buttonWidth: 36
+                buttonHeight: 36
                 textColor: Theme.textColor
-                onClicked: root.repeatMode = (root.repeatMode + 1) % 3
+                onClicked: root.playbackController.cycleRepeatMode()
             }
             StyleButton {
                 id: settingsBtn
-                buttonWidth: 40
-                buttonHeight: 40
+                buttonWidth: 36
+                buttonHeight: 36
                 iconSource: "qrc:/qt/qml/Seriona/qml/assets/settings.svg"
                 textColor: Theme.textColor
                 onClicked: mainMenu.toggle()
@@ -728,7 +681,7 @@ Item {
                                             width: parent.width
                                             height: 28
                                             font.pixelSize: 12
-                                            text: root.lyricDelimiter
+                                            text: lyricsState.lyricDelimiter
                                             color: Theme.textColor
                                             placeholderText: "e.g. /"
                                             placeholderTextColor: "#80FFFFFF"
@@ -739,7 +692,7 @@ Item {
                                                 radius: 4
                                             }
                                             onTextChanged: {
-                                                root.lyricDelimiter = text;
+                                                lyricsState.lyricDelimiter = text;
                                             }
                                         }
 
@@ -760,7 +713,7 @@ Item {
                                                     width: 32
                                                     height: 22
                                                     radius: 4
-                                                    color: root.lyricDelimiter === modelData ? Theme.accentColor : "#15FFFFFF"
+                                                    color: lyricsState.lyricDelimiter === modelData ? Theme.accentColor : "#15FFFFFF"
                                                     border.color: "#30FFFFFF"
                                                     border.width: 1
                                                     
@@ -775,7 +728,7 @@ Item {
                                                         anchors.fill: parent
                                                         cursorShape: Qt.PointingHandCursor
                                                         onClicked: {
-                                                            root.lyricDelimiter = modelData;
+                                                            lyricsState.lyricDelimiter = modelData;
                                                             customInput.text = modelData;
                                                         }
                                                     }
@@ -817,7 +770,7 @@ Item {
         iconSource: "qrc:/qt/qml/Seriona/qml/assets/translate.svg"
         textColor: Theme.textColor
         checkable: true
-        checked: root.showTranslation
+        checked: lyricsState.showTranslation
         z: 100
         opacity: 0.0
         visible: opacity > 0.0
@@ -827,7 +780,7 @@ Item {
         anchors.bottom: linearProgressContainer.top
         anchors.bottomMargin: Theme.paddingMedium
 
-        onClicked: root.showTranslation = !root.showTranslation
+        onClicked: lyricsState.toggleTranslation()
     }
 
     // 状态定义
@@ -838,10 +791,10 @@ Item {
             name: "playback"
             PropertyChanges {
                 target: coverContainer
-                x: (parent.width - 240) / 2
+                x: (parent.width - 250) / 2
                 y: positionHelper.y
-                width: 240
-                height: 240
+                width: 250
+                height: 250
             }
             AnchorChanges {
                 target: titleText
@@ -871,20 +824,20 @@ Item {
             }
             PropertyChanges {
                 target: prevButton
-                anchors.rightMargin: 40
+                anchors.rightMargin: 35
             }
             PropertyChanges {
                 target: nextButton
-                anchors.leftMargin: 40
+                anchors.leftMargin: 35
             }
             PropertyChanges {
                 target: waveformProgressContainer
-                height: 80
+                height: 60
             }
             PropertyChanges {
                 target: waveProgress
                 flatMode: false
-                height: 60
+                height: 44
             }
             PropertyChanges {
                 target: toggleTranslationBtn
@@ -947,16 +900,16 @@ Item {
                 target: coverContainer
                 x: Theme.paddingLarge
                 y: Theme.paddingLarge
-                width: 40
-                height: 40
+                width: 44
+                height: 44
             }
             PropertyChanges {
                 target: coverRect
-                radius: 4
+                radius: 8
             }
             PropertyChanges {
                 target: coverIcon
-                font.pixelSize: 18
+                font.pixelSize: 20
             }
             PropertyChanges {
                 target: coverGlow
@@ -970,12 +923,12 @@ Item {
             }
             PropertyChanges {
                 target: titleText
-                font.pixelSize: 14
+                font.pixelSize: 16
             }
             PropertyChanges {
                 target: artistText
                 width: implicitWidth
-                font.pixelSize: 12
+                font.pixelSize: 13
             }
             PropertyChanges {
                 target: dashText
