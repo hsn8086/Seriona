@@ -160,6 +160,25 @@ if(BUILD_TESTING)
     )
     add_test(NAME seriona_frontend_library_tree_mapping COMMAND seriona_frontend_library_tree_mapping)
 
+    if(SERIONA_BACKEND_CONTROL_TARGET)
+        add_executable(seriona_frontend_library_tree_model_tests
+            tests/frontend/adapter/tst_library_tree_model.cpp
+            src/app/library_model.cpp
+            src/app/library_model.h
+        )
+        target_include_directories(seriona_frontend_library_tree_model_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_library_tree_model_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_library_tree_model_tests
+            PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
+        )
+        add_test(NAME seriona_frontend_library_tree_model COMMAND seriona_frontend_library_tree_model_tests)
+        add_test(NAME seriona_frontend_library_tree_invalid_child COMMAND seriona_frontend_library_tree_model_tests invalidChildNodeIdsAreSkipped)
+    endif()
+
     add_executable(seriona_frontend_app_facade_smoke_mode
         tests/frontend/adapter/tst_app_facade_smoke_mode.cpp
         src/app/app_facade.cpp
@@ -184,6 +203,26 @@ if(BUILD_TESTING)
     add_test(NAME seriona_frontend_app_facade_smoke_mode COMMAND seriona_frontend_app_facade_smoke_mode)
 
     if(SERIONA_BACKEND_CONTROL_TARGET)
+        add_executable(seriona_frontend_playback_snapshot_tests
+            tests/frontend/adapter/tst_playback_snapshot_mapping.cpp
+            src/app/app_facade.cpp
+            src/app/app_facade.h
+            src/app/backend_bridge.cpp
+            src/app/backend_bridge.h
+        )
+        target_include_directories(seriona_frontend_playback_snapshot_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_playback_snapshot_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_playback_snapshot_tests
+            PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
+        )
+
+        add_test(NAME seriona_frontend_playback_snapshot_mapping COMMAND seriona_frontend_playback_snapshot_tests snapshotMapping)
+        add_test(NAME seriona_frontend_playback_empty_snapshot COMMAND seriona_frontend_playback_snapshot_tests emptySnapshot)
+
         add_executable(seriona_frontend_backend_bridge_tests
             tests/frontend/adapter/tst_backend_bridge.cpp
             src/app/backend_bridge.cpp
