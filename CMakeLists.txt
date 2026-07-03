@@ -9,6 +9,39 @@ find_package(Qt6 REQUIRED COMPONENTS Quick)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
+include(CTest)
+
+set(SERIONA_BACKEND_SOURCE_DIR "../../cppProject(app_and_lib)/Seriona_Backend" CACHE PATH "Seriona backend source tree")
+set(SERIONA_BACKEND_CONTROL_TARGET "")
+
+if(SERIONA_BACKEND_SOURCE_DIR STREQUAL "")
+    message(STATUS "SERIONA_BACKEND_SOURCE_DIR is empty; building appSeriona in mock-only mode.")
+else()
+    get_filename_component(SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR
+        "${SERIONA_BACKEND_SOURCE_DIR}"
+        ABSOLUTE
+        BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    if(EXISTS "${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}/CMakeLists.txt")
+        message(STATUS "Seriona backend source found: ${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}")
+        set(SERIONA_BUILD_APP OFF CACHE BOOL "Build the standalone Seriona backend app" FORCE)
+        add_subdirectory("${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/Seriona_Backend" EXCLUDE_FROM_ALL)
+
+        if(TARGET SerionaBackend::control)
+            set(SERIONA_BACKEND_CONTROL_TARGET SerionaBackend::control)
+        elseif(TARGET seriona_control)
+            set(SERIONA_BACKEND_CONTROL_TARGET seriona_control)
+        else()
+            message(FATAL_ERROR "Seriona backend was added, but neither SerionaBackend::control nor seriona_control exists.")
+        endif()
+
+        message(STATUS "Seriona frontend will link backend target: ${SERIONA_BACKEND_CONTROL_TARGET}")
+    else()
+        message(STATUS "Seriona backend source not found at ${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}; building appSeriona in mock-only mode.")
+    endif()
+endif()
+
 qt_add_executable(appSeriona
     src/main.cpp
 )
@@ -21,6 +54,8 @@ qt_add_qml_module(appSeriona
     SOURCES
         src/app/app_facade.cpp
         src/app/app_facade.h
+        src/app/backend_bridge.cpp
+        src/app/backend_bridge.h
         src/app/lyrics_model.cpp
         src/app/lyrics_model.h
         src/app/library_model.cpp
@@ -70,6 +105,10 @@ target_include_directories(appSeriona
     PRIVATE src/app
 )
 
+target_compile_definitions(appSeriona
+    PRIVATE SERIONA_HAS_BACKEND=$<BOOL:${SERIONA_BACKEND_CONTROL_TARGET}>
+)
+
 # target_sources(appSeriona PRIVATE
 # )
 
@@ -87,6 +126,84 @@ set_target_properties(appSeriona PROPERTIES
 target_link_libraries(appSeriona
     PRIVATE Qt6::Quick
 )
+
+if(SERIONA_BACKEND_CONTROL_TARGET)
+    target_link_libraries(appSeriona
+        PRIVATE ${SERIONA_BACKEND_CONTROL_TARGET}
+    )
+endif()
+
+if(BUILD_TESTING)
+    find_package(Qt6 REQUIRED COMPONENTS Quick Test)
+
+    add_executable(seriona_frontend_command_result_mapping
+        tests/frontend/adapter/tst_command_result_mapping.cpp
+    )
+    target_link_libraries(seriona_frontend_command_result_mapping
+        PRIVATE Qt6::Test
+    )
+    add_test(NAME seriona_frontend_command_result_mapping COMMAND seriona_frontend_command_result_mapping)
+
+    add_executable(seriona_frontend_snapshot_mapping
+        tests/frontend/adapter/tst_snapshot_mapping.cpp
+    )
+    target_link_libraries(seriona_frontend_snapshot_mapping
+        PRIVATE Qt6::Test
+    )
+    add_test(NAME seriona_frontend_snapshot_mapping COMMAND seriona_frontend_snapshot_mapping)
+
+    add_executable(seriona_frontend_library_tree_mapping
+        tests/frontend/adapter/tst_library_tree_mapping.cpp
+    )
+    target_link_libraries(seriona_frontend_library_tree_mapping
+        PRIVATE Qt6::Test
+    )
+    add_test(NAME seriona_frontend_library_tree_mapping COMMAND seriona_frontend_library_tree_mapping)
+
+    add_executable(seriona_frontend_app_facade_smoke_mode
+        tests/frontend/adapter/tst_app_facade_smoke_mode.cpp
+        src/app/app_facade.cpp
+        src/app/app_facade.h
+        src/app/backend_bridge.cpp
+        src/app/backend_bridge.h
+    )
+    target_include_directories(seriona_frontend_app_facade_smoke_mode
+        PRIVATE src/app
+    )
+    target_compile_definitions(seriona_frontend_app_facade_smoke_mode
+        PRIVATE SERIONA_HAS_BACKEND=$<BOOL:${SERIONA_BACKEND_CONTROL_TARGET}>
+    )
+    target_link_libraries(seriona_frontend_app_facade_smoke_mode
+        PRIVATE Qt6::Quick Qt6::Test
+    )
+    if(SERIONA_BACKEND_CONTROL_TARGET)
+        target_link_libraries(seriona_frontend_app_facade_smoke_mode
+            PRIVATE ${SERIONA_BACKEND_CONTROL_TARGET}
+        )
+    endif()
+    add_test(NAME seriona_frontend_app_facade_smoke_mode COMMAND seriona_frontend_app_facade_smoke_mode)
+
+    if(SERIONA_BACKEND_CONTROL_TARGET)
+        add_executable(seriona_frontend_backend_bridge_tests
+            tests/frontend/adapter/tst_backend_bridge.cpp
+            src/app/backend_bridge.cpp
+            src/app/backend_bridge.h
+        )
+        target_include_directories(seriona_frontend_backend_bridge_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_backend_bridge_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_backend_bridge_tests
+            PRIVATE Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
+        )
+
+        add_test(NAME seriona_frontend_backend_bridge_threading COMMAND seriona_frontend_backend_bridge_tests threading)
+        add_test(NAME seriona_frontend_backend_bridge_shutdown COMMAND seriona_frontend_backend_bridge_tests shutdown)
+        add_test(NAME seriona_frontend_backend_bridge_shutdown_stop_sent COMMAND seriona_frontend_backend_bridge_tests shutdownStopSent)
+    endif()
+endif()
 
 install(TARGETS appSeriona
     BUNDLE DESTINATION .
