@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QString>
 
 #ifndef SERIONA_HAS_BACKEND
 #define SERIONA_HAS_BACKEND 0
@@ -35,9 +36,10 @@ public:
     bool shuttingDown() const;
     void drainForTests();
 
-#if SERIONA_HAS_BACKEND
-    seriona::control::MediaControllerCommandResult submitCommand(const seriona::control::MediaControlCommand &command);
-    const seriona::control::PlayerStateSnapshot &playerSnapshot() const;
+	#if SERIONA_HAS_BACKEND
+	    seriona::control::MediaControllerCommandResult submitCommand(const seriona::control::MediaControlCommand &command);
+	    seriona::control::MediaControllerCommandResult scanLibrary(const QString &rootPath);
+	    const seriona::control::PlayerStateSnapshot &playerSnapshot() const;
     const seriona::control::LibraryStateSnapshot &librarySnapshot() const;
     const std::deque<seriona::control::ControlDomainNotification> &notifications() const;
 #endif

@@ -1,10 +1,13 @@
 #include "library_model.h"
 
+#include <QByteArray>
 #include <QDebug>
+#include <QFileInfo>
 
 #if SERIONA_HAS_BACKEND
 #include <QSet>
 
+#include <algorithm>
 #include <chrono>
 #include <functional>
 #include <utility>
@@ -17,6 +20,61 @@ namespace {
 QString toQString(const std::string &value)
 {
     return QString::fromStdString(value);
+}
+
+std::string toStdString(const QString &value)
+{
+    const QByteArray utf8 = value.toUtf8();
+    return std::string(utf8.constData(), static_cast<std::size_t>(utf8.size()));
+}
+
+seriona::control::TrackIdentity trackIdentityForEntry(const LibraryModel::Entry &entry)
+{
+    seriona::control::TrackIdentity identity;
+    identity.trackId = toStdString(entry.trackId);
+    return identity;
+}
+
+QString uiScanStatus(seriona::control::LibraryScanStatus status)
+{
+    switch (status) {
+    case seriona::control::LibraryScanStatus::Idle:
+    case seriona::control::LibraryScanStatus::Stopped:
+        return QStringLiteral("pending");
+    case seriona::control::LibraryScanStatus::Scanning:
+        return QStringLiteral("running");
+    case seriona::control::LibraryScanStatus::Completed:
+        return QStringLiteral("completed");
+    case seriona::control::LibraryScanStatus::Error:
+        return QStringLiteral("error");
+    }
+
+    return QStringLiteral("pending");
+}
+
+int uiScanProgress(const seriona::control::LibraryStateSnapshot &snapshot)
+{
+    if (snapshot.scanStatus == seriona::control::LibraryScanStatus::Completed) {
+        return 100;
+    }
+    if (!snapshot.scanProgress.has_value() || snapshot.scanProgress->filesDiscovered == 0U) {
+        return 0;
+    }
+
+    const std::uint64_t scanned = std::min(snapshot.scanProgress->filesScanned, snapshot.scanProgress->filesDiscovered);
+    return static_cast<int>((scanned * 100U) / snapshot.scanProgress->filesDiscovered);
+}
+
+QString scannerErrorMessage(const seriona::scanner::ScannerError &error)
+{
+    if (!error.message.empty()) {
+        return toQString(error.message);
+    }
+    if (!error.detail.empty()) {
+        return toQString(error.detail);
+    }
+
+    return QStringLiteral("扫描失败");
 }
 
 bool isFolderKind(seriona::scanner::PlaylistNodeKind kind)
@@ -117,6 +175,23 @@ LibraryModel::Entry entryFromNode(const seriona::scanner::PlaylistNode &node, co
 #endif
 
 namespace {
+
+QString localDirectoryPath(const QUrl &rootUrl)
+{
+    QString rootPath;
+    if (rootUrl.isLocalFile()) {
+        rootPath = rootUrl.toLocalFile();
+    } else if (rootUrl.scheme().isEmpty()) {
+        rootPath = rootUrl.path();
+    }
+
+    const QFileInfo rootInfo(rootPath);
+    if (!rootInfo.exists() || !rootInfo.isDir()) {
+        return QString();
+    }
+
+    return rootInfo.absoluteFilePath();
+}
 
 LibraryModel::Entry mockFolderEntry(const QString &nodeId, const QString &name, int songCount, const QString &duration)
 {
@@ -784,6 +859,26 @@ int LibraryController::visibleNodeCount() const
     return m_visibleNodeCount;
 }
 
+QString LibraryController::scanStatus() const
+{
+    return m_scanStatus;
+}
+
+int LibraryController::scanProgress() const
+{
+    return m_scanProgress;
+}
+
+QString LibraryController::lastError() const
+{
+    return m_lastError;
+}
+
+QString LibraryController::savedRootPath() const
+{
+    return m_savedRootPath;
+}
+
 QString LibraryController::playingTrackId() const
 {
     return m_playingTrackId;
@@ -836,6 +931,16 @@ void LibraryController::setFollowCurrentlyPlaying(bool follow)
 }
 
 #if SERIONA_HAS_BACKEND
+void LibraryController::setCommandExecutor(CommandExecutor executor)
+{
+    m_commandExecutor = std::move(executor);
+}
+
+void LibraryController::setScanExecutor(ScanExecutor executor)
+{
+    m_scanExecutor = std::move(executor);
+}
+
 void LibraryController::setPlaylistTreeSnapshot(const seriona::scanner::PlaylistTreeSnapshot &snapshot)
 {
     const QVector<QString> focusedFallbackChain = m_model.ancestorChainForNode(m_focusedNodeId);
@@ -843,6 +948,19 @@ void LibraryController::setPlaylistTreeSnapshot(const seriona::scanner::Playlist
 
     m_model.setPlaylistTreeSnapshot(snapshot);
     reconcileBrowsingState(focusedFallbackChain, selectedFallbackChain);
+}
+
+void LibraryController::applyLibraryStateSnapshot(const seriona::control::LibraryStateSnapshot &snapshot)
+{
+    setScanStatus(uiScanStatus(snapshot.scanStatus));
+    setScanProgress(uiScanProgress(snapshot));
+    if (snapshot.lastError.has_value()) {
+        setLastError(scannerErrorMessage(*snapshot.lastError));
+    } else if (snapshot.scanStatus == seriona::control::LibraryScanStatus::Error) {
+        setLastError(QStringLiteral("扫描失败"));
+    } else {
+        setLastError(QString());
+    }
 }
 #endif
 
@@ -889,25 +1007,155 @@ void LibraryController::goBack()
     setFolder(Folder::Root, QStringLiteral("My Music"));
 }
 
-void LibraryController::refresh()
+bool LibraryController::refresh()
 {
+    if (m_savedRootPath.isEmpty()) {
+        setScanStatus(QStringLiteral("error"));
+        setScanProgress(0);
+        setLastError(tr("尚未选择曲库文件夹"));
+        return false;
+    }
+
+    return requestScanForRoot(m_savedRootPath);
+}
+
+void LibraryController::clearSavedRootPath(const QString &message)
+{
+    setSavedRootPath(QString());
+    setScanStatus(QStringLiteral("error"));
+    setScanProgress(0);
+    setLastError(message);
+}
+
+bool LibraryController::scanLibrary(const QUrl &rootUrl)
+{
+    const QString rootPath = localDirectoryPath(rootUrl);
+    if (rootPath.isEmpty()) {
+        setScanStatus(QStringLiteral("error"));
+        setScanProgress(0);
+        setLastError(tr("请选择有效的曲库文件夹"));
+        return false;
+    }
+
+    return requestScanForRoot(rootPath);
+}
+
+bool LibraryController::requestScanForRoot(const QString &rootPath)
+{
+    setSavedRootPath(rootPath);
+    setScanStatus(QStringLiteral("running"));
+    setScanProgress(0);
+    setLastError(QString());
+
+#if SERIONA_HAS_BACKEND
+    if (!m_scanExecutor) {
+        setScanStatus(QStringLiteral("error"));
+        setLastError(tr("后端扫描服务不可用"));
+        return false;
+    }
+
+    const seriona::control::MediaControllerCommandResult result = m_scanExecutor(rootPath);
+    if (!result.accepted) {
+        setScanStatus(QStringLiteral("error"));
+        setLastError(result.message.empty() ? tr("后端拒绝扫描请求") : toQString(result.message));
+        return false;
+    }
+#else
+    setScanStatus(QStringLiteral("error"));
+    setLastError(tr("后端扫描服务不可用"));
+    return false;
+#endif
+
     applyBrowsingState();
+    return true;
+}
+
+void LibraryController::setScanStatus(const QString &status)
+{
+    if (m_scanStatus == status) {
+        return;
+    }
+
+    m_scanStatus = status;
+    emit scanStatusChanged();
+}
+
+void LibraryController::setScanProgress(int progress)
+{
+    progress = qBound(0, progress, 100);
+    if (m_scanProgress == progress) {
+        return;
+    }
+
+    m_scanProgress = progress;
+    emit scanProgressChanged();
+}
+
+void LibraryController::setLastError(const QString &error)
+{
+    if (m_lastError == error) {
+        return;
+    }
+
+    m_lastError = error;
+    emit lastErrorChanged();
+}
+
+void LibraryController::setSavedRootPath(const QString &rootPath)
+{
+    if (m_savedRootPath == rootPath) {
+        return;
+    }
+
+    m_savedRootPath = rootPath;
+    emit savedRootPathChanged();
 }
 
 void LibraryController::playItem(int index)
 {
-    const LibraryModel::Entry *entry = m_model.entryAt(index);
-    if (entry == nullptr || entry->type != QStringLiteral("file")) {
-        return;
-    }
+    activateTrack(m_model.entryAt(index));
+}
 
-    emit playItemRequested(entry->title);
+void LibraryController::playItem(const QString &nodeId)
+{
+    activateTrack(m_model.entryByNodeId(nodeId));
 }
 
 void LibraryController::locateCurrentSong()
 {
-    emit currentSongLocationRequested();
+    const QString playingNodeId = m_model.nodeIdForTrackId(m_playingTrackId);
+    if (playingNodeId.isEmpty()) {
+        return;
+    }
+
+    setSelectedBrowserNodeId(playingNodeId);
+    requestScrollToNode(playingNodeId);
 }
+
+void LibraryController::activateTrack(const LibraryModel::Entry *entry)
+{
+    if (entry == nullptr || entry->isFolder || entry->trackId.isEmpty()) {
+        return;
+    }
+
+#if SERIONA_HAS_BACKEND
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::SelectTrack;
+    command.track = trackIdentityForEntry(*entry);
+    submitCommand(command);
+#endif
+}
+
+#if SERIONA_HAS_BACKEND
+void LibraryController::submitCommand(const seriona::control::MediaControlCommand &command)
+{
+    if (!m_commandExecutor) {
+        return;
+    }
+
+    static_cast<void>(m_commandExecutor(command));
+}
+#endif
 
 void LibraryController::clearSearch()
 {

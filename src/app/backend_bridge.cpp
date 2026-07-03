@@ -1,6 +1,7 @@
 #include "backend_bridge.h"
 
 #if SERIONA_HAS_BACKEND
+#include <QByteArray>
 #include <QMetaObject>
 #include <QPointer>
 
@@ -113,6 +114,21 @@ seriona::control::MediaControllerCommandResult BackendBridge::submitCommand(cons
     }
 
     return m_controller->submitCommand(command);
+}
+
+seriona::control::MediaControllerCommandResult BackendBridge::scanLibrary(const QString &rootPath)
+{
+    if (m_shuttingDown || !m_controller) {
+        seriona::control::MediaControllerCommandResult result = controllerStoppedResult();
+        enqueueCommandFailureNotification(result);
+        return result;
+    }
+
+    const QByteArray utf8Path = rootPath.toUtf8();
+    seriona::scanner::ScannerRoot root;
+    root.path = std::filesystem::path(std::string(utf8Path.constData(), static_cast<std::size_t>(utf8Path.size())));
+    root.recursive = true;
+    return m_controller->scanLibrary({std::move(root)}, seriona::scanner::ScanMode::Full);
 }
 
 const seriona::control::PlayerStateSnapshot &BackendBridge::playerSnapshot() const

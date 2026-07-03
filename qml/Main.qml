@@ -81,6 +81,8 @@ Window {
             visible: !window.navigationController.startupScreenVisible
             isDockCapable: window.isDockCapable
             isSidebarOpen: window.navigationController.sidebarOpen
+            libraryController: window.appFacade.library
+            appFacade: window.appFacade
             x: isSidebarOpen ? 0 : -width
 
             onCloseClicked: {
@@ -179,6 +181,7 @@ Window {
                         state: window.navigationController.currentView
                         isSidebarOpen: window.navigationController.sidebarOpen
                         playbackController: window.appFacade.playback
+                        lyricsState: window.appFacade.lyrics
 
                         onCoverClicked: {
                             window.navigationController.showLyricsView();
@@ -207,6 +210,8 @@ Window {
                         visible: window.navigationController.startupScreenVisible
                         enabled: window.navigationController.startupScreenVisible
                         navigationController: window.navigationController
+                        appFacade: window.appFacade
+                        libraryController: window.appFacade.library
                     }
                 }
             }

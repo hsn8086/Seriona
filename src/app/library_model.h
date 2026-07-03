@@ -15,7 +15,10 @@
 #endif
 
 #if SERIONA_HAS_BACKEND
+#include "seriona/control/control_contracts.h"
 #include "seriona/scanner/scanner_contracts.h"
+
+#include <functional>
 #endif
 
 namespace Seriona::App {
@@ -132,12 +135,21 @@ class LibraryController : public QObject
     Q_PROPERTY(QString focusedNodeId READ focusedNodeId WRITE setFocusedNodeId NOTIFY focusedNodeIdChanged)
     Q_PROPERTY(QString selectedBrowserNodeId READ selectedBrowserNodeId WRITE setSelectedBrowserNodeId NOTIFY selectedBrowserNodeIdChanged)
     Q_PROPERTY(QString scrollRequest READ scrollRequest NOTIFY scrollRequestChanged)
+    Q_PROPERTY(QString scanStatus READ scanStatus NOTIFY scanStatusChanged)
+    Q_PROPERTY(int scanProgress READ scanProgress NOTIFY scanProgressChanged)
+    Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
+    Q_PROPERTY(QString savedRootPath READ savedRootPath NOTIFY savedRootPathChanged)
     Q_PROPERTY(QString playingTrackId READ playingTrackId WRITE setPlayingTrackId NOTIFY playingTrackIdChanged)
     Q_PROPERTY(bool followCurrentlyPlaying READ followCurrentlyPlaying WRITE setFollowCurrentlyPlaying NOTIFY followCurrentlyPlayingChanged)
     Q_PROPERTY(int visibleNodeCount READ visibleNodeCount NOTIFY visibleNodeCountChanged)
     QML_ELEMENT
 
 public:
+#if SERIONA_HAS_BACKEND
+    using CommandExecutor = std::function<seriona::control::MediaControllerCommandResult(const seriona::control::MediaControlCommand &)>;
+    using ScanExecutor = std::function<seriona::control::MediaControllerCommandResult(const QString &)>;
+#endif
+
     explicit LibraryController(QObject *parent = nullptr);
 
     LibraryModel *model();
@@ -152,20 +164,28 @@ public:
     void setSelectedBrowserNodeId(const QString &nodeId);
     QString scrollRequest() const;
     int visibleNodeCount() const;
+    QString scanStatus() const;
+    int scanProgress() const;
+    QString lastError() const;
+    QString savedRootPath() const;
     QString playingTrackId() const;
     void setPlayingTrackId(const QString &trackId);
     bool followCurrentlyPlaying() const;
     void setFollowCurrentlyPlaying(bool follow);
+    void clearSavedRootPath(const QString &message);
 #if SERIONA_HAS_BACKEND
+    void setCommandExecutor(CommandExecutor executor);
+    void setScanExecutor(ScanExecutor executor);
     void setPlaylistTreeSnapshot(const seriona::scanner::PlaylistTreeSnapshot &snapshot);
+    void applyLibraryStateSnapshot(const seriona::control::LibraryStateSnapshot &snapshot);
 #endif
 
     Q_INVOKABLE void enterFolder(int index);
     Q_INVOKABLE void goBack();
-    Q_INVOKABLE void refresh();
-    // future backend hook: request playback for a library item.
+    Q_INVOKABLE bool refresh();
+    Q_INVOKABLE bool scanLibrary(const QUrl &rootUrl);
     Q_INVOKABLE void playItem(int index);
-    // future backend hook: locate the current playing song in the library tree.
+    Q_INVOKABLE void playItem(const QString &nodeId);
     Q_INVOKABLE void locateCurrentSong();
     Q_INVOKABLE void clearSearch();
     Q_INVOKABLE void submitSearch();
@@ -190,6 +210,10 @@ signals:
     void focusedNodeIdChanged();
     void selectedBrowserNodeIdChanged();
     void scrollRequestChanged();
+    void scanStatusChanged();
+    void scanProgressChanged();
+    void lastErrorChanged();
+    void savedRootPathChanged();
     void playingTrackIdChanged();
     void followCurrentlyPlayingChanged();
     void visibleNodeCountChanged();
@@ -207,10 +231,19 @@ private:
     void updateModelEntries();
     void setFolder(Folder folder, const QString &folderName);
     void setExpanded(const QString &nodeId, bool expanded);
+    bool requestScanForRoot(const QString &rootPath);
+    void setScanStatus(const QString &status);
+    void setScanProgress(int progress);
+    void setLastError(const QString &error);
+    void setSavedRootPath(const QString &rootPath);
     void applyBrowsingState();
     void updateVisibleNodeCount();
     void reconcileBrowsingState(const QVector<QString> &focusedFallbackChain, const QVector<QString> &selectedFallbackChain);
     QString firstExistingNode(const QVector<QString> &nodeIds) const;
+    void activateTrack(const LibraryModel::Entry *entry);
+#if SERIONA_HAS_BACKEND
+    void submitCommand(const seriona::control::MediaControlCommand &command);
+#endif
 
     LibraryModel m_model;
     Folder m_folder = Folder::Root;
@@ -220,9 +253,17 @@ private:
     QString m_focusedNodeId;
     QString m_selectedBrowserNodeId;
     QString m_scrollRequest;
+    QString m_scanStatus = QStringLiteral("pending");
+    int m_scanProgress = 0;
+    QString m_lastError;
+    QString m_savedRootPath;
     QString m_playingTrackId;
     bool m_followCurrentlyPlaying = false;
     int m_visibleNodeCount = 0;
+#if SERIONA_HAS_BACKEND
+    CommandExecutor m_commandExecutor;
+    ScanExecutor m_scanExecutor;
+#endif
 };
 
 }

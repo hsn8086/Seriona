@@ -1,12 +1,21 @@
 #pragma once
 
+#include "library_model.h"
+#include "lyrics_model.h"
+
 #include <QObject>
 #include <QQmlEngine>
 #include <QString>
+#include <QTimer>
+#include <QUrl>
 #include <QVariantList>
 
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 
 #ifndef SERIONA_HAS_BACKEND
 #define SERIONA_HAS_BACKEND 0
@@ -23,6 +32,20 @@ class BackendBridge;
 class WaveformProvider;
 #endif
 
+struct CurrentTrackViewState {
+    QString trackId;
+    QString nodeId;
+    QString title = QStringLiteral("No song selected");
+    QString artist = QStringLiteral("Unknown Artist");
+    QString album = QStringLiteral("Unknown Album");
+    QString artworkPath;
+    qreal durationSeconds = 0.0;
+    QString audioFormat;
+    int audioSampleRate = 0;
+    int audioBitDepth = 0;
+    int audioChannels = 0;
+};
+
 class PlaybackController : public QObject
 {
     Q_OBJECT
@@ -37,7 +60,16 @@ class PlaybackController : public QObject
     Q_PROPERTY(QString songTitle READ songTitle NOTIFY currentSongChanged)
     Q_PROPERTY(QString artistName READ artistName NOTIFY currentSongChanged)
     Q_PROPERTY(QString albumName READ albumName NOTIFY currentSongChanged)
+    Q_PROPERTY(QString currentTrackId READ currentTrackId NOTIFY currentSongChanged)
+    Q_PROPERTY(QString currentTrackNodeId READ currentTrackNodeId NOTIFY currentSongChanged)
+    Q_PROPERTY(QString coverArtworkPath READ coverArtworkPath NOTIFY currentSongChanged)
+    Q_PROPERTY(QString coverArtworkSource READ coverArtworkSource NOTIFY currentSongChanged)
     Q_PROPERTY(QString coverPlaceholderText READ coverPlaceholderText NOTIFY currentSongChanged)
+    Q_PROPERTY(qreal currentTrackDuration READ currentTrackDuration NOTIFY currentSongChanged)
+    Q_PROPERTY(QString audioFormat READ audioFormat NOTIFY currentSongChanged)
+    Q_PROPERTY(int audioSampleRate READ audioSampleRate NOTIFY currentSongChanged)
+    Q_PROPERTY(int audioBitDepth READ audioBitDepth NOTIFY currentSongChanged)
+    Q_PROPERTY(int audioChannels READ audioChannels NOTIFY currentSongChanged)
     Q_PROPERTY(QString currentPositionText READ currentPositionText NOTIFY durationDisplayChanged)
     Q_PROPERTY(QString totalDurationText READ totalDurationText NOTIFY durationDisplayChanged)
     Q_PROPERTY(QString remainingDurationText READ remainingDurationText NOTIFY durationDisplayChanged)
@@ -70,7 +102,16 @@ public:
     QString songTitle() const;
     QString artistName() const;
     QString albumName() const;
+    QString currentTrackId() const;
+    QString currentTrackNodeId() const;
+    QString coverArtworkPath() const;
+    QString coverArtworkSource() const;
     QString coverPlaceholderText() const;
+    qreal currentTrackDuration() const;
+    QString audioFormat() const;
+    int audioSampleRate() const;
+    int audioBitDepth() const;
+    int audioChannels() const;
     QString currentPositionText() const;
     QString totalDurationText() const;
     QString remainingDurationText() const;
@@ -80,7 +121,9 @@ public:
 
 #if SERIONA_HAS_BACKEND
     void setCommandExecutor(CommandExecutor executor);
-    void applyPlayerStateSnapshot(const seriona::control::PlayerStateSnapshot &snapshot);
+    void applyPlayerStateSnapshot(
+        const seriona::control::PlayerStateSnapshot &snapshot,
+        const seriona::control::LibraryStateSnapshot *library = nullptr);
 #endif
 
     // future backend hook: expose playback status, transport commands, seek, volume, and mode control.
@@ -123,14 +166,22 @@ private:
     void applyVolume(qreal volume);
     void applyShuffle(bool shuffle);
     void applyRepeatMode(int repeatMode);
-    void setCurrentSong(const QString &title, const QString &artist, const QString &album);
+    void setCurrentTrackViewState(const CurrentTrackViewState &state);
     void setCapability(const QString &capability);
 
 #if SERIONA_HAS_BACKEND
     static seriona::control::RepeatMode repeatModeForIndex(int repeatMode);
     void submitCommand(const seriona::control::MediaControlCommand &command);
+    void applyTimelineSnapshot(const seriona::control::PlayerStateSnapshot &snapshot);
+    bool updateSmoothedTimelinePosition();
+    void stopTimelineSmoothing();
 
     CommandExecutor m_commandExecutor;
+    QTimer m_timelineTimer;
+    std::chrono::milliseconds m_timelineSnapshotPosition{0};
+    std::optional<std::chrono::milliseconds> m_timelineSnapshotDuration;
+    std::chrono::steady_clock::time_point m_timelineSnapshotSampledAt{};
+    std::uint64_t m_timelineSnapshotVersion = 0;
 #endif
 
     bool m_isPlaying = false;
@@ -140,9 +191,7 @@ private:
     bool m_isShuffle = false;
     int m_repeatMode = 0;
     QString m_capability = QStringLiteral("none");
-    QString m_songTitle = QStringLiteral("No song selected");
-    QString m_artistName = QStringLiteral("Unknown Artist");
-    QString m_albumName = QStringLiteral("Unknown Album");
+    CurrentTrackViewState m_currentTrack;
     QString m_coverPlaceholderText = QStringLiteral("🎵");
     QVariantList m_waveformHeights = {
         20, 30, 40, 35, 25, 15, 10, 20, 30, 45, 50, 40, 30, 20, 15, 25, 35, 40, 30, 20,
@@ -216,6 +265,8 @@ class AppFacade : public QObject
     Q_PROPERTY(QString layerName READ layerName CONSTANT)
     Q_PROPERTY(bool foundationReady READ foundationReady CONSTANT)
     Q_PROPERTY(PlaybackController *playback READ playback CONSTANT)
+    Q_PROPERTY(LibraryController *library READ library CONSTANT)
+    Q_PROPERTY(LyricsModel *lyrics READ lyrics CONSTANT)
     Q_PROPERTY(NavigationController *navigation READ navigation CONSTANT)
     QML_ELEMENT
 
@@ -226,19 +277,43 @@ public:
     QString layerName() const;
     bool foundationReady() const;
     PlaybackController *playback();
+    LibraryController *library();
+    LyricsModel *lyrics();
     NavigationController *navigation();
     bool backendBridgeStartedForTests() const;
+    std::size_t backendNotificationCountForTests() const;
+#if SERIONA_HAS_BACKEND
+    void applyPlayerSnapshotForTests(
+        const seriona::control::PlayerStateSnapshot &player,
+        const seriona::control::LibraryStateSnapshot &library);
+    void applyLibrarySnapshotForTests(
+        const seriona::control::PlayerStateSnapshot &player,
+        const seriona::control::LibraryStateSnapshot &library);
+#endif
 
     Q_INVOKABLE QString backendContractSummary() const;
+    Q_INVOKABLE bool scanLibrary(const QUrl &rootUrl);
+    Q_INVOKABLE bool restorePlaylistFromStartup();
 
 private:
 #if SERIONA_HAS_BACKEND
     void requestWaveformForSnapshots(
         const seriona::control::PlayerStateSnapshot &player,
         const seriona::control::LibraryStateSnapshot &library);
+    void handlePlayerSnapshotChanged(
+        const seriona::control::PlayerStateSnapshot &player,
+        const seriona::control::LibraryStateSnapshot &library);
+    void handleLibrarySnapshotChanged(
+        const seriona::control::PlayerStateSnapshot &player,
+        const seriona::control::LibraryStateSnapshot &library);
+    void syncLibraryPlayingTrackId(
+        const seriona::control::PlayerStateSnapshot &player,
+        bool forceReapply);
 #endif
 
     PlaybackController m_playback;
+    LibraryController m_library;
+    LyricsModel m_lyrics;
     NavigationController m_navigation;
     std::unique_ptr<BackendBridge> m_backendBridge;
 #if SERIONA_HAS_BACKEND

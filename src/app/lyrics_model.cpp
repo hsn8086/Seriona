@@ -1,20 +1,26 @@
 #include "lyrics_model.h"
 
+#include <QtMath>
+
+#include <cmath>
+#include <utility>
+
 namespace Seriona::App {
+
+namespace {
+
+#if SERIONA_HAS_BACKEND
+QString fromBackendString(const std::string &value)
+{
+    return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
+}
+#endif
+
+}
 
 LyricsModel::LyricsModel(QObject *parent)
     : QAbstractListModel(parent)
-    , m_lines({QStringLiteral("Music playing in the night... / 音乐在夜空中回荡..."),
-               QStringLiteral("Seriona shines so bright... / Seriona 闪耀着光芒..."),
-               QStringLiteral("A melody that guides the way... / 指引道路的旋律..."),
-               QStringLiteral("Through the dark and into day... / 穿过黑暗迎来黎明..."),
-               QStringLiteral("Feel the rhythm, feel the beat... / 感受旋律，感受节拍..."),
-               QStringLiteral("Walking down this lonely street... / 走在这条孤独的街上..."),
-               QStringLiteral("But with music in my soul... / 但只要我的灵魂有音乐..."),
-               QStringLiteral("I am happy, I am whole... / 我就快乐，我就完整...")})
 {
-    m_advanceTimer.setInterval(3000);
-    connect(&m_advanceTimer, &QTimer::timeout, this, &LyricsModel::advanceLyric);
 }
 
 int LyricsModel::rowCount(const QModelIndex &parent) const
@@ -32,7 +38,7 @@ QVariant LyricsModel::data(const QModelIndex &index, int role) const
         return {};
     }
 
-    const QString &line = m_lines.at(index.row());
+    const QString &line = m_lines.at(index.row()).text;
     switch (role) {
     case Qt::DisplayRole:
     case DisplayLineRole:
@@ -82,6 +88,23 @@ void LyricsModel::setCurrentIndex(int index)
     emit currentIndexChanged();
 }
 
+qreal LyricsModel::playbackPosition() const
+{
+    return m_playbackPosition;
+}
+
+void LyricsModel::setPlaybackPosition(qreal position)
+{
+    const qreal normalizedPosition = std::isfinite(position) ? qMax(0.0, position) : 0.0;
+    if (qAbs(m_playbackPosition - normalizedPosition) < 0.001) {
+        return;
+    }
+
+    m_playbackPosition = normalizedPosition;
+    emit playbackPositionChanged();
+    syncCurrentIndexToPlaybackPosition();
+}
+
 bool LyricsModel::showTranslation() const
 {
     return m_showTranslation;
@@ -113,25 +136,41 @@ void LyricsModel::setLyricDelimiter(const QString &delimiter)
     emitAllLyricsChanged({DisplayLineRole, TranslationRole});
 }
 
-bool LyricsModel::advancing() const
+#if SERIONA_HAS_BACKEND
+void LyricsModel::applyPlayerStateSnapshot(
+    const seriona::control::PlayerStateSnapshot &snapshot,
+    const seriona::control::LibraryStateSnapshot *library)
 {
-    return m_advancing;
-}
-
-void LyricsModel::setAdvancing(bool advancing)
-{
-    if (m_advancing == advancing) {
+    if (!snapshot.currentTrack || snapshot.currentTrack->trackId.empty() || library == nullptr || !library->libraryTree) {
+        replaceLyrics({}, false);
         return;
     }
 
-    m_advancing = advancing;
-    if (m_advancing) {
-        m_advanceTimer.start();
-    } else {
-        m_advanceTimer.stop();
+    const std::string &trackId = snapshot.currentTrack->trackId;
+    const seriona::scanner::SongMetadata *song = nullptr;
+    for (const seriona::scanner::PlaylistNode &node : library->libraryTree->nodes) {
+        if (node.song && node.song->trackId == trackId) {
+            song = &(*node.song);
+            break;
+        }
     }
-    emit advancingChanged();
+
+    if (song == nullptr || song->effectiveLyrics.empty()) {
+        replaceLyrics({}, false);
+        return;
+    }
+
+    QVector<Line> lines;
+    lines.reserve(static_cast<qsizetype>(song->effectiveLyrics.size()));
+    bool hasTimedLyrics = false;
+    for (const seriona::scanner::LyricLine &line : song->effectiveLyrics) {
+        lines.append(Line{line.timestamp, fromBackendString(line.text)});
+        hasTimedLyrics = hasTimedLyrics || line.timestamp.count() > 0;
+    }
+
+    replaceLyrics(std::move(lines), hasTimedLyrics);
 }
+#endif
 
 void LyricsModel::selectLyric(int index)
 {
@@ -141,15 +180,6 @@ void LyricsModel::selectLyric(int index)
 void LyricsModel::toggleTranslation()
 {
     setShowTranslation(!m_showTranslation);
-}
-
-void LyricsModel::advanceLyric()
-{
-    if (m_lines.isEmpty()) {
-        return;
-    }
-
-    setCurrentIndex((m_currentIndex + 1) % m_lines.size());
 }
 
 QString LyricsModel::displayLine(const QString &line) const
@@ -178,6 +208,53 @@ QString LyricsModel::translationLine(const QString &line) const
     }
 
     return line.mid(delimiterIndex + m_lyricDelimiter.size()).trimmed();
+}
+
+void LyricsModel::replaceLyrics(QVector<Line> lines, bool hasTimedLyrics)
+{
+    bool sameLyrics = m_hasTimedLyrics == hasTimedLyrics && m_lines.size() == lines.size();
+    for (qsizetype i = 0; sameLyrics && i < m_lines.size(); ++i) {
+        sameLyrics = m_lines.at(i).timestamp == lines.at(i).timestamp && m_lines.at(i).text == lines.at(i).text;
+    }
+    if (sameLyrics) {
+        syncCurrentIndexToPlaybackPosition();
+        return;
+    }
+
+    const int previousIndex = m_currentIndex;
+    beginResetModel();
+    m_lines = std::move(lines);
+    m_hasTimedLyrics = hasTimedLyrics;
+    m_currentIndex = currentIndexForPlaybackPosition();
+    endResetModel();
+
+    if (m_currentIndex != previousIndex) {
+        emit currentIndexChanged();
+    }
+}
+
+int LyricsModel::currentIndexForPlaybackPosition() const
+{
+    if (m_lines.isEmpty() || !m_hasTimedLyrics) {
+        return 0;
+    }
+
+    const std::chrono::milliseconds playbackTimestamp{qRound64(m_playbackPosition * 1000.0)};
+    int synchronizedIndex = 0;
+    std::chrono::milliseconds synchronizedTimestamp{0};
+    for (qsizetype i = 0; i < m_lines.size(); ++i) {
+        const std::chrono::milliseconds lineTimestamp = m_lines.at(i).timestamp;
+        if (lineTimestamp <= playbackTimestamp && lineTimestamp >= synchronizedTimestamp) {
+            synchronizedIndex = static_cast<int>(i);
+            synchronizedTimestamp = lineTimestamp;
+        }
+    }
+    return synchronizedIndex;
+}
+
+void LyricsModel::syncCurrentIndexToPlaybackPosition()
+{
+    setCurrentIndex(currentIndexForPlaybackPosition());
 }
 
 void LyricsModel::emitAllLyricsChanged(const QList<int> &roles)

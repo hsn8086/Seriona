@@ -1,9 +1,18 @@
 #pragma once
 
 #include <QAbstractListModel>
-#include <QTimer>
 #include <QQmlEngine>
-#include <QStringList>
+#include <QVector>
+
+#include <chrono>
+
+#ifndef SERIONA_HAS_BACKEND
+#define SERIONA_HAS_BACKEND 0
+#endif
+
+#if SERIONA_HAS_BACKEND
+#include "seriona/control/control_contracts.h"
+#endif
 
 namespace Seriona::App {
 
@@ -11,9 +20,9 @@ class LyricsModel : public QAbstractListModel
 {
     Q_OBJECT
     Q_PROPERTY(int currentIndex READ currentIndex WRITE setCurrentIndex NOTIFY currentIndexChanged)
+    Q_PROPERTY(qreal playbackPosition READ playbackPosition WRITE setPlaybackPosition NOTIFY playbackPositionChanged)
     Q_PROPERTY(bool showTranslation READ showTranslation WRITE setShowTranslation NOTIFY showTranslationChanged)
     Q_PROPERTY(QString lyricDelimiter READ lyricDelimiter WRITE setLyricDelimiter NOTIFY lyricDelimiterChanged)
-    Q_PROPERTY(bool advancing READ advancing WRITE setAdvancing NOTIFY advancingChanged)
     QML_ELEMENT
 
 public:
@@ -34,40 +43,50 @@ public:
     int currentIndex() const;
     void setCurrentIndex(int index);
 
+    qreal playbackPosition() const;
+    void setPlaybackPosition(qreal position);
+
     bool showTranslation() const;
     void setShowTranslation(bool showTranslation);
 
     QString lyricDelimiter() const;
     void setLyricDelimiter(const QString &delimiter);
 
-    bool advancing() const;
-    void setAdvancing(bool advancing);
+#if SERIONA_HAS_BACKEND
+    void applyPlayerStateSnapshot(
+        const seriona::control::PlayerStateSnapshot &snapshot,
+        const seriona::control::LibraryStateSnapshot *library = nullptr);
+#endif
 
-    // future backend hook: sync current lyric row with playback progress and line selection.
     Q_INVOKABLE void selectLyric(int index);
-    // future backend hook: toggle lyric translation preference from settings/backend state.
     Q_INVOKABLE void toggleTranslation();
-    // future backend hook: advance the highlighted lyric row from playback progress updates.
-    Q_INVOKABLE void advanceLyric();
 
 signals:
     void currentIndexChanged();
+    void playbackPositionChanged();
     void showTranslationChanged();
     void lyricDelimiterChanged();
-    void advancingChanged();
 
 private:
+    struct Line {
+        std::chrono::milliseconds timestamp{0};
+        QString text;
+    };
+
     QString displayLine(const QString &line) const;
     QString translationLine(const QString &line) const;
+    void replaceLyrics(QVector<Line> lines, bool hasTimedLyrics);
+    int currentIndexForPlaybackPosition() const;
+    void syncCurrentIndexToPlaybackPosition();
     void emitAllLyricsChanged(const QList<int> &roles);
     void emitCurrentRoleChanged(int index);
 
-    QStringList m_lines;
+    QVector<Line> m_lines;
     int m_currentIndex = 0;
+    qreal m_playbackPosition = 0.0;
+    bool m_hasTimedLyrics = false;
     bool m_showTranslation = true;
     QString m_lyricDelimiter = QStringLiteral(" / ");
-    bool m_advancing = false;
-    QTimer m_advanceTimer;
 };
 
 }

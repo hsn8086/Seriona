@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import Seriona
 
@@ -7,6 +8,16 @@ Item {
     id: root
 
     required property var navigationController
+    required property AppFacade appFacade
+    required property LibraryController libraryController
+
+    readonly property bool scanRunning: libraryController.scanStatus === "running"
+    readonly property bool scanError: libraryController.scanStatus === "error"
+    readonly property string scanMessage: scanRunning
+        ? qsTr("正在扫描曲库… %1%").arg(libraryController.scanProgress)
+        : scanError
+            ? (libraryController.lastError.length > 0 ? libraryController.lastError : qsTr("扫描失败，请重新选择文件夹"))
+            : qsTr("选择一个音乐文件夹开始构建曲库")
 
     Rectangle {
         anchors.fill: parent
@@ -93,13 +104,23 @@ Item {
             horizontalAlignment: Text.AlignHCenter
         }
 
+        Text {
+            Layout.fillWidth: true
+            text: root.scanMessage
+            color: root.scanError ? Theme.accentColor : Theme.secondaryTextColor
+            font.pixelSize: 13
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+        }
+
         Button {
             id: restoreButton
             Layout.fillWidth: true
             Layout.preferredHeight: 48
             text: qsTr("恢复播放列表")
+            enabled: !root.scanRunning
             hoverEnabled: true
-            onClicked: root.navigationController.restorePlaylistFromStartup()
+            onClicked: root.appFacade.restorePlaylistFromStartup()
 
             contentItem: Text {
                 text: restoreButton.text
@@ -122,8 +143,9 @@ Item {
             Layout.fillWidth: true
             Layout.preferredHeight: 48
             text: qsTr("添加文件夹")
+            enabled: !root.scanRunning
             hoverEnabled: true
-            onClicked: root.navigationController.addFolderFromStartup()
+            onClicked: startupFolderDialog.open()
 
             contentItem: Text {
                 text: addFolderButton.text
@@ -141,6 +163,16 @@ Item {
                 border.width: 1
                 Behavior on color { ColorAnimation { duration: Theme.animationDuration } }
             }
+        }
+    }
+
+    FolderDialog {
+        id: startupFolderDialog
+        title: qsTr("选择音乐文件夹")
+
+        onAccepted: {
+            if (root.appFacade.scanLibrary(selectedFolder))
+                root.navigationController.addFolderFromStartup();
         }
     }
 }

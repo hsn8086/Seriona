@@ -21,10 +21,16 @@ Item {
     readonly property real currentItemOriginalHeight: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.originalHeight !== "undefined") ? lyricsContainer.currentItem.originalHeight : 0
     readonly property real currentItemHeightUnscaled: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.fullHeightUnscaled !== "undefined") ? lyricsContainer.currentItem.fullHeightUnscaled : 0
     readonly property real currentItemOriginalHeightUnscaled: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.originalHeightUnscaled !== "undefined") ? lyricsContainer.currentItem.originalHeightUnscaled : 0
+    readonly property real playbackTimelineDuration: playbackController.totalDuration
+    readonly property real playbackTimelinePosition: playbackController.currentPosition
+    readonly property real boundedPlaybackTimelinePosition: playbackTimelineDuration > 0 ? Math.max(0, Math.min(playbackTimelinePosition, playbackTimelineDuration)) : 0
+    readonly property real playbackTimelineProgress: playbackTimelineDuration > 0 ? boundedPlaybackTimelinePosition / playbackTimelineDuration : 0
+    required property LyricsModel lyricsState
 
-    LyricsModel {
-        id: lyricsState
-        advancing: root.playbackController.isPlaying && root.state === "lyrics"
+    Binding {
+        target: lyricsState
+        property: "playbackPosition"
+        value: root.boundedPlaybackTimelinePosition
     }
 
     Connections {
@@ -97,6 +103,18 @@ Item {
                 font.pixelSize: 72
                 color: Theme.textColor
                 opacity: 0.6
+                visible: coverArtwork.status !== Image.Ready
+            }
+
+            Image {
+                id: coverArtwork
+                anchors.fill: parent
+                source: root.playbackController.coverArtworkSource
+                sourceSize.width: 250
+                sourceSize.height: 250
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                visible: status === Image.Ready
             }
 
             MouseArea {
@@ -345,9 +363,11 @@ Item {
             height: 44
             waveformHeights: root.playbackController.waveformHeights
             barWidth: root.playbackController.waveformBarWidth
-            progress: root.playbackController.totalDuration > 0 ? (root.playbackController.currentPosition / root.playbackController.totalDuration) : 0
+            progress: root.playbackTimelineProgress
             onSeekRequested: function (pos) {
-                root.playbackController.seek(pos * root.playbackController.totalDuration);
+                if (root.playbackTimelineDuration > 0) {
+                    root.playbackController.seek(pos * root.playbackTimelineDuration);
+                }
             }
         }
 
@@ -360,7 +380,7 @@ Item {
             Text {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: waveProgress.isHovering ? root.formatTime(root.playbackController.totalDuration * waveProgress.hoverProgress) : root.playbackController.currentPositionText
+                text: waveProgress.isHovering ? root.formatTime(root.playbackTimelineDuration * waveProgress.hoverProgress) : root.playbackController.currentPositionText
                 color: Theme.secondaryTextColor
                 font.pixelSize: 11
                 font.weight: Font.Medium
@@ -371,7 +391,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: {
                     if (waveProgress.isHovering) {
-                        var remainingPreview = root.playbackController.totalDuration * (1.0 - waveProgress.hoverProgress);
+                        var remainingPreview = root.playbackTimelineDuration * (1.0 - waveProgress.hoverProgress);
                         return "-" + root.formatTime(remainingPreview);
                     } else {
                         return root.playbackController.remainingDurationText;
@@ -402,10 +422,12 @@ Item {
             anchors.right: parent.right
             height: 20
             from: 0
-            to: root.playbackController.totalDuration
-            value: root.playbackController.currentPosition
+            to: root.playbackTimelineDuration
+            value: root.boundedPlaybackTimelinePosition
             onMoved: {
-                root.playbackController.seek(value);
+                if (root.playbackTimelineDuration > 0) {
+                    root.playbackController.seek(value);
+                }
             }
 
             background: Rectangle {

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import Qt5Compat.GraphicalEffects
 import Seriona
 
@@ -11,14 +12,26 @@ Item {
     signal closeClicked
 
     // Properties to control shadow visibility
+    required property AppFacade appFacade
+    required property LibraryController libraryController
     property bool isDockCapable: false
     property bool isSidebarOpen: false
     property bool isSearching: false
     readonly property bool hasOpenMenu: sidebarMenu.visible
-
-    LibraryController {
-        id: libraryController
-    }
+    readonly property bool scanRunning: libraryController.scanStatus === "running"
+    readonly property bool scanError: libraryController.scanStatus === "error"
+    readonly property string scanMessage: scanRunning
+        ? qsTr("正在扫描曲库… %1%").arg(libraryController.scanProgress)
+        : scanError
+            ? (libraryController.lastError.length > 0 ? libraryController.lastError : qsTr("扫描失败，请重新选择文件夹"))
+            : ""
+    readonly property string emptyStateText: scanRunning
+        ? qsTr("正在扫描曲库… %1%").arg(libraryController.scanProgress)
+        : scanError
+            ? (libraryController.lastError.length > 0 ? libraryController.lastError : qsTr("扫描失败，请重新选择文件夹"))
+            : libraryController.scanStatus === "completed"
+                ? qsTr("扫描完成，但没有发现音频文件")
+                : root.isSearching ? qsTr("没有匹配的本地结果") : qsTr("暂无曲库内容，请添加音乐文件夹")
 
     onIsSidebarOpenChanged: {
         if (!isSidebarOpen)
@@ -35,8 +48,12 @@ Item {
 
         root.closeMenus();
         libraryController.selectBrowserNode(nodeId);
-        if (isFolder)
+        if (isFolder) {
             libraryController.toggleExpanded(nodeId);
+            return;
+        }
+
+        libraryController.playItem(nodeId);
     }
 
     RectangularGlow {
@@ -183,6 +200,13 @@ Item {
                                             sidebarMenu.close();
                                         }
                                     }
+                                    BubbleMenuItem {
+                                        text: qsTr("Add Folder")
+                                        onTriggered: {
+                                            sidebarMenu.close();
+                                            sidebarFolderDialog.open();
+                                        }
+                                    }
                                 }
                             }
 
@@ -308,12 +332,39 @@ Item {
                 Layout.fillHeight: true
                 clip: true
 
+                Rectangle {
+                    id: scanBanner
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 12
+                    height: 34
+                    radius: 12
+                    color: root.scanError ? "#33FF5C5C" : Theme.baseColor
+                    border.color: root.scanError ? Theme.accentColor : Theme.hoverColor
+                    border.width: 1
+                    visible: root.scanRunning || root.scanError
+                    z: 2
+
+                    Text {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        text: root.scanMessage
+                        color: root.scanError ? Theme.accentColor : Theme.secondaryTextColor
+                        font.pixelSize: 12
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                    }
+                }
+
                 ListView {
                     id: playlistView
                     anchors.fill: parent
                     model: libraryController.model
                     spacing: 2
-                    topMargin: Theme.paddingMedium
+                    topMargin: Theme.paddingMedium + (scanBanner.visible ? scanBanner.height + 8 : 0)
                     bottomMargin: 80
                     clip: true
                     reuseItems: true
@@ -576,7 +627,7 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     width: parent.width - 40
-                    text: root.isSearching ? qsTr("没有匹配的本地结果") : qsTr("暂无曲库内容")
+                    text: root.emptyStateText
                     color: Theme.secondaryTextColor
                     font.pixelSize: 13
                     horizontalAlignment: Text.AlignHCenter
@@ -584,6 +635,13 @@ Item {
                     visible: libraryController.visibleNodeCount === 0
                 }
             }
+        }
+
+        FolderDialog {
+            id: sidebarFolderDialog
+            title: qsTr("选择音乐文件夹")
+
+            onAccepted: root.appFacade.scanLibrary(selectedFolder)
         }
 
         MouseArea {

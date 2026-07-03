@@ -10,12 +10,16 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFileInfo>
+#include <QSettings>
 #include <QStringList>
+#include <QUrl>
 #include <QVariantList>
 #include <QtMath>
 
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <optional>
 #include <utility>
 
@@ -24,6 +28,8 @@ namespace Seriona::App {
 namespace {
 
 constexpr auto kBackendBridgeAutostartProperty = "seriona.backendBridgeAutostartEnabled";
+constexpr auto kSettingsFileProperty = "seriona.settingsFileForTests";
+constexpr auto kLastLibraryRootKey = "library/lastScanRoot";
 
 bool backendBridgeAutostartEnabled()
 {
@@ -36,16 +42,128 @@ bool backendBridgeAutostartEnabled()
     return configured.isValid() ? configured.toBool() : true;
 }
 
+QSettings applicationSettings()
+{
+    const QCoreApplication *application = QCoreApplication::instance();
+    if (application) {
+        const QString settingsFile = application->property(kSettingsFileProperty).toString();
+        if (!settingsFile.isEmpty()) {
+            return QSettings(settingsFile, QSettings::IniFormat);
+        }
+    }
+
+    return QSettings(QStringLiteral("Seriona"), QStringLiteral("Seriona"));
+}
+
+QString savedLibraryRootPath()
+{
+    QSettings settings = applicationSettings();
+    return settings.value(QString::fromUtf8(kLastLibraryRootKey)).toString();
+}
+
+void persistLibraryRootPath(const QString &rootPath)
+{
+    QSettings settings = applicationSettings();
+    settings.setValue(QString::fromUtf8(kLastLibraryRootKey), rootPath);
+    settings.sync();
+}
+
+void clearLibraryRootPath()
+{
+    QSettings settings = applicationSettings();
+    settings.remove(QString::fromUtf8(kLastLibraryRootKey));
+    settings.sync();
+}
+
 #if SERIONA_HAS_BACKEND
+constexpr int kTimelineSmoothingIntervalMs = 100;
+
 QString fromBackendString(const std::string &value)
 {
     return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
 }
 
-QString titleFromSnapshot(const seriona::control::PlayerStateSnapshot &snapshot)
+QString fromBackendPath(const std::filesystem::path &path)
+{
+    return QString::fromStdString(path.string());
+}
+
+qreal secondsFromMilliseconds(std::chrono::milliseconds value);
+
+struct SongLookupResult {
+    const seriona::scanner::SongMetadata *song = nullptr;
+    QString nodeId;
+};
+
+SongLookupResult findSongByTrackId(const seriona::control::LibraryStateSnapshot *library, const std::string &trackId)
+{
+    if (trackId.empty() || library == nullptr || !library->libraryTree) {
+        return {};
+    }
+
+    for (const seriona::scanner::PlaylistNode &node : library->libraryTree->nodes) {
+        if (node.song && node.song->trackId == trackId) {
+            return SongLookupResult{&(*node.song), fromBackendString(node.nodeId)};
+        }
+    }
+    return {};
+}
+
+#ifndef QT_NO_DEBUG
+SongLookupResult findSongByDebugPath(
+    const seriona::control::LibraryStateSnapshot *library,
+    const std::filesystem::path &filePath)
+{
+    if (filePath.empty() || library == nullptr || !library->libraryTree) {
+        return {};
+    }
+
+    for (const seriona::scanner::PlaylistNode &node : library->libraryTree->nodes) {
+        if (!node.song) {
+            continue;
+        }
+        if (node.song->filePath == filePath || node.song->sourceFilePath == filePath) {
+            return SongLookupResult{&(*node.song), fromBackendString(node.nodeId)};
+        }
+    }
+    return {};
+}
+#endif
+
+SongLookupResult findCurrentSong(
+    const seriona::control::PlayerStateSnapshot &snapshot,
+    const seriona::control::LibraryStateSnapshot *library)
+{
+    if (!snapshot.currentTrack) {
+        return {};
+    }
+
+    const seriona::control::TrackIdentity &track = *snapshot.currentTrack;
+    SongLookupResult result = findSongByTrackId(library, track.trackId);
+    if (result.song != nullptr) {
+        return result;
+    }
+
+#ifndef QT_NO_DEBUG
+    if (track.trackId.empty()) {
+        result = findSongByDebugPath(library, track.filePath);
+        if (result.song != nullptr) {
+            qWarning().noquote() << QStringLiteral("Current track metadata used debug filePath fallback because trackId is empty");
+        }
+    }
+#endif
+    return result;
+}
+
+QString titleFromStateSource(
+    const seriona::control::PlayerStateSnapshot &snapshot,
+    const seriona::scanner::SongMetadata *song)
 {
     if (snapshot.display && !snapshot.display->title.empty()) {
         return fromBackendString(snapshot.display->title);
+    }
+    if (song != nullptr && !song->title.empty()) {
+        return fromBackendString(song->title);
     }
     if (snapshot.currentTrack && !snapshot.currentTrack->trackId.empty()) {
         return fromBackendString(snapshot.currentTrack->trackId);
@@ -53,26 +171,125 @@ QString titleFromSnapshot(const seriona::control::PlayerStateSnapshot &snapshot)
     return QStringLiteral("No song selected");
 }
 
-QString artistFromSnapshot(const seriona::control::PlayerStateSnapshot &snapshot)
+QString artistFromStateSource(
+    const seriona::control::PlayerStateSnapshot &snapshot,
+    const seriona::scanner::SongMetadata *song)
 {
-    if (!snapshot.display) {
-        return QStringLiteral("Unknown Artist");
-    }
-    if (!snapshot.display->artist.empty()) {
+    if (snapshot.display && !snapshot.display->artist.empty()) {
         return fromBackendString(snapshot.display->artist);
     }
-    if (!snapshot.display->albumArtist.empty()) {
+    if (snapshot.display && !snapshot.display->albumArtist.empty()) {
         return fromBackendString(snapshot.display->albumArtist);
+    }
+    if (song != nullptr && !song->artist.empty()) {
+        return fromBackendString(song->artist);
+    }
+    if (song != nullptr && !song->albumArtist.empty()) {
+        return fromBackendString(song->albumArtist);
     }
     return QStringLiteral("Unknown Artist");
 }
 
-QString albumFromSnapshot(const seriona::control::PlayerStateSnapshot &snapshot)
+QString albumFromStateSource(
+    const seriona::control::PlayerStateSnapshot &snapshot,
+    const seriona::scanner::SongMetadata *song)
 {
     if (snapshot.display && !snapshot.display->album.empty()) {
         return fromBackendString(snapshot.display->album);
     }
+    if (song != nullptr && !song->album.empty()) {
+        return fromBackendString(song->album);
+    }
     return QStringLiteral("Unknown Album");
+}
+
+QString artworkPathFromStateSource(
+    const seriona::control::PlayerStateSnapshot &snapshot,
+    const seriona::scanner::SongMetadata *song)
+{
+    if (snapshot.artwork && snapshot.artwork->localPath && !snapshot.artwork->localPath->empty()) {
+        return fromBackendPath(*snapshot.artwork->localPath);
+    }
+    if (song != nullptr && song->artworkPath && !song->artworkPath->empty()) {
+        return fromBackendPath(*song->artworkPath);
+    }
+    return {};
+}
+
+std::optional<std::chrono::milliseconds> durationFromStateSource(
+    const seriona::control::PlayerStateSnapshot &snapshot,
+    const seriona::scanner::SongMetadata *song)
+{
+    if (song != nullptr && song->duration) {
+        return song->duration;
+    }
+    return snapshot.timeline.duration;
+}
+
+std::filesystem::path audioPathFromStateSource(
+    const seriona::control::PlayerStateSnapshot &snapshot,
+    const seriona::scanner::SongMetadata *song)
+{
+    if (song != nullptr) {
+        return song->sourceFilePath.empty() ? song->filePath : song->sourceFilePath;
+    }
+    if (snapshot.currentTrack) {
+        return snapshot.currentTrack->filePath;
+    }
+    return {};
+}
+
+QString audioFormatFromPath(const std::filesystem::path &path)
+{
+    QString extension = fromBackendPath(path.extension());
+    if (extension.startsWith(QLatin1Char('.'))) {
+        extension.remove(0, 1);
+    }
+    return extension.toUpper();
+}
+
+bool sameCurrentTrackViewState(const CurrentTrackViewState &left, const CurrentTrackViewState &right)
+{
+    return left.trackId == right.trackId
+        && left.nodeId == right.nodeId
+        && left.title == right.title
+        && left.artist == right.artist
+        && left.album == right.album
+        && left.artworkPath == right.artworkPath
+        && qAbs(left.durationSeconds - right.durationSeconds) < 0.001
+        && left.audioFormat == right.audioFormat
+        && left.audioSampleRate == right.audioSampleRate
+        && left.audioBitDepth == right.audioBitDepth
+        && left.audioChannels == right.audioChannels;
+}
+
+CurrentTrackViewState currentTrackViewStateFromSnapshots(
+    const seriona::control::PlayerStateSnapshot &snapshot,
+    const seriona::control::LibraryStateSnapshot *library)
+{
+    CurrentTrackViewState state;
+    const SongLookupResult lookup = findCurrentSong(snapshot, library);
+    const seriona::scanner::SongMetadata *song = lookup.song;
+
+    if (snapshot.currentTrack) {
+        state.trackId = fromBackendString(snapshot.currentTrack->trackId);
+    }
+    state.nodeId = lookup.nodeId;
+    state.title = titleFromStateSource(snapshot, song);
+    state.artist = artistFromStateSource(snapshot, song);
+    state.album = albumFromStateSource(snapshot, song);
+    state.artworkPath = artworkPathFromStateSource(snapshot, song);
+
+    const std::optional<std::chrono::milliseconds> duration = durationFromStateSource(snapshot, song);
+    state.durationSeconds = duration ? secondsFromMilliseconds(*duration) : 0.0;
+
+    state.audioFormat = audioFormatFromPath(audioPathFromStateSource(snapshot, song));
+    if (song != nullptr) {
+        state.audioSampleRate = song->sampleRate ? static_cast<int>(*song->sampleRate) : 0;
+        state.audioBitDepth = song->bitDepth ? static_cast<int>(*song->bitDepth) : 0;
+        state.audioChannels = song->channels ? static_cast<int>(*song->channels) : 0;
+    }
+    return state;
 }
 
 qreal secondsFromMilliseconds(std::chrono::milliseconds value)
@@ -161,6 +378,37 @@ QString capabilityFromSnapshot(const seriona::control::PlaybackCapabilities &cap
 
     return labels.isEmpty() ? QStringLiteral("none") : labels.join(QLatin1Char(','));
 }
+
+QString playingTrackIdFromSnapshot(const seriona::control::PlayerStateSnapshot &player)
+{
+    return player.currentTrack.has_value()
+        ? fromBackendString(player.currentTrack->trackId)
+        : QString();
+}
+
+qreal durationSecondsFromTimeline(const seriona::control::PlaybackTimeline &timeline)
+{
+    return timeline.duration ? secondsFromMilliseconds(*timeline.duration) : 0.0;
+}
+
+bool shouldSmoothTimeline(seriona::control::PlaybackStatus status)
+{
+    return status == seriona::control::PlaybackStatus::Playing;
+}
+
+std::chrono::milliseconds elapsedSince(std::chrono::steady_clock::time_point sampledAt)
+{
+    if (sampledAt == std::chrono::steady_clock::time_point{}) {
+        return std::chrono::milliseconds{0};
+    }
+
+    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+    if (now <= sampledAt) {
+        return std::chrono::milliseconds{0};
+    }
+
+    return std::chrono::duration_cast<std::chrono::milliseconds>(now - sampledAt);
+}
 #endif
 
 }
@@ -168,6 +416,13 @@ QString capabilityFromSnapshot(const seriona::control::PlaybackCapabilities &cap
 PlaybackController::PlaybackController(QObject *parent)
     : QObject(parent)
 {
+#if SERIONA_HAS_BACKEND
+    m_timelineTimer.setInterval(kTimelineSmoothingIntervalMs);
+    m_timelineTimer.setTimerType(Qt::PreciseTimer);
+    connect(&m_timelineTimer, &QTimer::timeout, this, [this] {
+        static_cast<void>(updateSmoothedTimelinePosition());
+    });
+#endif
 }
 
 bool PlaybackController::ready() const
@@ -342,22 +597,69 @@ void PlaybackController::applyRepeatMode(int repeatMode)
 
 QString PlaybackController::songTitle() const
 {
-    return m_songTitle;
+    return m_currentTrack.title;
 }
 
 QString PlaybackController::artistName() const
 {
-    return m_artistName;
+    return m_currentTrack.artist;
 }
 
 QString PlaybackController::albumName() const
 {
-    return m_albumName;
+    return m_currentTrack.album;
+}
+
+QString PlaybackController::currentTrackId() const
+{
+    return m_currentTrack.trackId;
+}
+
+QString PlaybackController::currentTrackNodeId() const
+{
+    return m_currentTrack.nodeId;
+}
+
+QString PlaybackController::coverArtworkPath() const
+{
+    return m_currentTrack.artworkPath;
+}
+
+QString PlaybackController::coverArtworkSource() const
+{
+    return m_currentTrack.artworkPath.isEmpty()
+        ? QString()
+        : QUrl::fromLocalFile(m_currentTrack.artworkPath).toString();
 }
 
 QString PlaybackController::coverPlaceholderText() const
 {
     return m_coverPlaceholderText;
+}
+
+qreal PlaybackController::currentTrackDuration() const
+{
+    return m_currentTrack.durationSeconds;
+}
+
+QString PlaybackController::audioFormat() const
+{
+    return m_currentTrack.audioFormat;
+}
+
+int PlaybackController::audioSampleRate() const
+{
+    return m_currentTrack.audioSampleRate;
+}
+
+int PlaybackController::audioBitDepth() const
+{
+    return m_currentTrack.audioBitDepth;
+}
+
+int PlaybackController::audioChannels() const
+{
+    return m_currentTrack.audioChannels;
 }
 
 QString PlaybackController::currentPositionText() const
@@ -412,22 +714,63 @@ void PlaybackController::setCommandExecutor(CommandExecutor executor)
     m_commandExecutor = std::move(executor);
 }
 
-void PlaybackController::applyPlayerStateSnapshot(const seriona::control::PlayerStateSnapshot &snapshot)
+void PlaybackController::applyPlayerStateSnapshot(
+    const seriona::control::PlayerStateSnapshot &snapshot,
+    const seriona::control::LibraryStateSnapshot *library)
 {
-    const qreal durationSeconds = snapshot.timeline.duration
-        ? secondsFromMilliseconds(*snapshot.timeline.duration)
-        : 0.0;
-    const qreal positionSeconds = secondsFromMilliseconds(snapshot.timeline.position);
+    const CurrentTrackViewState currentTrack = currentTrackViewStateFromSnapshots(snapshot, library);
     const qreal effectiveVolume = snapshot.muted ? 0.0 : static_cast<qreal>(snapshot.volume);
 
-    applyTotalDuration(durationSeconds);
-    applyCurrentPosition(positionSeconds);
     applyPlaying(snapshot.playback.state == seriona::control::PlaybackStatus::Playing);
+    applyTimelineSnapshot(snapshot);
     applyVolume(effectiveVolume);
     applyShuffle(snapshot.shuffle);
     applyRepeatMode(repeatModeFromSnapshot(snapshot.repeatMode));
-    setCurrentSong(titleFromSnapshot(snapshot), artistFromSnapshot(snapshot), albumFromSnapshot(snapshot));
+    setCurrentTrackViewState(currentTrack);
     setCapability(capabilityFromSnapshot(snapshot.capabilities));
+}
+
+void PlaybackController::applyTimelineSnapshot(const seriona::control::PlayerStateSnapshot &snapshot)
+{
+    m_timelineSnapshotPosition = snapshot.timeline.position;
+    m_timelineSnapshotDuration = snapshot.timeline.duration;
+    m_timelineSnapshotSampledAt = snapshot.freshness.sampledAt;
+    m_timelineSnapshotVersion = snapshot.freshness.version;
+
+    applyTotalDuration(durationSecondsFromTimeline(snapshot.timeline));
+    if (shouldSmoothTimeline(snapshot.playback.state)) {
+        const bool reachedEnd = updateSmoothedTimelinePosition();
+        if (!reachedEnd && !m_timelineTimer.isActive()) {
+            m_timelineTimer.start();
+        }
+        return;
+    }
+
+    stopTimelineSmoothing();
+    applyCurrentPosition(secondsFromMilliseconds(m_timelineSnapshotPosition));
+}
+
+bool PlaybackController::updateSmoothedTimelinePosition()
+{
+    std::chrono::milliseconds position = m_timelineSnapshotPosition + elapsedSince(m_timelineSnapshotSampledAt);
+    bool reachedEnd = false;
+    if (m_timelineSnapshotDuration && position >= *m_timelineSnapshotDuration) {
+        position = *m_timelineSnapshotDuration;
+        reachedEnd = true;
+    }
+
+    applyCurrentPosition(secondsFromMilliseconds(position));
+    if (reachedEnd) {
+        stopTimelineSmoothing();
+    }
+    return reachedEnd;
+}
+
+void PlaybackController::stopTimelineSmoothing()
+{
+    if (m_timelineTimer.isActive()) {
+        m_timelineTimer.stop();
+    }
 }
 #endif
 
@@ -546,15 +889,13 @@ QString PlaybackController::formatDuration(qreal seconds)
         .arg(remainder, 2, 10, QLatin1Char('0'));
 }
 
-void PlaybackController::setCurrentSong(const QString &title, const QString &artist, const QString &album)
+void PlaybackController::setCurrentTrackViewState(const CurrentTrackViewState &state)
 {
-    if (m_songTitle == title && m_artistName == artist && m_albumName == album) {
+    if (sameCurrentTrackViewState(m_currentTrack, state)) {
         return;
     }
 
-    m_songTitle = title;
-    m_artistName = artist;
-    m_albumName = album;
+    m_currentTrack = state;
     emit currentSongChanged();
 }
 
@@ -718,11 +1059,48 @@ void AppFacade::requestWaveformForSnapshots(
     m_currentWaveformCacheKey = cacheKey;
     static_cast<void>(m_waveformProvider->requestWaveform(std::move(*request)));
 }
+
+void AppFacade::handlePlayerSnapshotChanged(
+    const seriona::control::PlayerStateSnapshot &player,
+    const seriona::control::LibraryStateSnapshot &library)
+{
+    m_playback.applyPlayerStateSnapshot(player, &library);
+    m_lyrics.applyPlayerStateSnapshot(player, &library);
+    syncLibraryPlayingTrackId(player, false);
+    requestWaveformForSnapshots(player, library);
+}
+
+void AppFacade::handleLibrarySnapshotChanged(
+    const seriona::control::PlayerStateSnapshot &player,
+    const seriona::control::LibraryStateSnapshot &library)
+{
+    m_library.applyLibraryStateSnapshot(library);
+    if (library.libraryTree.has_value()) {
+        m_library.setPlaylistTreeSnapshot(*library.libraryTree);
+    }
+    m_playback.applyPlayerStateSnapshot(player, &library);
+    m_lyrics.applyPlayerStateSnapshot(player, &library);
+    syncLibraryPlayingTrackId(player, true);
+    requestWaveformForSnapshots(player, library);
+}
+
+void AppFacade::syncLibraryPlayingTrackId(
+    const seriona::control::PlayerStateSnapshot &player,
+    bool forceReapply)
+{
+    const QString trackId = playingTrackIdFromSnapshot(player);
+    if (forceReapply && !trackId.isEmpty() && m_library.playingTrackId() == trackId) {
+        m_library.setPlayingTrackId(QString());
+    }
+    m_library.setPlayingTrackId(trackId);
+}
 #endif
 
 AppFacade::AppFacade(QObject *parent)
     : QObject(parent)
     , m_playback(this)
+    , m_library(this)
+    , m_lyrics(this)
     , m_navigation(this)
     , m_backendBridge(std::make_unique<BackendBridge>(this))
 #if SERIONA_HAS_BACKEND
@@ -732,6 +1110,12 @@ AppFacade::AppFacade(QObject *parent)
 #if SERIONA_HAS_BACKEND
     m_playback.setCommandExecutor([this](const seriona::control::MediaControlCommand &command) {
         return m_backendBridge->submitCommand(command);
+    });
+    m_library.setCommandExecutor([this](const seriona::control::MediaControlCommand &command) {
+        return m_backendBridge->submitCommand(command);
+    });
+    m_library.setScanExecutor([this](const QString &rootPath) {
+        return m_backendBridge->scanLibrary(rootPath);
     });
     connect(m_waveformProvider.get(), &WaveformProvider::waveformReady, this, [this](const WaveformResult &result) {
         if (result.cacheKey != m_currentWaveformCacheKey) {
@@ -748,11 +1132,13 @@ AppFacade::AppFacade(QObject *parent)
     });
     connect(m_backendBridge.get(), &BackendBridge::playerSnapshotChanged, this, [this] {
         const seriona::control::PlayerStateSnapshot &player = m_backendBridge->playerSnapshot();
-        m_playback.applyPlayerStateSnapshot(player);
-        requestWaveformForSnapshots(player, m_backendBridge->librarySnapshot());
+        const seriona::control::LibraryStateSnapshot &library = m_backendBridge->librarySnapshot();
+        handlePlayerSnapshotChanged(player, library);
     });
     connect(m_backendBridge.get(), &BackendBridge::librarySnapshotChanged, this, [this] {
-        requestWaveformForSnapshots(m_backendBridge->playerSnapshot(), m_backendBridge->librarySnapshot());
+        const seriona::control::PlayerStateSnapshot &player = m_backendBridge->playerSnapshot();
+        const seriona::control::LibraryStateSnapshot &library = m_backendBridge->librarySnapshot();
+        handleLibrarySnapshotChanged(player, library);
     });
 #endif
 
@@ -778,6 +1164,16 @@ PlaybackController *AppFacade::playback()
     return &m_playback;
 }
 
+LibraryController *AppFacade::library()
+{
+    return &m_library;
+}
+
+LyricsModel *AppFacade::lyrics()
+{
+    return &m_lyrics;
+}
+
 NavigationController *AppFacade::navigation()
 {
     return &m_navigation;
@@ -787,6 +1183,68 @@ bool AppFacade::backendBridgeStartedForTests() const
 {
     return m_backendBridge->started();
 }
+
+std::size_t AppFacade::backendNotificationCountForTests() const
+{
+#if SERIONA_HAS_BACKEND
+    return m_backendBridge->notifications().size();
+#else
+    return 0U;
+#endif
+}
+
+bool AppFacade::scanLibrary(const QUrl &rootUrl)
+{
+    if (!m_library.scanLibrary(rootUrl)) {
+        return false;
+    }
+
+    const QString rootPath = m_library.savedRootPath();
+    if (!rootPath.isEmpty()) {
+        persistLibraryRootPath(rootPath);
+    }
+    return true;
+}
+
+bool AppFacade::restorePlaylistFromStartup()
+{
+    const QString rootPath = savedLibraryRootPath();
+    if (rootPath.isEmpty()) {
+        clearLibraryRootPath();
+        m_library.clearSavedRootPath(tr("请先添加音乐文件夹"));
+        return false;
+    }
+
+    const QFileInfo rootInfo(rootPath);
+    if (!rootInfo.isDir()) {
+        clearLibraryRootPath();
+        m_library.clearSavedRootPath(tr("上次曲库文件夹不可用，请重新选择文件夹"));
+        return false;
+    }
+
+    if (!scanLibrary(QUrl::fromLocalFile(rootInfo.absoluteFilePath()))) {
+        return false;
+    }
+
+    m_navigation.restorePlaylistFromStartup();
+    return true;
+}
+
+#if SERIONA_HAS_BACKEND
+void AppFacade::applyPlayerSnapshotForTests(
+    const seriona::control::PlayerStateSnapshot &player,
+    const seriona::control::LibraryStateSnapshot &library)
+{
+    handlePlayerSnapshotChanged(player, library);
+}
+
+void AppFacade::applyLibrarySnapshotForTests(
+    const seriona::control::PlayerStateSnapshot &player,
+    const seriona::control::LibraryStateSnapshot &library)
+{
+    handleLibrarySnapshotChanged(player, library);
+}
+#endif
 
 QString AppFacade::backendContractSummary() const
 {
