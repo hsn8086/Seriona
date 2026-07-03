@@ -177,6 +177,25 @@ if(BUILD_TESTING)
         )
         add_test(NAME seriona_frontend_library_tree_model COMMAND seriona_frontend_library_tree_model_tests)
         add_test(NAME seriona_frontend_library_tree_invalid_child COMMAND seriona_frontend_library_tree_model_tests invalidChildNodeIdsAreSkipped)
+
+        add_executable(seriona_frontend_library_dual_cursor_tests
+            tests/frontend/adapter/tst_library_dual_cursor.cpp
+            src/app/library_model.cpp
+            src/app/library_model.h
+        )
+        target_include_directories(seriona_frontend_library_dual_cursor_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_library_dual_cursor_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_library_dual_cursor_tests
+            PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
+        )
+        add_test(NAME seriona_frontend_library_dual_cursor COMMAND seriona_frontend_library_dual_cursor_tests dualCursorKeepsFocusedAndPlayingSeparate)
+        add_test(NAME seriona_frontend_library_follow_playing COMMAND seriona_frontend_library_dual_cursor_tests followCurrentlyPlayingControlsBrowserCursor)
+        add_test(NAME seriona_frontend_library_dual_cursor_refresh COMMAND seriona_frontend_library_dual_cursor_tests refreshKeepsAndFallsBackBrowserState)
+        add_test(NAME seriona_frontend_library_dual_cursor_no_commands COMMAND seriona_frontend_library_dual_cursor_tests browsingActionsDoNotEmitBackendHookSignals)
     endif()
 
     add_executable(seriona_frontend_app_facade_smoke_mode
@@ -222,6 +241,26 @@ if(BUILD_TESTING)
 
         add_test(NAME seriona_frontend_playback_snapshot_mapping COMMAND seriona_frontend_playback_snapshot_tests snapshotMapping)
         add_test(NAME seriona_frontend_playback_empty_snapshot COMMAND seriona_frontend_playback_snapshot_tests emptySnapshot)
+
+        add_executable(seriona_frontend_playback_command_tests
+            tests/frontend/adapter/tst_playback_command_mapping.cpp
+            src/app/app_facade.cpp
+            src/app/app_facade.h
+            src/app/backend_bridge.cpp
+            src/app/backend_bridge.h
+        )
+        target_include_directories(seriona_frontend_playback_command_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_playback_command_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_playback_command_tests
+            PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
+        )
+
+        add_test(NAME seriona_frontend_playback_command_mapping COMMAND seriona_frontend_playback_command_tests visiblePlaybackControlsSubmitCommands)
+        add_test(NAME seriona_frontend_playback_rejected_command COMMAND seriona_frontend_playback_command_tests rejectedCommandKeepsReadModelAndQueuesNotification)
 
         add_executable(seriona_frontend_backend_bridge_tests
             tests/frontend/adapter/tst_backend_bridge.cpp
