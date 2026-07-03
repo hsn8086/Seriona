@@ -9,7 +9,7 @@ find_package(Qt6 REQUIRED COMPONENTS Quick Concurrent QuickDialogs2)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
-include(CTest)
+option(BUILD_TESTING "Build tests" ON)
 
 set(SERIONA_BACKEND_SOURCE_DIR "../../cppProject(app_and_lib)/Seriona_Backend" CACHE PATH "Seriona backend source tree")
 set(SERIONA_BACKEND_CONTROL_TARGET "")
@@ -27,7 +27,11 @@ else()
     if(EXISTS "${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}/CMakeLists.txt")
         message(STATUS "Seriona backend source found: ${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}")
         set(SERIONA_BUILD_APP OFF CACHE BOOL "Build the standalone Seriona backend app" FORCE)
+        set(SERIONA_BUILD_TESTS OFF CACHE BOOL "Build Seriona tests" FORCE)
+        set(SERIONA_FRONTEND_BUILD_TESTING "${BUILD_TESTING}")
+        set(BUILD_TESTING OFF CACHE BOOL "Build tests" FORCE)
         add_subdirectory("${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/Seriona_Backend" EXCLUDE_FROM_ALL)
+        set(BUILD_TESTING "${SERIONA_FRONTEND_BUILD_TESTING}" CACHE BOOL "Build tests" FORCE)
 
         if(TARGET SerionaBackend::control)
             set(SERIONA_BACKEND_CONTROL_TARGET SerionaBackend::control)
@@ -49,6 +53,21 @@ else()
     else()
         message(STATUS "Seriona backend source not found at ${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}; building appSeriona in mock-only mode.")
     endif()
+endif()
+
+include(CTest)
+
+if(SERIONA_BACKEND_CONTROL_TARGET)
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/SerionaFrontendCTestIsolation.cmake" [=[
+function(subdirs)
+    foreach(directory IN LISTS ARGN)
+        if(NOT directory STREQUAL "Seriona_Backend")
+            message(FATAL_ERROR "Unexpected CTest subdir '${directory}' in Seriona frontend test tree.")
+        endif()
+    endforeach()
+endfunction()
+]=])
+    set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${CMAKE_CURRENT_BINARY_DIR}/SerionaFrontendCTestIsolation.cmake")
 endif()
 
 qt_add_executable(appSeriona
