@@ -1,8 +1,28 @@
 #include "app_facade.h"
 
+#include "backend_bridge.h"
+
+#include <QCoreApplication>
 #include <QtMath>
 
 namespace Seriona::App {
+
+namespace {
+
+constexpr auto kBackendBridgeAutostartProperty = "seriona.backendBridgeAutostartEnabled";
+
+bool backendBridgeAutostartEnabled()
+{
+    const QCoreApplication *application = QCoreApplication::instance();
+    if (!application) {
+        return true;
+    }
+
+    const QVariant configured = application->property(kBackendBridgeAutostartProperty);
+    return configured.isValid() ? configured.toBool() : true;
+}
+
+}
 
 PlaybackController::PlaybackController(QObject *parent)
     : QObject(parent)
@@ -363,8 +383,14 @@ AppFacade::AppFacade(QObject *parent)
     : QObject(parent)
     , m_playback(this)
     , m_navigation(this)
+    , m_backendBridge(std::make_unique<BackendBridge>(this))
 {
+    if (backendBridgeAutostartEnabled()) {
+        m_backendBridge->start();
+    }
 }
+
+AppFacade::~AppFacade() = default;
 
 QString AppFacade::layerName() const
 {
@@ -386,9 +412,14 @@ NavigationController *AppFacade::navigation()
     return &m_navigation;
 }
 
+bool AppFacade::backendBridgeStartedForTests() const
+{
+    return m_backendBridge->started();
+}
+
 QString AppFacade::backendContractSummary() const
 {
-    return QStringLiteral("Foundation only: QML-visible facade owns compact controller anchors; no backend, storage, network, or scan implementation.");
+    return QStringLiteral("Foundation plus backend bridge: QML-visible facade owns compact controller anchors while BackendBridge owns MediaController lifecycle.");
 }
 
 }

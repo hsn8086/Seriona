@@ -6,7 +6,11 @@
 #include <QTimer>
 #include <QVariantList>
 
+#include <memory>
+
 namespace Seriona::App {
+
+class BackendBridge;
 
 class PlaybackController : public QObject
 {
@@ -175,17 +179,20 @@ class AppFacade : public QObject
 
 public:
     explicit AppFacade(QObject *parent = nullptr);
+    ~AppFacade() override;
 
     QString layerName() const;
     bool foundationReady() const;
     PlaybackController *playback();
     NavigationController *navigation();
+    bool backendBridgeStartedForTests() const;
 
     Q_INVOKABLE QString backendContractSummary() const;
 
 private:
     PlaybackController m_playback;
     NavigationController m_navigation;
+    std::unique_ptr<BackendBridge> m_backendBridge;
 };
 
 }
