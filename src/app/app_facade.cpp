@@ -75,6 +75,21 @@ void clearLibraryRootPath()
     settings.sync();
 }
 
+bool sameCurrentTrackViewState(const CurrentTrackViewState &left, const CurrentTrackViewState &right)
+{
+    return left.trackId == right.trackId
+        && left.nodeId == right.nodeId
+        && left.title == right.title
+        && left.artist == right.artist
+        && left.album == right.album
+        && left.artworkPath == right.artworkPath
+        && qAbs(left.durationSeconds - right.durationSeconds) < 0.001
+        && left.audioFormat == right.audioFormat
+        && left.audioSampleRate == right.audioSampleRate
+        && left.audioBitDepth == right.audioBitDepth
+        && left.audioChannels == right.audioChannels;
+}
+
 #if SERIONA_HAS_BACKEND
 constexpr int kTimelineSmoothingIntervalMs = 100;
 
@@ -246,21 +261,6 @@ QString audioFormatFromPath(const std::filesystem::path &path)
         extension.remove(0, 1);
     }
     return extension.toUpper();
-}
-
-bool sameCurrentTrackViewState(const CurrentTrackViewState &left, const CurrentTrackViewState &right)
-{
-    return left.trackId == right.trackId
-        && left.nodeId == right.nodeId
-        && left.title == right.title
-        && left.artist == right.artist
-        && left.album == right.album
-        && left.artworkPath == right.artworkPath
-        && qAbs(left.durationSeconds - right.durationSeconds) < 0.001
-        && left.audioFormat == right.audioFormat
-        && left.audioSampleRate == right.audioSampleRate
-        && left.audioBitDepth == right.audioBitDepth
-        && left.audioChannels == right.audioChannels;
 }
 
 CurrentTrackViewState currentTrackViewStateFromSnapshots(
