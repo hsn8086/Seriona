@@ -1,9 +1,20 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QHash>
 #include <QQmlEngine>
 #include <QString>
 #include <QVector>
+
+#include <cstdint>
+
+#ifndef SERIONA_HAS_BACKEND
+#define SERIONA_HAS_BACKEND 0
+#endif
+
+#if SERIONA_HAS_BACKEND
+#include "seriona/scanner/scanner_contracts.h"
+#endif
 
 namespace Seriona::App {
 
@@ -25,7 +36,13 @@ public:
         DurationRole,
         FormatRole,
         SampleRateRole,
-        BitDepthRole
+        BitDepthRole,
+        NodeIdRole,
+        TrackIdRole,
+        IsFolderRole,
+        IsPlayingRole,
+        IsFocusedRole,
+        IsExpandedRole
     };
     Q_ENUM(Role)
 
@@ -41,6 +58,12 @@ public:
         QString format;
         int sampleRate = 0;
         int bitDepth = 0;
+        QString nodeId;
+        QString trackId;
+        bool isFolder = false;
+        bool isPlaying = false;
+        bool isFocused = false;
+        bool isExpanded = false;
     };
 
     explicit LibraryModel(QObject *parent = nullptr);
@@ -50,10 +73,23 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     const Entry *entryAt(int row) const;
+    const Entry *entryByNodeId(const QString &nodeId) const;
+    QVector<QString> childNodeIds(const QString &nodeId) const;
+    QString parentNodeId(const QString &nodeId) const;
+    QString nodeIdForTrackId(const QString &trackId) const;
+    std::uint64_t version() const;
     void setEntries(const QVector<Entry> &entries);
+#if SERIONA_HAS_BACKEND
+    void setPlaylistTreeSnapshot(const seriona::scanner::PlaylistTreeSnapshot &snapshot);
+#endif
 
 private:
     QVector<Entry> m_entries;
+    QHash<QString, Entry> m_nodeById;
+    QHash<QString, QVector<QString>> m_childrenById;
+    QHash<QString, QString> m_parentById;
+    QHash<QString, QString> m_trackIdToNodeId;
+    std::uint64_t m_version = 0;
 };
 
 class LibraryController : public QObject
