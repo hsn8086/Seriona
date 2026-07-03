@@ -3,7 +3,9 @@
 #include <QAbstractListModel>
 #include <QHash>
 #include <QQmlEngine>
+#include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 #include <cstdint>
@@ -77,18 +79,32 @@ public:
     QVector<QString> childNodeIds(const QString &nodeId) const;
     QString parentNodeId(const QString &nodeId) const;
     QString nodeIdForTrackId(const QString &trackId) const;
+    bool containsNodeId(const QString &nodeId) const;
+    int rowForNodeId(const QString &nodeId) const;
+    QString firstNodeId() const;
+    QVector<QString> ancestorChainForNode(const QString &nodeId) const;
     std::uint64_t version() const;
     void setEntries(const QVector<Entry> &entries);
+    bool setNodeExpanded(const QString &nodeId, bool expanded);
+    bool setFocusedNodeId(const QString &nodeId);
+    bool setPlayingTrackId(const QString &trackId);
+    void applyBrowsingState(const QSet<QString> &expandedNodeIds, const QString &focusedNodeId, const QString &playingTrackId);
 #if SERIONA_HAS_BACKEND
     void setPlaylistTreeSnapshot(const seriona::scanner::PlaylistTreeSnapshot &snapshot);
 #endif
 
 private:
+    bool setEntryRoleFlag(int row, Role role, bool value, bool notify);
+    void rebuildEntryIndexes();
+
     QVector<Entry> m_entries;
     QHash<QString, Entry> m_nodeById;
     QHash<QString, QVector<QString>> m_childrenById;
     QHash<QString, QString> m_parentById;
     QHash<QString, QString> m_trackIdToNodeId;
+    QHash<QString, int> m_rowByNodeId;
+    QString m_focusedNodeId;
+    QString m_playingTrackId;
     std::uint64_t m_version = 0;
 };
 
@@ -99,6 +115,12 @@ class LibraryController : public QObject
     Q_PROPERTY(QString currentFolderName READ currentFolderName NOTIFY currentFolderNameChanged)
     Q_PROPERTY(bool canGoBack READ canGoBack NOTIFY canGoBackChanged)
     Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchQueryChanged)
+    Q_PROPERTY(QStringList expandedNodeIds READ expandedNodeIds NOTIFY expandedNodeIdsChanged)
+    Q_PROPERTY(QString focusedNodeId READ focusedNodeId WRITE setFocusedNodeId NOTIFY focusedNodeIdChanged)
+    Q_PROPERTY(QString selectedBrowserNodeId READ selectedBrowserNodeId WRITE setSelectedBrowserNodeId NOTIFY selectedBrowserNodeIdChanged)
+    Q_PROPERTY(QString scrollRequest READ scrollRequest NOTIFY scrollRequestChanged)
+    Q_PROPERTY(QString playingTrackId READ playingTrackId WRITE setPlayingTrackId NOTIFY playingTrackIdChanged)
+    Q_PROPERTY(bool followCurrentlyPlaying READ followCurrentlyPlaying WRITE setFollowCurrentlyPlaying NOTIFY followCurrentlyPlayingChanged)
     QML_ELEMENT
 
 public:
@@ -109,21 +131,35 @@ public:
     bool canGoBack() const;
     QString searchQuery() const;
     void setSearchQuery(const QString &query);
+    QStringList expandedNodeIds() const;
+    QString focusedNodeId() const;
+    void setFocusedNodeId(const QString &nodeId);
+    QString selectedBrowserNodeId() const;
+    void setSelectedBrowserNodeId(const QString &nodeId);
+    QString scrollRequest() const;
+    QString playingTrackId() const;
+    void setPlayingTrackId(const QString &trackId);
+    bool followCurrentlyPlaying() const;
+    void setFollowCurrentlyPlaying(bool follow);
+#if SERIONA_HAS_BACKEND
+    void setPlaylistTreeSnapshot(const seriona::scanner::PlaylistTreeSnapshot &snapshot);
+#endif
 
-    // future backend hook: enter a library folder and load its child entries.
     Q_INVOKABLE void enterFolder(int index);
-    // future backend hook: navigate to the parent library folder.
     Q_INVOKABLE void goBack();
-    // future backend hook: refresh the current library folder from the backend.
     Q_INVOKABLE void refresh();
     // future backend hook: request playback for a library item.
     Q_INVOKABLE void playItem(int index);
     // future backend hook: locate the current playing song in the library tree.
     Q_INVOKABLE void locateCurrentSong();
-    // future backend hook: clear the current library search query and results.
     Q_INVOKABLE void clearSearch();
-    // future backend hook: submit the current library search query to a backend/local index.
     Q_INVOKABLE void submitSearch();
+    Q_INVOKABLE void expandNode(const QString &nodeId);
+    Q_INVOKABLE void collapseNode(const QString &nodeId);
+    Q_INVOKABLE void toggleExpanded(const QString &nodeId);
+    Q_INVOKABLE void focusNode(const QString &nodeId);
+    Q_INVOKABLE void selectBrowserNode(const QString &nodeId);
+    Q_INVOKABLE void requestScrollToNode(const QString &nodeId);
     Q_INVOKABLE QString describeBackendHook() const;
 
 signals:
@@ -134,6 +170,12 @@ signals:
     void searchCleared();
     void playItemRequested(QString title);
     void currentSongLocationRequested();
+    void expandedNodeIdsChanged();
+    void focusedNodeIdChanged();
+    void selectedBrowserNodeIdChanged();
+    void scrollRequestChanged();
+    void playingTrackIdChanged();
+    void followCurrentlyPlayingChanged();
 
 private:
     enum class Folder {
@@ -147,11 +189,20 @@ private:
     QVector<LibraryModel::Entry> filteredEntries(const QVector<LibraryModel::Entry> &entries) const;
     void updateModelEntries();
     void setFolder(Folder folder, const QString &folderName);
+    void setExpanded(const QString &nodeId, bool expanded);
+    void reconcileBrowsingState(const QVector<QString> &focusedFallbackChain, const QVector<QString> &selectedFallbackChain);
+    QString firstExistingNode(const QVector<QString> &nodeIds) const;
 
     LibraryModel m_model;
     Folder m_folder = Folder::Root;
     QString m_currentFolderName = QStringLiteral("My Music");
     QString m_searchQuery;
+    QSet<QString> m_expandedNodeIds;
+    QString m_focusedNodeId;
+    QString m_selectedBrowserNodeId;
+    QString m_scrollRequest;
+    QString m_playingTrackId;
+    bool m_followCurrentlyPlaying = false;
 };
 
 }
