@@ -479,6 +479,7 @@ Item {
             anchors.rightMargin: 35
             iconSource: "qrc:/qt/qml/Seriona/qml/assets/prev.svg"
             textColor: Theme.textColor
+            onClicked: root.playbackController.skipPrevious()
         }
 
         StyleButton {
@@ -503,6 +504,7 @@ Item {
             anchors.leftMargin: 35
             iconSource: "qrc:/qt/qml/Seriona/qml/assets/next.svg"
             textColor: Theme.textColor
+            onClicked: root.playbackController.skipNext()
         }
     }
 
@@ -544,7 +546,7 @@ Item {
             from: 0.0
             to: 1.0
             value: root.playbackController.volume
-            onMoved: root.playbackController.volume = value
+            onMoved: root.playbackController.setVolume(value)
             background: Rectangle {
                 x: volumeSlider.leftPadding
                 y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
