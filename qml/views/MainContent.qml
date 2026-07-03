@@ -344,6 +344,7 @@ Item {
             width: 320
             height: 44
             waveformHeights: root.playbackController.waveformHeights
+            barWidth: root.playbackController.waveformBarWidth
             progress: root.playbackController.totalDuration > 0 ? (root.playbackController.currentPosition / root.playbackController.totalDuration) : 0
             onSeekRequested: function (pos) {
                 root.playbackController.seek(pos * root.playbackController.totalDuration);

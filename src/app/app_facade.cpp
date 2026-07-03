@@ -3,11 +3,15 @@
 #include "backend_bridge.h"
 
 #if SERIONA_HAS_BACKEND
+#include "waveform_provider.h"
+
 #include "seriona/control/control_contracts.h"
 #endif
 
 #include <QCoreApplication>
+#include <QDebug>
 #include <QStringList>
+#include <QVariantList>
 #include <QtMath>
 
 #include <chrono>
@@ -376,6 +380,32 @@ QVariantList PlaybackController::waveformHeights() const
     return m_waveformHeights;
 }
 
+int PlaybackController::waveformBarWidth() const
+{
+    return m_waveformBarWidth;
+}
+
+void PlaybackController::applyWaveform(const QVariantList &heights, int barWidth)
+{
+    barWidth = qMax(0, barWidth);
+    const bool heightsChanged = m_waveformHeights != heights;
+    const bool barWidthChanged = m_waveformBarWidth != barWidth;
+
+    if (!heightsChanged && !barWidthChanged) {
+        return;
+    }
+
+    m_waveformHeights = heights;
+    m_waveformBarWidth = barWidth;
+
+    if (heightsChanged) {
+        emit waveformHeightsChanged();
+    }
+    if (barWidthChanged) {
+        emit waveformBarWidthChanged();
+    }
+}
+
 #if SERIONA_HAS_BACKEND
 void PlaybackController::setCommandExecutor(CommandExecutor executor)
 {
@@ -667,18 +697,62 @@ void NavigationController::enterMainShell()
     setCurrentView(QStringLiteral("playback"));
 }
 
+#if SERIONA_HAS_BACKEND
+void AppFacade::requestWaveformForSnapshots(
+    const seriona::control::PlayerStateSnapshot &player,
+    const seriona::control::LibraryStateSnapshot &library)
+{
+    std::optional<WaveformRequest> request = makeWaveformRequest(player, library, defaultWaveformParameters());
+    if (!request) {
+        m_currentWaveformCacheKey.clear();
+        m_waveformProvider->cancelPending();
+        m_playback.applyWaveform(QVariantList{}, 0);
+        return;
+    }
+
+    const QString cacheKey = request->cacheKey();
+    if (cacheKey == m_currentWaveformCacheKey) {
+        return;
+    }
+
+    m_currentWaveformCacheKey = cacheKey;
+    static_cast<void>(m_waveformProvider->requestWaveform(std::move(*request)));
+}
+#endif
+
 AppFacade::AppFacade(QObject *parent)
     : QObject(parent)
     , m_playback(this)
     , m_navigation(this)
     , m_backendBridge(std::make_unique<BackendBridge>(this))
+#if SERIONA_HAS_BACKEND
+    , m_waveformProvider(std::make_unique<WaveformProvider>(this))
+#endif
 {
 #if SERIONA_HAS_BACKEND
     m_playback.setCommandExecutor([this](const seriona::control::MediaControlCommand &command) {
         return m_backendBridge->submitCommand(command);
     });
+    connect(m_waveformProvider.get(), &WaveformProvider::waveformReady, this, [this](const WaveformResult &result) {
+        if (result.cacheKey != m_currentWaveformCacheKey) {
+            return;
+        }
+        m_playback.applyWaveform(result.heights, result.barWidth);
+    });
+    connect(m_waveformProvider.get(), &WaveformProvider::waveformFailed, this, [this](const WaveformResult &result) {
+        if (result.cacheKey != m_currentWaveformCacheKey) {
+            return;
+        }
+        qWarning().noquote() << QStringLiteral("Waveform generation failed:") << result.errorMessage;
+        m_playback.applyWaveform(QVariantList{}, 0);
+    });
     connect(m_backendBridge.get(), &BackendBridge::playerSnapshotChanged, this, [this] {
-        m_playback.applyPlayerStateSnapshot(m_backendBridge->playerSnapshot());
+        const seriona::control::PlayerStateSnapshot &player = m_backendBridge->playerSnapshot();
+        m_playback.applyPlayerStateSnapshot(player);
+        requestWaveformForSnapshots(player, m_backendBridge->librarySnapshot());
+    });
+    connect(m_backendBridge.get(), &BackendBridge::librarySnapshotChanged, this, [this] {
+        requestWaveformForSnapshots(m_backendBridge->playerSnapshot(), m_backendBridge->librarySnapshot());
     });
 #endif
 

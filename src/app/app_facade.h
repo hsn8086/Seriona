@@ -19,6 +19,9 @@
 namespace Seriona::App {
 
 class BackendBridge;
+#if SERIONA_HAS_BACKEND
+class WaveformProvider;
+#endif
 
 class PlaybackController : public QObject
 {
@@ -39,6 +42,7 @@ class PlaybackController : public QObject
     Q_PROPERTY(QString totalDurationText READ totalDurationText NOTIFY durationDisplayChanged)
     Q_PROPERTY(QString remainingDurationText READ remainingDurationText NOTIFY durationDisplayChanged)
     Q_PROPERTY(QVariantList waveformHeights READ waveformHeights NOTIFY waveformHeightsChanged)
+    Q_PROPERTY(int waveformBarWidth READ waveformBarWidth NOTIFY waveformBarWidthChanged)
     QML_ELEMENT
     QML_UNCREATABLE("PlaybackController is owned by AppFacade")
 
@@ -71,6 +75,8 @@ public:
     QString totalDurationText() const;
     QString remainingDurationText() const;
     QVariantList waveformHeights() const;
+    int waveformBarWidth() const;
+    void applyWaveform(const QVariantList &heights, int barWidth);
 
 #if SERIONA_HAS_BACKEND
     void setCommandExecutor(CommandExecutor executor);
@@ -106,6 +112,7 @@ signals:
     void currentSongChanged();
     void durationDisplayChanged();
     void waveformHeightsChanged();
+    void waveformBarWidthChanged();
 
 private:
     static qreal clamp(qreal value, qreal minimum, qreal maximum);
@@ -142,6 +149,7 @@ private:
         15, 10, 20, 35, 45, 40, 30, 25, 35, 45, 50, 40, 30, 20, 15, 25, 35, 40, 30, 20,
         15, 10, 20, 35, 45, 40, 30, 25, 35, 45, 50, 40, 30, 20, 15, 25, 35, 40, 30, 20
     };
+    int m_waveformBarWidth = 3;
 };
 
 class NavigationController : public QObject
@@ -224,9 +232,19 @@ public:
     Q_INVOKABLE QString backendContractSummary() const;
 
 private:
+#if SERIONA_HAS_BACKEND
+    void requestWaveformForSnapshots(
+        const seriona::control::PlayerStateSnapshot &player,
+        const seriona::control::LibraryStateSnapshot &library);
+#endif
+
     PlaybackController m_playback;
     NavigationController m_navigation;
     std::unique_ptr<BackendBridge> m_backendBridge;
+#if SERIONA_HAS_BACKEND
+    std::unique_ptr<WaveformProvider> m_waveformProvider;
+    QString m_currentWaveformCacheKey;
+#endif
 };
 
 }
