@@ -44,7 +44,11 @@ public:
         IsFolderRole,
         IsPlayingRole,
         IsFocusedRole,
-        IsExpandedRole
+        IsExpandedRole,
+        ParentNodeIdRole,
+        DepthRole,
+        IsVisibleRole,
+        MatchesSearchRole
     };
     Q_ENUM(Role)
 
@@ -66,6 +70,10 @@ public:
         bool isPlaying = false;
         bool isFocused = false;
         bool isExpanded = false;
+        QString parentNodeId;
+        int depth = 0;
+        bool isVisible = true;
+        bool matchesSearch = true;
     };
 
     explicit LibraryModel(QObject *parent = nullptr);
@@ -88,13 +96,18 @@ public:
     bool setNodeExpanded(const QString &nodeId, bool expanded);
     bool setFocusedNodeId(const QString &nodeId);
     bool setPlayingTrackId(const QString &trackId);
-    void applyBrowsingState(const QSet<QString> &expandedNodeIds, const QString &focusedNodeId, const QString &playingTrackId);
+    void applyBrowsingState(const QSet<QString> &expandedNodeIds, const QString &focusedNodeId, const QString &playingTrackId, const QString &searchQuery);
+    int visibleNodeCount() const;
+    QString firstVisibleNodeId() const;
+    QString firstVisibleMatchingNodeId() const;
 #if SERIONA_HAS_BACKEND
     void setPlaylistTreeSnapshot(const seriona::scanner::PlaylistTreeSnapshot &snapshot);
 #endif
 
 private:
     bool setEntryRoleFlag(int row, Role role, bool value, bool notify);
+    bool entryMatchesSearch(const Entry &entry, const QString &trimmedQuery) const;
+    bool entryVisibleByExpansion(const Entry &entry, const QSet<QString> &expandedNodeIds) const;
     void rebuildEntryIndexes();
 
     QVector<Entry> m_entries;
@@ -121,6 +134,7 @@ class LibraryController : public QObject
     Q_PROPERTY(QString scrollRequest READ scrollRequest NOTIFY scrollRequestChanged)
     Q_PROPERTY(QString playingTrackId READ playingTrackId WRITE setPlayingTrackId NOTIFY playingTrackIdChanged)
     Q_PROPERTY(bool followCurrentlyPlaying READ followCurrentlyPlaying WRITE setFollowCurrentlyPlaying NOTIFY followCurrentlyPlayingChanged)
+    Q_PROPERTY(int visibleNodeCount READ visibleNodeCount NOTIFY visibleNodeCountChanged)
     QML_ELEMENT
 
 public:
@@ -137,6 +151,7 @@ public:
     QString selectedBrowserNodeId() const;
     void setSelectedBrowserNodeId(const QString &nodeId);
     QString scrollRequest() const;
+    int visibleNodeCount() const;
     QString playingTrackId() const;
     void setPlayingTrackId(const QString &trackId);
     bool followCurrentlyPlaying() const;
@@ -160,6 +175,7 @@ public:
     Q_INVOKABLE void focusNode(const QString &nodeId);
     Q_INVOKABLE void selectBrowserNode(const QString &nodeId);
     Q_INVOKABLE void requestScrollToNode(const QString &nodeId);
+    Q_INVOKABLE int rowForNodeId(const QString &nodeId) const;
     Q_INVOKABLE QString describeBackendHook() const;
 
 signals:
@@ -176,6 +192,7 @@ signals:
     void scrollRequestChanged();
     void playingTrackIdChanged();
     void followCurrentlyPlayingChanged();
+    void visibleNodeCountChanged();
 
 private:
     enum class Folder {
@@ -190,6 +207,8 @@ private:
     void updateModelEntries();
     void setFolder(Folder folder, const QString &folderName);
     void setExpanded(const QString &nodeId, bool expanded);
+    void applyBrowsingState();
+    void updateVisibleNodeCount();
     void reconcileBrowsingState(const QVector<QString> &focusedFallbackChain, const QVector<QString> &selectedFallbackChain);
     QString firstExistingNode(const QVector<QString> &nodeIds) const;
 
@@ -203,6 +222,7 @@ private:
     QString m_scrollRequest;
     QString m_playingTrackId;
     bool m_followCurrentlyPlaying = false;
+    int m_visibleNodeCount = 0;
 };
 
 }

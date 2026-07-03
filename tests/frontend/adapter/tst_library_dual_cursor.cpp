@@ -126,11 +126,13 @@ void LibraryDualCursorTest::dualCursorKeepsFocusedAndPlayingSeparate()
     QCOMPARE(dataForNode(model, QStringLiteral("track-c"), LibraryModel::IsFocusedRole).toBool(), false);
     QCOMPARE(dataForNode(model, QStringLiteral("track-c"), LibraryModel::IsPlayingRole).toBool(), true);
 
-    QCOMPARE(dataChangedSpy.count(), 4);
+    QCOMPARE(dataChangedSpy.count(), 6);
     expectRoleChange(dataChangedSpy, 0, model->rowForNodeId(QStringLiteral("album-a")), LibraryModel::IsExpandedRole);
-    expectRoleChange(dataChangedSpy, 1, model->rowForNodeId(QStringLiteral("root")), LibraryModel::IsFocusedRole);
-    expectRoleChange(dataChangedSpy, 2, model->rowForNodeId(QStringLiteral("track-b")), LibraryModel::IsFocusedRole);
-    expectRoleChange(dataChangedSpy, 3, model->rowForNodeId(QStringLiteral("track-c")), LibraryModel::IsPlayingRole);
+    expectRoleChange(dataChangedSpy, 1, model->rowForNodeId(QStringLiteral("track-a")), LibraryModel::IsVisibleRole);
+    expectRoleChange(dataChangedSpy, 2, model->rowForNodeId(QStringLiteral("track-b")), LibraryModel::IsVisibleRole);
+    expectRoleChange(dataChangedSpy, 3, model->rowForNodeId(QStringLiteral("root")), LibraryModel::IsFocusedRole);
+    expectRoleChange(dataChangedSpy, 4, model->rowForNodeId(QStringLiteral("track-b")), LibraryModel::IsFocusedRole);
+    expectRoleChange(dataChangedSpy, 5, model->rowForNodeId(QStringLiteral("track-c")), LibraryModel::IsPlayingRole);
 }
 
 void LibraryDualCursorTest::followCurrentlyPlayingControlsBrowserCursor()

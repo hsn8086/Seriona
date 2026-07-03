@@ -102,13 +102,18 @@ void LibraryTreeModelTest::rendersRootedTreeWithFolderAndTracks()
     QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::NameRole).toString(), QStringLiteral("Library"));
     QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::SongCountRole).toInt(), 2);
     QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::IsFolderRole).toBool(), true);
+    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::DepthRole).toInt(), 0);
 
     QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::NodeIdRole).toString(), QStringLiteral("album"));
     QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::ParentNameRole).toString(), QStringLiteral("Library"));
+    QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::ParentNodeIdRole).toString(), QStringLiteral("root"));
+    QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::DepthRole).toInt(), 1);
     QCOMPARE(model.parentNodeId(QStringLiteral("album")), QStringLiteral("root"));
     QCOMPARE(model.childNodeIds(QStringLiteral("album")), QVector<QString>({QStringLiteral("track-1"), QStringLiteral("track-2")}));
 
     QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::TypeRole).toString(), QStringLiteral("file"));
+    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::ParentNodeIdRole).toString(), QStringLiteral("album"));
+    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::DepthRole).toInt(), 2);
     QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::TitleRole).toString(), QStringLiteral("Song One"));
     QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::ArtistRole).toString(), QStringLiteral("Artist A"));
     QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::AlbumRole).toString(), QStringLiteral("Album A"));
@@ -249,6 +254,10 @@ void LibraryTreeModelTest::keepsRoleNamesStable()
     QCOMPARE(roles.value(Seriona::App::LibraryModel::IsPlayingRole), QByteArray("isPlaying"));
     QCOMPARE(roles.value(Seriona::App::LibraryModel::IsFocusedRole), QByteArray("isFocused"));
     QCOMPARE(roles.value(Seriona::App::LibraryModel::IsExpandedRole), QByteArray("isExpanded"));
+    QCOMPARE(roles.value(Seriona::App::LibraryModel::ParentNodeIdRole), QByteArray("parentNodeId"));
+    QCOMPARE(roles.value(Seriona::App::LibraryModel::DepthRole), QByteArray("depth"));
+    QCOMPARE(roles.value(Seriona::App::LibraryModel::IsVisibleRole), QByteArray("isVisible"));
+    QCOMPARE(roles.value(Seriona::App::LibraryModel::MatchesSearchRole), QByteArray("matchesSearch"));
 }
 
 void LibraryTreeModelTest::invalidChildNodeIdsAreSkipped()
