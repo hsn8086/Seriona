@@ -2,7 +2,12 @@
 
 #include "backend_bridge.h"
 
+#if SERIONA_HAS_BACKEND
+#include "seriona/control/control_contracts.h"
+#endif
+
 #include <QCoreApplication>
+#include <QStringList>
 #include <QtMath>
 
 namespace Seriona::App {
@@ -22,13 +27,107 @@ bool backendBridgeAutostartEnabled()
     return configured.isValid() ? configured.toBool() : true;
 }
 
+#if SERIONA_HAS_BACKEND
+QString fromBackendString(const std::string &value)
+{
+    return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
+}
+
+QString titleFromSnapshot(const seriona::control::PlayerStateSnapshot &snapshot)
+{
+    if (snapshot.display && !snapshot.display->title.empty()) {
+        return fromBackendString(snapshot.display->title);
+    }
+    if (snapshot.currentTrack && !snapshot.currentTrack->trackId.empty()) {
+        return fromBackendString(snapshot.currentTrack->trackId);
+    }
+    return QStringLiteral("No song selected");
+}
+
+QString artistFromSnapshot(const seriona::control::PlayerStateSnapshot &snapshot)
+{
+    if (!snapshot.display) {
+        return QStringLiteral("Unknown Artist");
+    }
+    if (!snapshot.display->artist.empty()) {
+        return fromBackendString(snapshot.display->artist);
+    }
+    if (!snapshot.display->albumArtist.empty()) {
+        return fromBackendString(snapshot.display->albumArtist);
+    }
+    return QStringLiteral("Unknown Artist");
+}
+
+QString albumFromSnapshot(const seriona::control::PlayerStateSnapshot &snapshot)
+{
+    if (snapshot.display && !snapshot.display->album.empty()) {
+        return fromBackendString(snapshot.display->album);
+    }
+    return QStringLiteral("Unknown Album");
+}
+
+qreal secondsFromMilliseconds(std::chrono::milliseconds value)
+{
+    return static_cast<qreal>(value.count()) / 1000.0;
+}
+
+int repeatModeFromSnapshot(seriona::control::RepeatMode repeatMode)
+{
+    switch (repeatMode) {
+    case seriona::control::RepeatMode::Off:
+        return 0;
+    case seriona::control::RepeatMode::All:
+        return 1;
+    case seriona::control::RepeatMode::One:
+        return 2;
+    }
+
+    return 0;
+}
+
+QString capabilityFromSnapshot(const seriona::control::PlaybackCapabilities &capabilities)
+{
+    QStringList labels;
+    if (capabilities.canPlay) {
+        labels.append(QStringLiteral("play"));
+    }
+    if (capabilities.canPause) {
+        labels.append(QStringLiteral("pause"));
+    }
+    if (capabilities.canStop) {
+        labels.append(QStringLiteral("stop"));
+    }
+    if (capabilities.canSeek) {
+        labels.append(QStringLiteral("seek"));
+    }
+    if (capabilities.canSkipNext) {
+        labels.append(QStringLiteral("skip-next"));
+    }
+    if (capabilities.canSkipPrevious) {
+        labels.append(QStringLiteral("skip-previous"));
+    }
+    if (capabilities.canSetRepeat) {
+        labels.append(QStringLiteral("set-repeat"));
+    }
+    if (capabilities.canSetShuffle) {
+        labels.append(QStringLiteral("set-shuffle"));
+    }
+    if (capabilities.canSetVolume) {
+        labels.append(QStringLiteral("set-volume"));
+    }
+    if (capabilities.canSelectTrack) {
+        labels.append(QStringLiteral("select-track"));
+    }
+
+    return labels.isEmpty() ? QStringLiteral("none") : labels.join(QLatin1Char(','));
+}
+#endif
+
 }
 
 PlaybackController::PlaybackController(QObject *parent)
     : QObject(parent)
 {
-    m_mockPositionTimer.setInterval(1000);
-    connect(&m_mockPositionTimer, &QTimer::timeout, this, &PlaybackController::advanceMockPosition);
 }
 
 bool PlaybackController::ready() const
@@ -38,7 +137,7 @@ bool PlaybackController::ready() const
 
 QString PlaybackController::capability() const
 {
-    return QStringLiteral("playback-state-and-commands");
+    return m_capability;
 }
 
 bool PlaybackController::isPlaying() const
@@ -53,7 +152,6 @@ void PlaybackController::setPlaying(bool playing)
     }
 
     m_isPlaying = playing;
-    updateMockTimer();
     emit isPlayingChanged();
 }
 
@@ -64,8 +162,11 @@ qreal PlaybackController::currentPosition() const
 
 void PlaybackController::setCurrentPosition(qreal position)
 {
-    position = clamp(position, 0.0, m_totalDuration);
-    if (qFuzzyCompare(m_currentPosition, position)) {
+    position = qMax(0.0, position);
+    if (m_totalDuration > 0.0) {
+        position = qMin(position, m_totalDuration);
+    }
+    if (qAbs(m_currentPosition - position) < 0.001) {
         return;
     }
 
@@ -82,12 +183,12 @@ qreal PlaybackController::totalDuration() const
 void PlaybackController::setTotalDuration(qreal duration)
 {
     duration = qMax(0.0, duration);
-    if (qFuzzyCompare(m_totalDuration, duration)) {
+    if (qAbs(m_totalDuration - duration) < 0.001) {
         return;
     }
 
     m_totalDuration = duration;
-    if (m_currentPosition > m_totalDuration) {
+    if (m_totalDuration > 0.0 && m_currentPosition > m_totalDuration) {
         m_currentPosition = m_totalDuration;
         emit currentPositionChanged();
     }
@@ -103,7 +204,7 @@ qreal PlaybackController::volume() const
 void PlaybackController::setVolume(qreal volume)
 {
     volume = clamp(volume, 0.0, 1.0);
-    if (qFuzzyCompare(m_volume, volume)) {
+    if (qAbs(m_volume - volume) < 0.001) {
         return;
     }
 
@@ -182,6 +283,26 @@ QVariantList PlaybackController::waveformHeights() const
     return m_waveformHeights;
 }
 
+#if SERIONA_HAS_BACKEND
+void PlaybackController::applyPlayerStateSnapshot(const seriona::control::PlayerStateSnapshot &snapshot)
+{
+    const qreal durationSeconds = snapshot.timeline.duration
+        ? secondsFromMilliseconds(*snapshot.timeline.duration)
+        : 0.0;
+    const qreal positionSeconds = secondsFromMilliseconds(snapshot.timeline.position);
+    const qreal effectiveVolume = snapshot.muted ? 0.0 : static_cast<qreal>(snapshot.volume);
+
+    setTotalDuration(durationSeconds);
+    setCurrentPosition(positionSeconds);
+    setPlaying(snapshot.playback.state == seriona::control::PlaybackStatus::Playing);
+    setVolume(effectiveVolume);
+    setShuffle(snapshot.shuffle);
+    setRepeatMode(repeatModeFromSnapshot(snapshot.repeatMode));
+    setCurrentSong(titleFromSnapshot(snapshot), artistFromSnapshot(snapshot), albumFromSnapshot(snapshot));
+    setCapability(capabilityFromSnapshot(snapshot.capabilities));
+}
+#endif
+
 QString PlaybackController::describeBackendHook() const
 {
     return QStringLiteral("Future backend hook: playback status, seek, volume, mode, and track commands.");
@@ -232,22 +353,26 @@ QString PlaybackController::formatDuration(qreal seconds)
         .arg(remainder, 2, 10, QLatin1Char('0'));
 }
 
-void PlaybackController::advanceMockPosition()
+void PlaybackController::setCurrentSong(const QString &title, const QString &artist, const QString &album)
 {
-    if (m_currentPosition < m_totalDuration) {
-        setCurrentPosition(m_currentPosition + 1.0);
-    } else {
-        setCurrentPosition(0.0);
+    if (m_songTitle == title && m_artistName == artist && m_albumName == album) {
+        return;
     }
+
+    m_songTitle = title;
+    m_artistName = artist;
+    m_albumName = album;
+    emit currentSongChanged();
 }
 
-void PlaybackController::updateMockTimer()
+void PlaybackController::setCapability(const QString &capability)
 {
-    if (m_isPlaying) {
-        m_mockPositionTimer.start();
-    } else {
-        m_mockPositionTimer.stop();
+    if (m_capability == capability) {
+        return;
     }
+
+    m_capability = capability;
+    emit capabilityChanged();
 }
 
 NavigationController::NavigationController(QObject *parent)
@@ -385,6 +510,12 @@ AppFacade::AppFacade(QObject *parent)
     , m_navigation(this)
     , m_backendBridge(std::make_unique<BackendBridge>(this))
 {
+#if SERIONA_HAS_BACKEND
+    connect(m_backendBridge.get(), &BackendBridge::playerSnapshotChanged, this, [this] {
+        m_playback.applyPlayerStateSnapshot(m_backendBridge->playerSnapshot());
+    });
+#endif
+
     if (backendBridgeAutostartEnabled()) {
         m_backendBridge->start();
     }

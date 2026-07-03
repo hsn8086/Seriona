@@ -3,10 +3,19 @@
 #include <QObject>
 #include <QQmlEngine>
 #include <QString>
-#include <QTimer>
 #include <QVariantList>
 
 #include <memory>
+
+#ifndef SERIONA_HAS_BACKEND
+#define SERIONA_HAS_BACKEND 0
+#endif
+
+#if SERIONA_HAS_BACKEND
+namespace seriona::control {
+struct PlayerStateSnapshot;
+}
+#endif
 
 namespace Seriona::App {
 
@@ -16,7 +25,7 @@ class PlaybackController : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool ready READ ready CONSTANT)
-    Q_PROPERTY(QString capability READ capability CONSTANT)
+    Q_PROPERTY(QString capability READ capability NOTIFY capabilityChanged)
     Q_PROPERTY(bool isPlaying READ isPlaying WRITE setPlaying NOTIFY isPlayingChanged)
     Q_PROPERTY(qreal currentPosition READ currentPosition WRITE setCurrentPosition NOTIFY currentPositionChanged)
     Q_PROPERTY(qreal totalDuration READ totalDuration WRITE setTotalDuration NOTIFY totalDurationChanged)
@@ -60,6 +69,10 @@ public:
     QString remainingDurationText() const;
     QVariantList waveformHeights() const;
 
+#if SERIONA_HAS_BACKEND
+    void applyPlayerStateSnapshot(const seriona::control::PlayerStateSnapshot &snapshot);
+#endif
+
     // future backend hook: expose playback status, transport commands, seek, volume, and mode control.
     Q_INVOKABLE QString describeBackendHook() const;
     // future backend hook: start playback through the audio engine.
@@ -76,6 +89,7 @@ public:
     Q_INVOKABLE void cycleRepeatMode();
 
 signals:
+    void capabilityChanged();
     void isPlayingChanged();
     void currentPositionChanged();
     void totalDurationChanged();
@@ -89,25 +103,25 @@ signals:
 private:
     static qreal clamp(qreal value, qreal minimum, qreal maximum);
     static QString formatDuration(qreal seconds);
-    void advanceMockPosition();
-    void updateMockTimer();
+    void setCurrentSong(const QString &title, const QString &artist, const QString &album);
+    void setCapability(const QString &capability);
 
     bool m_isPlaying = false;
-    qreal m_currentPosition = 34.0;
-    qreal m_totalDuration = 225.0;
-    qreal m_volume = 0.7;
+    qreal m_currentPosition = 0.0;
+    qreal m_totalDuration = 0.0;
+    qreal m_volume = 1.0;
     bool m_isShuffle = false;
     int m_repeatMode = 0;
-    QString m_songTitle = QStringLiteral("Song Title");
-    QString m_artistName = QStringLiteral("Artist Name");
-    QString m_albumName = QStringLiteral("Album Name");
+    QString m_capability = QStringLiteral("none");
+    QString m_songTitle = QStringLiteral("No song selected");
+    QString m_artistName = QStringLiteral("Unknown Artist");
+    QString m_albumName = QStringLiteral("Unknown Album");
     QString m_coverPlaceholderText = QStringLiteral("🎵");
     QVariantList m_waveformHeights = {
         20, 30, 40, 35, 25, 15, 10, 20, 30, 45, 50, 40, 30, 20, 15, 25, 35, 40, 30, 20,
         15, 10, 20, 35, 45, 40, 30, 25, 35, 45, 50, 40, 30, 20, 15, 25, 35, 40, 30, 20,
         15, 10, 20, 35, 45, 40, 30, 25, 35, 45, 50, 40, 30, 20, 15, 25, 35, 40, 30, 20
     };
-    QTimer m_mockPositionTimer;
 };
 
 class NavigationController : public QObject
