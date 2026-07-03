@@ -5,6 +5,7 @@
 #include <QMetaObject>
 #include <QPointer>
 
+#include <exception>
 #include <utility>
 #endif
 
@@ -47,15 +48,25 @@ void BackendBridge::start()
 
     m_shuttingDown = false;
 #if SERIONA_HAS_BACKEND
-    if (!m_controller) {
-        m_controller = m_controllerFactory();
-    }
-    if (!m_controller) {
+    try {
+        if (!m_controller) {
+            m_controller = m_controllerFactory();
+        }
+        if (!m_controller) {
+            return;
+        }
+
+        registerSubscriptions();
+        m_controller->start();
+    } catch (...) {
+        m_shuttingDown = true;
+        unsubscribeAll();
+        if (m_controller) {
+            m_controller->shutdown();
+            m_controller.reset();
+        }
         return;
     }
-
-    registerSubscriptions();
-    m_controller->start();
 #endif
     m_started = true;
     emit startedChanged();
@@ -63,12 +74,19 @@ void BackendBridge::start()
 
 void BackendBridge::shutdown()
 {
-    if (!m_started) {
+#if SERIONA_HAS_BACKEND
+    const bool hasController = static_cast<bool>(m_controller);
+#else
+    const bool hasController = false;
+#endif
+    if (!m_started && !hasController) {
         return;
     }
 
 #if SERIONA_HAS_BACKEND
-    submitShutdownStop();
+    if (m_started) {
+        submitShutdownStop();
+    }
 #endif
     m_shuttingDown = true;
 #if SERIONA_HAS_BACKEND

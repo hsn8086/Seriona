@@ -6,6 +6,7 @@ Row {
     spacing: 8
 
     required property Window targetWindow
+    signal closeRequested()
 
     StyleButton {
         id: minimizeBtn
@@ -45,6 +46,6 @@ Row {
         textColor: Theme.textColor
         hoverColor: "#60ff3b30"  // 悬浮时带有一点红色倾向，提示关闭危险
         pressedColor: "#80ff3b30"
-        onClicked: targetWindow.close()
+        onClicked: root.closeRequested()
     }
 }

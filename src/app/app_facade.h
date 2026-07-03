@@ -295,6 +295,7 @@ public:
 #endif
 
     Q_INVOKABLE QString backendContractSummary() const;
+    Q_INVOKABLE void shutdown();
     Q_INVOKABLE bool scanLibrary(const QUrl &rootUrl);
     Q_INVOKABLE bool restorePlaylistFromStartup();
 
@@ -320,6 +321,7 @@ private:
     NotificationController m_notifications;
     NavigationController m_navigation;
     std::unique_ptr<BackendBridge> m_backendBridge;
+    bool m_shuttingDown = false;
 #if SERIONA_HAS_BACKEND
     std::unique_ptr<WaveformProvider> m_waveformProvider;
     QString m_currentWaveformCacheKey;

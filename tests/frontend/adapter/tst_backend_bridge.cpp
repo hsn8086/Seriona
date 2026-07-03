@@ -14,6 +14,7 @@
 #include <chrono>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
 #include <utility>
 
@@ -25,6 +26,9 @@ public:
     void setEventSink(seriona::audio::BackendEventSink sink) override
     {
         std::scoped_lock lock(m_mutex);
+        if (!sink) {
+            ++m_eventSinkClearCalls;
+        }
         m_eventSink = std::move(sink);
     }
 
@@ -69,16 +73,29 @@ public:
         return m_stopCalls;
     }
 
+    int eventSinkClearCalls() const
+    {
+        std::scoped_lock lock(m_mutex);
+        return m_eventSinkClearCalls;
+    }
+
 private:
     mutable std::mutex m_mutex;
     seriona::audio::BackendEventSink m_eventSink;
     int m_stopCalls = 0;
+    int m_eventSinkClearCalls = 0;
 };
 
 class FakeFileScannerService final : public seriona::scanner::FileScannerService
 {
 public:
-    void setEventSink(seriona::scanner::ScannerEventSink sink) override { m_eventSink = std::move(sink); }
+    void setEventSink(seriona::scanner::ScannerEventSink sink) override
+    {
+        if (!sink) {
+            ++m_eventSinkClearCalls;
+        }
+        m_eventSink = std::move(sink);
+    }
     void configure(const seriona::scanner::ScannerConfig &) override { }
     void scan(const std::vector<seriona::scanner::ScannerRoot> &, seriona::scanner::ScanMode) override { }
     void startWatching(const std::vector<seriona::scanner::ScannerRoot> &) override { }
@@ -90,13 +107,31 @@ public:
         return {};
     }
 
+    int eventSinkClearCalls() const
+    {
+        return m_eventSinkClearCalls;
+    }
+
 private:
     seriona::scanner::ScannerEventSink m_eventSink;
+    int m_eventSinkClearCalls = 0;
+};
+
+struct FakeMetadataState {
+    bool throwOnStart = false;
+    int startCalls = 0;
+    int stopCalls = 0;
+    int unsubscribeCalls = 0;
 };
 
 class FakeMetadataSharingService final : public seriona::metadata::MetadataSharingService
 {
 public:
+    explicit FakeMetadataSharingService(std::shared_ptr<FakeMetadataState> state)
+        : m_state(std::move(state))
+    {
+    }
+
     seriona::metadata::MetadataBackendKind backendKind() const override
     {
         return seriona::metadata::MetadataBackendKind::Noop;
@@ -113,7 +148,8 @@ public:
 
         seriona::control::SubscriptionHandle handle;
         handle.subscriptionId = 1;
-        handle.unsubscribe = [this] {
+        handle.unsubscribe = [this, state = m_state] {
+            ++state->unsubscribeCalls;
             m_commandSink = {};
         };
         return handle;
@@ -121,6 +157,10 @@ public:
 
     seriona::metadata::MetadataSyncResult start(const seriona::metadata::PlatformMediaState &) override
     {
+        ++m_state->startCalls;
+        if (m_state->throwOnStart) {
+            throw std::runtime_error("metadata start failed");
+        }
         return acceptedResult();
     }
 
@@ -131,6 +171,7 @@ public:
 
     seriona::metadata::MetadataSyncResult stop() override
     {
+        ++m_state->stopCalls;
         return acceptedResult();
     }
 
@@ -143,11 +184,13 @@ private:
     }
 
     seriona::control::MediaControlCommandSink m_commandSink;
+    std::shared_ptr<FakeMetadataState> m_state;
 };
 
 struct ControllerHarness {
     std::shared_ptr<FakeAudioPlaybackService> audio = std::make_shared<FakeAudioPlaybackService>();
     std::shared_ptr<FakeFileScannerService> scanner = std::make_shared<FakeFileScannerService>();
+    std::shared_ptr<FakeMetadataState> metadata = std::make_shared<FakeMetadataState>();
 
     Seriona::App::BackendBridge::ControllerFactory factory(bool runInlineForTests)
     {
@@ -159,7 +202,7 @@ struct ControllerHarness {
         auto state = std::make_shared<FactoryState>();
         state->dependencies.audio = audio;
         state->dependencies.scanner = scanner;
-        state->dependencies.metadata = std::make_unique<FakeMetadataSharingService>();
+        state->dependencies.metadata = std::make_unique<FakeMetadataSharingService>(metadata);
         state->options.runInlineForTests = runInlineForTests;
 
         return [state] {
@@ -199,6 +242,8 @@ private slots:
     void threading();
     void shutdown();
     void shutdownStopSent();
+    void shutdownSequence();
+    void shutdownStartFailed();
 };
 
 void BackendBridgeTest::threading()
@@ -253,6 +298,67 @@ void BackendBridgeTest::shutdownStopSent()
     QCOMPARE(harness.audio->stopCalls(), 0);
     bridge.shutdown();
     QCOMPARE(harness.audio->stopCalls(), 1);
+}
+
+void BackendBridgeTest::shutdownSequence()
+{
+    ControllerHarness harness;
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    waitForInitialPlayerSnapshot(bridge);
+
+    QSignalSpy shutdownSpy(&bridge, &Seriona::App::BackendBridge::shutdownCompleted);
+    QSignalSpy playerSpy(&bridge, &Seriona::App::BackendBridge::playerSnapshotChanged);
+
+    bridge.shutdown();
+
+    QCOMPARE(harness.audio->stopCalls(), 1);
+    QVERIFY(harness.audio->eventSinkClearCalls() >= 1);
+    QVERIFY(harness.scanner->eventSinkClearCalls() >= 1);
+    QCOMPARE(harness.metadata->unsubscribeCalls, 1);
+    QCOMPARE(harness.metadata->stopCalls, 1);
+    QCOMPARE(bridge.started(), false);
+    QCOMPARE(bridge.shuttingDown(), true);
+    QCOMPARE(shutdownSpy.count(), 1);
+
+    harness.audio->emitEvent(makePlaybackStateEvent(2, seriona::audio::PlaybackState::Playing));
+    bridge.drainForTests();
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    QCOMPARE(playerSpy.count(), 0);
+
+    const int audioEventSinkClearCalls = harness.audio->eventSinkClearCalls();
+    const int scannerEventSinkClearCalls = harness.scanner->eventSinkClearCalls();
+    bridge.shutdown();
+    QCOMPARE(harness.audio->stopCalls(), 1);
+    QCOMPARE(harness.audio->eventSinkClearCalls(), audioEventSinkClearCalls);
+    QCOMPARE(harness.scanner->eventSinkClearCalls(), scannerEventSinkClearCalls);
+    QCOMPARE(harness.metadata->stopCalls, 1);
+    QCOMPARE(shutdownSpy.count(), 1);
+}
+
+void BackendBridgeTest::shutdownStartFailed()
+{
+    ControllerHarness harness;
+    harness.metadata->throwOnStart = true;
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+
+    QSignalSpy playerSpy(&bridge, &Seriona::App::BackendBridge::playerSnapshotChanged);
+    bridge.start();
+
+    QCOMPARE(bridge.started(), false);
+    QCOMPARE(bridge.shuttingDown(), true);
+    QCOMPARE(harness.metadata->startCalls, 1);
+    QCOMPARE(harness.metadata->unsubscribeCalls, 1);
+    QCOMPARE(harness.metadata->stopCalls, 1);
+
+    harness.audio->emitEvent(makePlaybackStateEvent(3, seriona::audio::PlaybackState::Playing));
+    bridge.drainForTests();
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    QCOMPARE(playerSpy.count(), 0);
+
+    bridge.shutdown();
+    bridge.shutdown();
+    QCOMPARE(harness.audio->stopCalls(), 0);
+    QCOMPARE(harness.metadata->stopCalls, 1);
 }
 
 QTEST_GUILESS_MAIN(BackendBridgeTest)

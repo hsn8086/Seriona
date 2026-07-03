@@ -23,6 +23,20 @@ Window {
 
     readonly property AppFacade appFacade: AppFacade {}
     readonly property var navigationController: appFacade.navigation
+    property bool shutdownRequested: false
+
+    function requestApplicationClose() {
+        if (shutdownRequested)
+            return;
+
+        shutdownRequested = true;
+        close();
+    }
+
+    onClosing: function (closeEvent) {
+        shutdownRequested = true;
+        appFacade.shutdown();
+    }
 
     Timer {
         id: animResetTimer
@@ -165,6 +179,7 @@ Window {
                         anchors.right: parent.right
                         anchors.rightMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
+                        onCloseRequested: window.requestApplicationClose()
                     }
                 }
 
@@ -204,6 +219,8 @@ Window {
                             window.navigationController.toggleSidebar();
                             manualAnimResetTimer.restart();
                         }
+
+                        onExitRequested: window.requestApplicationClose()
                     }
 
                     StartupView {

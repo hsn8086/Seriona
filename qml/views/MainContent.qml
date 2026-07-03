@@ -12,6 +12,7 @@ Item {
     signal coverDragRequested()
     signal backClicked()
     signal playlistToggled()
+    signal exitRequested()
     property bool isSidebarOpen: false
     required property PlaybackController playbackController
     required property NotificationController notifications
@@ -831,7 +832,7 @@ Item {
                     }
                     BubbleMenuItem { text: qsTr("Equalizer"); onTriggered: root.showUnsupportedFeedback(qsTr("Equalizer")) }
                     BubbleMenuItem { text: qsTr("About Seriona"); onTriggered: root.showUnsupportedFeedback(qsTr("About Seriona")) }
-                    BubbleMenuItem { text: qsTr("Exit"); onTriggered: root.showUnsupportedFeedback(qsTr("Exit")) }
+                    BubbleMenuItem { text: qsTr("Exit"); onTriggered: { mainMenu.close(); root.exitRequested(); } }
                 }
             }
         }

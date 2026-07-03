@@ -1119,12 +1119,18 @@ AppFacade::AppFacade(QObject *parent)
         return m_backendBridge->scanLibrary(rootPath);
     });
     connect(m_waveformProvider.get(), &WaveformProvider::waveformReady, this, [this](const WaveformResult &result) {
+        if (m_shuttingDown) {
+            return;
+        }
         if (result.cacheKey != m_currentWaveformCacheKey) {
             return;
         }
         m_playback.applyWaveform(result.heights, result.barWidth);
     });
     connect(m_waveformProvider.get(), &WaveformProvider::waveformFailed, this, [this](const WaveformResult &result) {
+        if (m_shuttingDown) {
+            return;
+        }
         if (result.cacheKey != m_currentWaveformCacheKey) {
             return;
         }
@@ -1153,9 +1159,16 @@ AppFacade::AppFacade(QObject *parent)
     if (backendBridgeAutostartEnabled()) {
         m_backendBridge->start();
     }
+
+    if (QCoreApplication *application = QCoreApplication::instance()) {
+        connect(application, &QCoreApplication::aboutToQuit, this, &AppFacade::shutdown, Qt::DirectConnection);
+    }
 }
 
-AppFacade::~AppFacade() = default;
+AppFacade::~AppFacade()
+{
+    shutdown();
+}
 
 QString AppFacade::layerName() const
 {
@@ -1262,6 +1275,24 @@ void AppFacade::applyLibrarySnapshotForTests(
 QString AppFacade::backendContractSummary() const
 {
     return QStringLiteral("Foundation plus backend bridge: QML-visible facade owns compact controller anchors while BackendBridge owns MediaController lifecycle.");
+}
+
+void AppFacade::shutdown()
+{
+    if (m_shuttingDown) {
+        return;
+    }
+
+    m_shuttingDown = true;
+#if SERIONA_HAS_BACKEND
+    m_currentWaveformCacheKey.clear();
+    if (m_waveformProvider) {
+        m_waveformProvider->cancelPending();
+    }
+#endif
+    if (m_backendBridge) {
+        m_backendBridge->shutdown();
+    }
 }
 
 }

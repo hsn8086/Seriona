@@ -498,6 +498,8 @@ if(BUILD_TESTING)
         add_test(NAME seriona_frontend_backend_bridge_threading COMMAND seriona_frontend_backend_bridge_tests threading)
         add_test(NAME seriona_frontend_backend_bridge_shutdown COMMAND seriona_frontend_backend_bridge_tests shutdown)
         add_test(NAME seriona_frontend_backend_bridge_shutdown_stop_sent COMMAND seriona_frontend_backend_bridge_tests shutdownStopSent)
+        add_test(NAME seriona_frontend_shutdown_sequence COMMAND seriona_frontend_backend_bridge_tests shutdownSequence)
+        add_test(NAME seriona_frontend_shutdown_start_failed COMMAND seriona_frontend_backend_bridge_tests shutdownStartFailed)
     endif()
 endif()
 
