@@ -181,6 +181,7 @@ Window {
                         state: window.navigationController.currentView
                         isSidebarOpen: window.navigationController.sidebarOpen
                         playbackController: window.appFacade.playback
+                        notifications: window.appFacade.notifications
                         lyricsState: window.appFacade.lyrics
 
                         onCoverClicked: {

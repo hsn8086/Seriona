@@ -2,6 +2,7 @@
 
 #include "library_model.h"
 #include "lyrics_model.h"
+#include "notification_controller.h"
 
 #include <QObject>
 #include <QQmlEngine>
@@ -267,6 +268,7 @@ class AppFacade : public QObject
     Q_PROPERTY(PlaybackController *playback READ playback CONSTANT)
     Q_PROPERTY(LibraryController *library READ library CONSTANT)
     Q_PROPERTY(LyricsModel *lyrics READ lyrics CONSTANT)
+    Q_PROPERTY(NotificationController *notifications READ notifications CONSTANT)
     Q_PROPERTY(NavigationController *navigation READ navigation CONSTANT)
     QML_ELEMENT
 
@@ -279,6 +281,7 @@ public:
     PlaybackController *playback();
     LibraryController *library();
     LyricsModel *lyrics();
+    NotificationController *notifications();
     NavigationController *navigation();
     bool backendBridgeStartedForTests() const;
     std::size_t backendNotificationCountForTests() const;
@@ -314,6 +317,7 @@ private:
     PlaybackController m_playback;
     LibraryController m_library;
     LyricsModel m_lyrics;
+    NotificationController m_notifications;
     NavigationController m_navigation;
     std::unique_ptr<BackendBridge> m_backendBridge;
 #if SERIONA_HAS_BACKEND

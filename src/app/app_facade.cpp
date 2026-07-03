@@ -1101,6 +1101,7 @@ AppFacade::AppFacade(QObject *parent)
     , m_playback(this)
     , m_library(this)
     , m_lyrics(this)
+    , m_notifications(this)
     , m_navigation(this)
     , m_backendBridge(std::make_unique<BackendBridge>(this))
 #if SERIONA_HAS_BACKEND
@@ -1140,6 +1141,13 @@ AppFacade::AppFacade(QObject *parent)
         const seriona::control::LibraryStateSnapshot &library = m_backendBridge->librarySnapshot();
         handleLibrarySnapshotChanged(player, library);
     });
+    connect(m_backendBridge.get(), &BackendBridge::domainNotificationQueued, this, [this] {
+        const auto &notifications = m_backendBridge->notifications();
+        if (notifications.empty()) {
+            return;
+        }
+        m_notifications.enqueueDomainNotification(notifications.back());
+    });
 #endif
 
     if (backendBridgeAutostartEnabled()) {
@@ -1172,6 +1180,11 @@ LibraryController *AppFacade::library()
 LyricsModel *AppFacade::lyrics()
 {
     return &m_lyrics;
+}
+
+NotificationController *AppFacade::notifications()
+{
+    return &m_notifications;
 }
 
 NavigationController *AppFacade::navigation()

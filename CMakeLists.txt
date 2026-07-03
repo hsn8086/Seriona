@@ -65,6 +65,8 @@ qt_add_qml_module(appSeriona
         src/app/app_facade.h
         src/app/backend_bridge.cpp
         src/app/backend_bridge.h
+        src/app/notification_controller.cpp
+        src/app/notification_controller.h
         src/app/waveform_provider.cpp
         src/app/waveform_provider.h
         src/app/lyrics_model.cpp
@@ -269,6 +271,8 @@ if(BUILD_TESTING)
             src/app/app_facade.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
+            src/app/notification_controller.cpp
+            src/app/notification_controller.h
             src/app/waveform_provider.cpp
             src/app/waveform_provider.h
             src/app/lyrics_model.cpp
@@ -299,6 +303,8 @@ if(BUILD_TESTING)
             src/app/app_facade.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
+            src/app/notification_controller.cpp
+            src/app/notification_controller.h
             src/app/waveform_provider.cpp
             src/app/waveform_provider.h
             src/app/lyrics_model.cpp
@@ -326,6 +332,8 @@ if(BUILD_TESTING)
             src/app/app_facade.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
+            src/app/notification_controller.cpp
+            src/app/notification_controller.h
             src/app/waveform_provider.cpp
             src/app/waveform_provider.h
             src/app/lyrics_model.cpp
@@ -354,6 +362,8 @@ if(BUILD_TESTING)
             src/app/app_facade.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
+            src/app/notification_controller.cpp
+            src/app/notification_controller.h
             src/app/waveform_provider.cpp
             src/app/waveform_provider.h
             src/app/lyrics_model.cpp
@@ -374,12 +384,36 @@ if(BUILD_TESTING)
         add_test(NAME seriona_frontend_playback_command_mapping COMMAND seriona_frontend_playback_command_tests visiblePlaybackControlsSubmitCommands)
         add_test(NAME seriona_frontend_playback_rejected_command COMMAND seriona_frontend_playback_command_tests rejectedCommandKeepsReadModelAndQueuesNotification)
 
+        add_executable(seriona_frontend_notifications_tests
+            tests/frontend/adapter/tst_frontend_notifications.cpp
+            src/app/notification_controller.cpp
+            src/app/notification_controller.h
+        )
+        target_include_directories(seriona_frontend_notifications_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_notifications_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_notifications_tests
+            PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
+        )
+
+        add_test(NAME seriona_frontend_notifications_command_rejected COMMAND seriona_frontend_notifications_tests commandRejectedResultExposesCodeAndMessage)
+        add_test(NAME seriona_frontend_notifications_playback_error COMMAND seriona_frontend_notifications_tests playbackErrorExposesBackendMessage)
+        add_test(NAME seriona_frontend_notifications_library_scan_error COMMAND seriona_frontend_notifications_tests libraryScanErrorExposesBackendMessage)
+        add_test(NAME seriona_frontend_notifications_library_snapshot_updated COMMAND seriona_frontend_notifications_tests librarySnapshotUpdatedUsesVisibleDefaultMessage)
+        add_test(NAME seriona_frontend_notifications_bounded_queue COMMAND seriona_frontend_notifications_tests boundedQueueDropsOldestNotifications)
+        add_test(NAME seriona_frontend_notifications_unsupported_feedback COMMAND seriona_frontend_notifications_tests unsupportedSettingActionShowsLocalFeedback)
+
         add_executable(seriona_frontend_waveform_worker_tests
             tests/frontend/adapter/tst_waveform_worker.cpp
             src/app/app_facade.cpp
             src/app/app_facade.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
+            src/app/notification_controller.cpp
+            src/app/notification_controller.h
             src/app/waveform_provider.cpp
             src/app/waveform_provider.h
             src/app/lyrics_model.cpp
@@ -406,6 +440,8 @@ if(BUILD_TESTING)
             src/app/app_facade.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
+            src/app/notification_controller.cpp
+            src/app/notification_controller.h
             src/app/waveform_provider.cpp
             src/app/waveform_provider.h
             src/app/lyrics_model.cpp

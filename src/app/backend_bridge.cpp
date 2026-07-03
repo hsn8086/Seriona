@@ -113,7 +113,9 @@ seriona::control::MediaControllerCommandResult BackendBridge::submitCommand(cons
         return result;
     }
 
-    return m_controller->submitCommand(command);
+    seriona::control::MediaControllerCommandResult result = m_controller->submitCommand(command);
+    enqueueCommandFailureNotification(result);
+    return result;
 }
 
 seriona::control::MediaControllerCommandResult BackendBridge::scanLibrary(const QString &rootPath)
@@ -128,7 +130,9 @@ seriona::control::MediaControllerCommandResult BackendBridge::scanLibrary(const 
     seriona::scanner::ScannerRoot root;
     root.path = std::filesystem::path(std::string(utf8Path.constData(), static_cast<std::size_t>(utf8Path.size())));
     root.recursive = true;
-    return m_controller->scanLibrary({std::move(root)}, seriona::scanner::ScanMode::Full);
+    seriona::control::MediaControllerCommandResult result = m_controller->scanLibrary({std::move(root)}, seriona::scanner::ScanMode::Full);
+    enqueueCommandFailureNotification(result);
+    return result;
 }
 
 const seriona::control::PlayerStateSnapshot &BackendBridge::playerSnapshot() const

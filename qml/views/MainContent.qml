@@ -14,6 +14,7 @@ Item {
     signal playlistToggled()
     property bool isSidebarOpen: false
     required property PlaybackController playbackController
+    required property NotificationController notifications
     readonly property bool hasOpenMenu: mainMenu.visible
 
     property bool isTogglingTranslation: false
@@ -58,6 +59,55 @@ Item {
 
     function closeMenus() {
         mainMenu.close();
+    }
+
+    function showUnsupportedFeedback(actionName) {
+        root.notifications.showUnsupportedAction(actionName);
+        mainMenu.close();
+    }
+
+    Rectangle {
+        id: notificationBanner
+        anchors.top: parent.top
+        anchors.topMargin: Theme.paddingMedium
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: Math.min(parent.width - Theme.paddingLarge * 2, 340)
+        height: notificationColumn.implicitHeight + Theme.paddingMedium
+        radius: 14
+        color: root.notifications.latestSeverity === "error" ? "#332D0D0D" : root.notifications.latestSeverity === "warning" ? "#332D2300" : Theme.baseColor
+        border.color: root.notifications.latestSeverity === "error" ? Theme.accentColor : root.notifications.latestSeverity === "warning" ? "#CCB35C00" : Theme.hoverColor
+        border.width: 1
+        visible: root.notifications.hasNotification
+        z: 300
+
+        Column {
+            id: notificationColumn
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: Theme.paddingMedium
+            anchors.rightMargin: Theme.paddingMedium
+            spacing: 2
+
+            Text {
+                width: parent.width
+                text: root.notifications.latestTitle
+                color: Theme.textColor
+                font.pixelSize: 12
+                font.bold: true
+                elide: Text.ElideRight
+            }
+
+            Text {
+                width: parent.width
+                text: root.notifications.latestCode.length > 0 && root.notifications.latestCode !== "None" && root.notifications.latestCode !== "Unsupported"
+                    ? qsTr("%1（%2）").arg(root.notifications.latestMessage).arg(root.notifications.latestCode)
+                    : root.notifications.latestMessage
+                color: Theme.secondaryTextColor
+                font.pixelSize: 11
+                elide: Text.ElideRight
+            }
+        }
     }
 
     // 1. 播放布局定位辅助器 (仅在 playback 状态下用于定位)
@@ -773,15 +823,15 @@ Item {
                                 width: parent ? parent.width : 160
                                 spacing: 0
 
-                                BubbleMenuItem { text: qsTr("Crossfade"); onTriggered: mainMenu.close() }
-                                BubbleMenuItem { text: qsTr("Gapless Playback"); onTriggered: mainMenu.close() }
-                                BubbleMenuItem { text: qsTr("ReplayGain"); onTriggered: mainMenu.close() }
+                                BubbleMenuItem { text: qsTr("Crossfade"); onTriggered: root.showUnsupportedFeedback(qsTr("Crossfade")) }
+                                BubbleMenuItem { text: qsTr("Gapless Playback"); onTriggered: root.showUnsupportedFeedback(qsTr("Gapless Playback")) }
+                                BubbleMenuItem { text: qsTr("ReplayGain"); onTriggered: root.showUnsupportedFeedback(qsTr("ReplayGain")) }
                             }
                         }
                     }
-                    BubbleMenuItem { text: qsTr("Equalizer"); onTriggered: mainMenu.close() }
-                    BubbleMenuItem { text: qsTr("About Seriona"); onTriggered: mainMenu.close() }
-                    BubbleMenuItem { text: qsTr("Exit"); onTriggered: mainMenu.close() }
+                    BubbleMenuItem { text: qsTr("Equalizer"); onTriggered: root.showUnsupportedFeedback(qsTr("Equalizer")) }
+                    BubbleMenuItem { text: qsTr("About Seriona"); onTriggered: root.showUnsupportedFeedback(qsTr("About Seriona")) }
+                    BubbleMenuItem { text: qsTr("Exit"); onTriggered: root.showUnsupportedFeedback(qsTr("Exit")) }
                 }
             }
         }
