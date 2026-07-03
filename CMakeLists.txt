@@ -5,7 +5,7 @@ project(Seriona VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(QT_QML_GENERATE_QMLLS_INI ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick)
+find_package(Qt6 REQUIRED COMPONENTS Quick Concurrent)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -13,6 +13,7 @@ include(CTest)
 
 set(SERIONA_BACKEND_SOURCE_DIR "../../cppProject(app_and_lib)/Seriona_Backend" CACHE PATH "Seriona backend source tree")
 set(SERIONA_BACKEND_CONTROL_TARGET "")
+set(SERIONA_BACKEND_AUDIO_TARGET "")
 
 if(SERIONA_BACKEND_SOURCE_DIR STREQUAL "")
     message(STATUS "SERIONA_BACKEND_SOURCE_DIR is empty; building appSeriona in mock-only mode.")
@@ -36,6 +37,14 @@ else()
             message(FATAL_ERROR "Seriona backend was added, but neither SerionaBackend::control nor seriona_control exists.")
         endif()
 
+        if(TARGET SerionaBackend::audio)
+            set(SERIONA_BACKEND_AUDIO_TARGET SerionaBackend::audio)
+        elseif(TARGET seriona_audio)
+            set(SERIONA_BACKEND_AUDIO_TARGET seriona_audio)
+        else()
+            message(FATAL_ERROR "Seriona backend was added, but neither SerionaBackend::audio nor seriona_audio exists.")
+        endif()
+
         message(STATUS "Seriona frontend will link backend target: ${SERIONA_BACKEND_CONTROL_TARGET}")
     else()
         message(STATUS "Seriona backend source not found at ${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}; building appSeriona in mock-only mode.")
@@ -56,6 +65,8 @@ qt_add_qml_module(appSeriona
         src/app/app_facade.h
         src/app/backend_bridge.cpp
         src/app/backend_bridge.h
+        src/app/waveform_provider.cpp
+        src/app/waveform_provider.h
         src/app/lyrics_model.cpp
         src/app/lyrics_model.h
         src/app/library_model.cpp
@@ -124,12 +135,12 @@ set_target_properties(appSeriona PROPERTIES
 )
 
 target_link_libraries(appSeriona
-    PRIVATE Qt6::Quick
+    PRIVATE Qt6::Quick Qt6::Concurrent
 )
 
 if(SERIONA_BACKEND_CONTROL_TARGET)
     target_link_libraries(appSeriona
-        PRIVATE ${SERIONA_BACKEND_CONTROL_TARGET}
+        PRIVATE ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET}
     )
 endif()
 
@@ -196,29 +207,49 @@ if(BUILD_TESTING)
         add_test(NAME seriona_frontend_library_follow_playing COMMAND seriona_frontend_library_dual_cursor_tests followCurrentlyPlayingControlsBrowserCursor)
         add_test(NAME seriona_frontend_library_dual_cursor_refresh COMMAND seriona_frontend_library_dual_cursor_tests refreshKeepsAndFallsBackBrowserState)
         add_test(NAME seriona_frontend_library_dual_cursor_no_commands COMMAND seriona_frontend_library_dual_cursor_tests browsingActionsDoNotEmitBackendHookSignals)
+
+        add_executable(seriona_frontend_sidebar_local_browsing_tests
+            tests/frontend/adapter/tst_sidebar_local_browsing.cpp
+            src/app/library_model.cpp
+            src/app/library_model.h
+        )
+        target_include_directories(seriona_frontend_sidebar_local_browsing_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_sidebar_local_browsing_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_sidebar_local_browsing_tests
+            PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
+        )
+        add_test(NAME seriona_frontend_sidebar_search_local COMMAND seriona_frontend_sidebar_local_browsing_tests localSearchFiltersAndFocusesFirstMatch)
+        add_test(NAME seriona_frontend_sidebar_search_empty COMMAND seriona_frontend_sidebar_local_browsing_tests emptySearchDoesNotMoveBrowserOrPlayback)
+        add_test(NAME seriona_frontend_sidebar_tree_local COMMAND seriona_frontend_sidebar_local_browsing_tests expansionAndBackStayLocal)
     endif()
 
-    add_executable(seriona_frontend_app_facade_smoke_mode
-        tests/frontend/adapter/tst_app_facade_smoke_mode.cpp
-        src/app/app_facade.cpp
-        src/app/app_facade.h
-        src/app/backend_bridge.cpp
-        src/app/backend_bridge.h
-    )
+        add_executable(seriona_frontend_app_facade_smoke_mode
+            tests/frontend/adapter/tst_app_facade_smoke_mode.cpp
+            src/app/app_facade.cpp
+            src/app/app_facade.h
+            src/app/backend_bridge.cpp
+            src/app/backend_bridge.h
+            src/app/waveform_provider.cpp
+            src/app/waveform_provider.h
+        )
     target_include_directories(seriona_frontend_app_facade_smoke_mode
         PRIVATE src/app
     )
     target_compile_definitions(seriona_frontend_app_facade_smoke_mode
         PRIVATE SERIONA_HAS_BACKEND=$<BOOL:${SERIONA_BACKEND_CONTROL_TARGET}>
     )
-    target_link_libraries(seriona_frontend_app_facade_smoke_mode
-        PRIVATE Qt6::Quick Qt6::Test
-    )
-    if(SERIONA_BACKEND_CONTROL_TARGET)
         target_link_libraries(seriona_frontend_app_facade_smoke_mode
-            PRIVATE ${SERIONA_BACKEND_CONTROL_TARGET}
+            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent
         )
-    endif()
+        if(SERIONA_BACKEND_CONTROL_TARGET)
+            target_link_libraries(seriona_frontend_app_facade_smoke_mode
+                PRIVATE ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET}
+            )
+        endif()
     add_test(NAME seriona_frontend_app_facade_smoke_mode COMMAND seriona_frontend_app_facade_smoke_mode)
 
     if(SERIONA_BACKEND_CONTROL_TARGET)
@@ -228,6 +259,8 @@ if(BUILD_TESTING)
             src/app/app_facade.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
+            src/app/waveform_provider.cpp
+            src/app/waveform_provider.h
         )
         target_include_directories(seriona_frontend_playback_snapshot_tests
             PRIVATE src/app
@@ -236,7 +269,7 @@ if(BUILD_TESTING)
             PRIVATE SERIONA_HAS_BACKEND=1
         )
         target_link_libraries(seriona_frontend_playback_snapshot_tests
-            PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
+            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET}
         )
 
         add_test(NAME seriona_frontend_playback_snapshot_mapping COMMAND seriona_frontend_playback_snapshot_tests snapshotMapping)
@@ -248,6 +281,8 @@ if(BUILD_TESTING)
             src/app/app_facade.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
+            src/app/waveform_provider.cpp
+            src/app/waveform_provider.h
         )
         target_include_directories(seriona_frontend_playback_command_tests
             PRIVATE src/app
@@ -256,11 +291,33 @@ if(BUILD_TESTING)
             PRIVATE SERIONA_HAS_BACKEND=1
         )
         target_link_libraries(seriona_frontend_playback_command_tests
-            PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
+            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET}
         )
 
         add_test(NAME seriona_frontend_playback_command_mapping COMMAND seriona_frontend_playback_command_tests visiblePlaybackControlsSubmitCommands)
         add_test(NAME seriona_frontend_playback_rejected_command COMMAND seriona_frontend_playback_command_tests rejectedCommandKeepsReadModelAndQueuesNotification)
+
+        add_executable(seriona_frontend_waveform_worker_tests
+            tests/frontend/adapter/tst_waveform_worker.cpp
+            src/app/app_facade.cpp
+            src/app/app_facade.h
+            src/app/backend_bridge.cpp
+            src/app/backend_bridge.h
+            src/app/waveform_provider.cpp
+            src/app/waveform_provider.h
+        )
+        target_include_directories(seriona_frontend_waveform_worker_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_waveform_worker_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_waveform_worker_tests
+            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET}
+        )
+
+        add_test(NAME seriona_frontend_waveform_worker COMMAND seriona_frontend_waveform_worker_tests)
+        add_test(NAME seriona_frontend_waveform_failure COMMAND seriona_frontend_waveform_worker_tests missingFileFailureReturnsEmptyWaveform)
 
         add_executable(seriona_frontend_backend_bridge_tests
             tests/frontend/adapter/tst_backend_bridge.cpp
