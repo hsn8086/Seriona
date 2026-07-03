@@ -29,9 +29,14 @@ Item {
         sidebarMenu.close();
     }
 
-    function openFolder(index) {
-        libraryController.enterFolder(index);
-        pageStack.push(playlistPageComponent);
+    function activateNode(nodeId, isFolder) {
+        if (nodeId.length === 0)
+            return;
+
+        root.closeMenus();
+        libraryController.selectBrowserNode(nodeId);
+        if (isFolder)
+            libraryController.toggleExpanded(nodeId);
     }
 
     RectangularGlow {
@@ -111,11 +116,11 @@ Item {
                                         duration: Theme.animationDuration
                                     }
                                 }
-                                onClicked: {
-                                    libraryController.goBack();
-                                    pageStack.pop();
-                                }
-                            }
+                                 onClicked: {
+                                     root.closeMenus();
+                                     libraryController.goBack();
+                                 }
+                             }
 
                             StyleButton {
                                 id: searchButton
@@ -297,49 +302,286 @@ Item {
                 }
             }
 
-            StackView {
-                id: pageStack
-                z: 0
+            Item {
+                id: playlistPanel
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                initialItem: playlistPageComponent
 
-                pushEnter: Transition {
-                    PropertyAnimation {
-                        property: "x"
-                        from: pageStack.width
-                        to: 0
-                        duration: Theme.animationDuration
-                        easing.type: Easing.OutCubic
+                ListView {
+                    id: playlistView
+                    anchors.fill: parent
+                    model: libraryController.model
+                    spacing: 2
+                    topMargin: Theme.paddingMedium
+                    bottomMargin: 80
+                    clip: true
+                    reuseItems: true
+
+                    delegate: ItemDelegate {
+                        id: delegate
+                        required property int index
+                        required property string type
+                        required property string name
+                        required property string title
+                        required property string artist
+                        required property string album
+                        required property string parentName
+                        required property int songCount
+                        required property string duration
+                        required property string format
+                        required property int sampleRate
+                        required property int bitDepth
+                        required property string nodeId
+                        required property string trackId
+                        required property bool isFolder
+                        required property bool isPlaying
+                        required property bool isFocused
+                        required property bool isExpanded
+                        required property int depth
+                        required property bool isVisible
+                        required property bool matchesSearch
+
+                        width: playlistView.width
+                        height: isVisible ? implicitHeight : 0
+                        visible: isVisible
+                        enabled: isVisible
+                        topPadding: 8
+                        bottomPadding: 8
+                        leftPadding: 15 + Math.max(0, depth) * 18
+                        rightPadding: 15
+                        Accessible.role: Accessible.ListItem
+                        Accessible.name: isFolder ? name : title
+
+                        onClicked: root.activateNode(nodeId, isFolder)
+
+                        background: Rectangle {
+                            radius: 10
+                            color: delegate.isFocused ? "#26FF5C5C" : (delegate.hovered ? Theme.hoverColor : (delegate.isPlaying ? "#18FF5C5C" : "transparent"))
+                            border.width: delegate.isFocused ? 1 : 0
+                            border.color: delegate.isFocused ? Theme.accentColor : "transparent"
+
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: Theme.animationDuration
+                                }
+                            }
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 3
+                                height: parent.height - 12
+                                radius: 2
+                                color: Theme.accentColor
+                                visible: delegate.isFocused
+                            }
+                        }
+
+                        contentItem: RowLayout {
+                            spacing: 10
+
+                            Text {
+                                Layout.preferredWidth: 14
+                                Layout.alignment: Qt.AlignVCenter
+                                text: delegate.isFolder ? (delegate.isExpanded ? "▾" : "▸") : ""
+                                color: delegate.isFocused || delegate.isPlaying ? Theme.accentColor : Theme.secondaryTextColor
+                                font.pixelSize: 13
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: 44
+                                Layout.preferredHeight: 44
+                                Layout.alignment: Qt.AlignVCenter
+                                radius: 8
+                                color: delegate.isFolder ? Theme.accentColor : Theme.mainColor
+                                clip: true
+
+                                Image {
+                                    id: folderThumbIcon
+                                    anchors.fill: parent
+                                    anchors.margins: delegate.isFolder ? 10 : 0
+                                    source: delegate.isFolder ? "qrc:/qt/qml/Seriona/qml/assets/folder.svg" : ""
+                                    sourceSize: Qt.size(24, 24)
+                                    fillMode: Image.PreserveAspectFit
+                                    visible: false
+                                }
+
+                                ColorOverlay {
+                                    anchors.fill: folderThumbIcon
+                                    source: folderThumbIcon
+                                    color: "white"
+                                    visible: delegate.isFolder
+                                }
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 8
+                                    color: "#20FFFFFF"
+                                    visible: !delegate.isFolder
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "♫"
+                                        color: delegate.isPlaying ? Theme.accentColor : "white"
+                                        font.pixelSize: 22
+                                    }
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
+                                spacing: 1
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: delegate.isFolder ? delegate.name : delegate.title
+                                        color: delegate.isPlaying ? Theme.accentColor : Theme.textColor
+                                        font.pixelSize: 13
+                                        font.weight: delegate.isFocused ? Font.Bold : Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Text {
+                                        Layout.preferredWidth: visible ? implicitWidth : 0
+                                        text: "▶"
+                                        color: Theme.accentColor
+                                        font.pixelSize: 10
+                                        visible: delegate.isPlaying
+                                    }
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: delegate.isFolder ? delegate.parentName : (delegate.artist.length > 0 && delegate.album.length > 0 ? delegate.artist + " - " + delegate.album : delegate.artist + delegate.album)
+                                    color: Theme.secondaryTextColor
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    RowLayout {
+                                        visible: !delegate.isFolder
+                                        spacing: 4
+
+                                        Text {
+                                            text: delegate.duration || ""
+                                            color: Theme.secondaryTextColor
+                                            font.pixelSize: 10
+                                        }
+                                        Text {
+                                            text: "|"
+                                            color: "#30FFFFFF"
+                                            font.pixelSize: 10
+                                            visible: delegate.duration.length > 0 && delegate.format.length > 0
+                                        }
+                                        Text {
+                                            text: delegate.format || ""
+                                            color: Theme.secondaryTextColor
+                                            font.pixelSize: 10
+                                        }
+                                        Text {
+                                            text: "|"
+                                            color: "#30FFFFFF"
+                                            font.pixelSize: 10
+                                            visible: delegate.sampleRate > 44100
+                                        }
+                                        Text {
+                                            text: (delegate.sampleRate / 1000) + "kHz"
+                                            color: Theme.accentColor
+                                            font.pixelSize: 10
+                                            visible: delegate.sampleRate > 44100
+                                        }
+                                        Text {
+                                            text: "|"
+                                            color: "#30FFFFFF"
+                                            font.pixelSize: 10
+                                            visible: delegate.bitDepth > 16
+                                        }
+                                        Text {
+                                            text: delegate.bitDepth + "bit"
+                                            color: Theme.accentColor
+                                            font.pixelSize: 10
+                                            visible: delegate.bitDepth > 16
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        visible: delegate.isFolder
+                                        spacing: 6
+
+                                        Item {
+                                            Layout.preferredWidth: 10
+                                            Layout.preferredHeight: 10
+
+                                            Image {
+                                                id: musicNoteIcon
+                                                anchors.fill: parent
+                                                source: "qrc:/qt/qml/Seriona/qml/assets/music_note.svg"
+                                                sourceSize: Qt.size(10, 10)
+                                                fillMode: Image.PreserveAspectFit
+                                                visible: false
+                                            }
+
+                                            ColorOverlay {
+                                                anchors.fill: musicNoteIcon
+                                                source: musicNoteIcon
+                                                color: Theme.secondaryTextColor
+                                                opacity: 0.7
+                                            }
+                                        }
+
+                                        Text {
+                                            text: qsTr("%1 Songs").arg(delegate.songCount)
+                                            color: Theme.secondaryTextColor
+                                            font.pixelSize: 10
+                                        }
+                                        Text {
+                                            text: "|"
+                                            color: "#30FFFFFF"
+                                            font.pixelSize: 10
+                                            visible: delegate.duration.length > 0
+                                        }
+                                        Text {
+                                            text: delegate.duration || ""
+                                            color: Theme.secondaryTextColor
+                                            font.pixelSize: 10
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-                pushExit: Transition {
-                    PropertyAnimation {
-                        property: "x"
-                        from: 0
-                        to: -pageStack.width
-                        duration: Theme.animationDuration
-                        easing.type: Easing.OutCubic
+
+                Connections {
+                    target: libraryController
+
+                    function onScrollRequestChanged() {
+                        const row = libraryController.rowForNodeId(libraryController.scrollRequest);
+                        if (row >= 0)
+                            playlistView.positionViewAtIndex(row, ListView.Contain);
                     }
                 }
-                popEnter: Transition {
-                    PropertyAnimation {
-                        property: "x"
-                        from: -pageStack.width
-                        to: 0
-                        duration: Theme.animationDuration
-                        easing.type: Easing.OutCubic
-                    }
-                }
-                popExit: Transition {
-                    PropertyAnimation {
-                        property: "x"
-                        from: 0
-                        to: pageStack.width
-                        duration: Theme.animationDuration
-                        easing.type: Easing.OutCubic
-                    }
+
+                Text {
+                    anchors.centerIn: parent
+                    width: parent.width - 40
+                    text: root.isSearching ? qsTr("没有匹配的本地结果") : qsTr("暂无曲库内容")
+                    color: Theme.secondaryTextColor
+                    font.pixelSize: 13
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    visible: libraryController.visibleNodeCount === 0
                 }
             }
         }
@@ -381,223 +623,6 @@ Item {
                 radius: 8
                 samples: 17
                 color: "#80000000"
-            }
-        }
-    }
-
-    Component {
-        id: playlistPageComponent
-        ListView {
-            id: playlistView
-            model: libraryController.model
-            spacing: 2
-            topMargin: Theme.paddingMedium
-            bottomMargin: 80 // Space for FAB
-            clip: true
-
-                delegate: ItemDelegate {
-                    id: delegate
-                    width: playlistView.width
-                topPadding: 8
-                bottomPadding: 8
-                leftPadding: 15
-                rightPadding: 15
-
-                onClicked: {
-                    if (model.type === "folder") {
-                        root.openFolder(index);
-                    } else {
-                        libraryController.playItem(index);
-                    }
-                }
-
-                background: Rectangle {
-                    color: delegate.visualFocus || delegate.hovered ? Theme.hoverColor : "transparent"
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 150
-                        }
-                    }
-                }
-
-                contentItem: RowLayout {
-                    spacing: 12
-
-                    // Left: Thumbnail/Cover
-                    Rectangle {
-                        Layout.alignment: Qt.AlignVCenter
-                        width: 44
-                        height: 44
-                        radius: 8
-                        color: model.type === "folder" ? Theme.accentColor : Theme.mainColor
-                        clip: true
-
-                        Image {
-                            id: folderThumbIcon
-                            anchors.fill: parent
-                            anchors.margins: model.type === "folder" ? 10 : 0
-                            source: model.type === "folder" ? "qrc:/qt/qml/Seriona/qml/assets/folder.svg" : ""
-                            fillMode: Image.PreserveAspectFit
-                            visible: false
-                        }
-
-                        ColorOverlay {
-                            anchors.fill: folderThumbIcon
-                            source: folderThumbIcon
-                            color: "white"
-                            visible: model.type === "folder"
-                        }
-
-                        // Placeholder for cover art
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: 8
-                            color: "#20FFFFFF"
-                            visible: model.type === "file"
-                            Text {
-                                anchors.centerIn: parent
-                                text: "♫"
-                                color: "white"
-                                font.pixelSize: 22
-                            }
-                        }
-                    }
-
-                    // Right: Info
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignVCenter
-                        spacing: 1
-
-                        // Top: Name/Title
-                        Text {
-                            Layout.fillWidth: true
-                            text: model.type === "file" ? model.title : model.name
-                            color: Theme.textColor
-                            font.pixelSize: 13
-                            font.weight: Font.DemiBold
-                            elide: Text.ElideRight
-                        }
-
-                        // Middle: Artist-Album / Parent Folder
-                        Text {
-                            Layout.fillWidth: true
-                            text: model.type === "file" ? (model.artist + " - " + model.album) : model.parentName
-                            color: Theme.secondaryTextColor
-                            font.pixelSize: 11
-                            elide: Text.ElideRight
-                        }
-
-                        // Bottom: Stream Info / Folder Stats
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-
-                            // File specific info
-                            RowLayout {
-                                visible: model.type === "file"
-                                spacing: 4
-                                Text {
-                                    text: model.duration || ""
-                                    color: Theme.secondaryTextColor
-                                    font.pixelSize: 10
-                                }
-                                Text {
-                                    text: "|"
-                                    color: "#30FFFFFF"
-                                    font.pixelSize: 10
-                                    visible: model.format !== undefined
-                                }
-                                Text {
-                                    text: model.format || ""
-                                    color: Theme.secondaryTextColor
-                                    font.pixelSize: 10
-                                }
-                                Text {
-                                    text: "|"
-                                    color: "#30FFFFFF"
-                                    font.pixelSize: 10
-                                    visible: model.sampleRate > 44100
-                                }
-                                Text {
-                                    text: (model.sampleRate / 1000) + "kHz"
-                                    color: Theme.accentColor
-                                    font.pixelSize: 10
-                                    visible: model.sampleRate > 44100
-                                }
-                                Text {
-                                    text: "|"
-                                    color: "#30FFFFFF"
-                                    font.pixelSize: 10
-                                    visible: model.bitDepth > 16
-                                }
-                                Text {
-                                    text: model.bitDepth + "bit"
-                                    color: Theme.accentColor
-                                    font.pixelSize: 10
-                                    visible: model.bitDepth > 16
-                                }
-                            }
-
-                            // Folder specific info
-                            RowLayout {
-                                visible: model.type === "folder"
-                                spacing: 6
-                                Item {
-                                    Layout.preferredWidth: 10
-                                    Layout.preferredHeight: 10
-                                    Image {
-                                        id: musicNoteIcon
-                                        anchors.fill: parent
-                                        source: "qrc:/qt/qml/Seriona/qml/assets/music_note.svg"
-                                        sourceSize: Qt.size(10, 10)
-                                        fillMode: Image.PreserveAspectFit
-                                        visible: false
-                                    }
-                                    ColorOverlay {
-                                        anchors.fill: musicNoteIcon
-                                        source: musicNoteIcon
-                                        color: Theme.secondaryTextColor
-                                        opacity: 0.7
-                                    }
-                                }
-                                Text {
-                                    text: model.songCount + " Songs"
-                                    color: Theme.secondaryTextColor
-                                    font.pixelSize: 10
-                                }
-                                Text {
-                                    text: "|"
-                                    color: "#30FFFFFF"
-                                    font.pixelSize: 10
-                                }
-                                Text {
-                                    text: model.duration || ""
-                                    color: Theme.secondaryTextColor
-                                    font.pixelSize: 10
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Small folder icon in bottom-right for folders
-                Image {
-                    id: folderBadgeIcon
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.margins: 4
-                    source: "qrc:/qt/qml/Seriona/qml/assets/folder.svg"
-                    sourceSize: Qt.size(12, 12)
-                    visible: false
-                }
-                ColorOverlay {
-                    anchors.fill: folderBadgeIcon
-                    source: folderBadgeIcon
-                    color: "white"
-                    opacity: 0.3
-                    visible: model.type === "folder"
-                }
             }
         }
     }
