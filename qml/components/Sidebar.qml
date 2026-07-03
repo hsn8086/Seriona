@@ -42,6 +42,11 @@ Item {
         sidebarMenu.close();
     }
 
+    function showUnsupportedFeedback(actionName) {
+        root.appFacade.notifications.showUnsupportedAction(actionName);
+        root.closeMenus();
+    }
+
     function activateNode(nodeId, isFolder) {
         if (nodeId.length === 0)
             return;
@@ -187,11 +192,11 @@ Item {
 
                                     BubbleMenuItem {
                                         text: qsTr("Sort by Name")
-                                        onTriggered: sidebarMenu.close()
+                                        onTriggered: root.showUnsupportedFeedback(qsTr("Sort by Name"))
                                     }
                                     BubbleMenuItem {
                                         text: qsTr("Sort by Date")
-                                        onTriggered: sidebarMenu.close()
+                                        onTriggered: root.showUnsupportedFeedback(qsTr("Sort by Date"))
                                     }
                                     BubbleMenuItem {
                                         text: qsTr("Refresh")

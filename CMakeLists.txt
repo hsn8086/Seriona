@@ -228,6 +228,17 @@ if(BUILD_TESTING)
         add_test(NAME seriona_frontend_sidebar_search_empty COMMAND seriona_frontend_sidebar_local_browsing_tests emptySearchDoesNotMoveBrowserOrPlayback)
         add_test(NAME seriona_frontend_sidebar_tree_local COMMAND seriona_frontend_sidebar_local_browsing_tests expansionAndBackStayLocal)
 
+        add_executable(seriona_frontend_ui_only_handler_policy_tests
+            tests/frontend/adapter/tst_ui_only_handler_policy.cpp
+        )
+        target_compile_definitions(seriona_frontend_ui_only_handler_policy_tests
+            PRIVATE SERIONA_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        )
+        target_link_libraries(seriona_frontend_ui_only_handler_policy_tests
+            PRIVATE Qt6::Test
+        )
+        add_test(NAME seriona_frontend_ui_only_no_backend_command COMMAND seriona_frontend_ui_only_handler_policy_tests uiOnlyHandlersDoNotUseBackendCommands)
+
         add_executable(seriona_frontend_library_select_track_tests
             tests/frontend/adapter/tst_library_select_track.cpp
             src/app/library_model.cpp
@@ -404,7 +415,8 @@ if(BUILD_TESTING)
         add_test(NAME seriona_frontend_notifications_library_scan_error COMMAND seriona_frontend_notifications_tests libraryScanErrorExposesBackendMessage)
         add_test(NAME seriona_frontend_notifications_library_snapshot_updated COMMAND seriona_frontend_notifications_tests librarySnapshotUpdatedUsesVisibleDefaultMessage)
         add_test(NAME seriona_frontend_notifications_bounded_queue COMMAND seriona_frontend_notifications_tests boundedQueueDropsOldestNotifications)
-        add_test(NAME seriona_frontend_notifications_unsupported_feedback COMMAND seriona_frontend_notifications_tests unsupportedSettingActionShowsLocalFeedback)
+        add_test(NAME seriona_frontend_notifications_unsupported_feedback COMMAND seriona_frontend_notifications_tests unsupportedSettingsActionsShowLocalFeedback)
+        add_test(NAME seriona_frontend_unsupported_settings_feedback COMMAND seriona_frontend_notifications_tests unsupportedSettingsActionsShowLocalFeedback)
 
         add_executable(seriona_frontend_waveform_worker_tests
             tests/frontend/adapter/tst_waveform_worker.cpp

@@ -47,7 +47,8 @@ private slots:
     void libraryScanErrorExposesBackendMessage();
     void librarySnapshotUpdatedUsesVisibleDefaultMessage();
     void boundedQueueDropsOldestNotifications();
-    void unsupportedSettingActionShowsLocalFeedback();
+    void unsupportedSettingsActionsShowLocalFeedback_data();
+    void unsupportedSettingsActionsShowLocalFeedback();
 };
 
 void FrontendNotificationsTest::commandRejectedResultExposesCodeAndMessage()
@@ -145,16 +146,31 @@ void FrontendNotificationsTest::boundedQueueDropsOldestNotifications()
     QCOMPARE(controller.latestMessage(), QStringLiteral("error 16"));
 }
 
-void FrontendNotificationsTest::unsupportedSettingActionShowsLocalFeedback()
+void FrontendNotificationsTest::unsupportedSettingsActionsShowLocalFeedback_data()
 {
+    QTest::addColumn<QString>("actionName");
+
+    QTest::newRow("crossfade") << QStringLiteral("Crossfade");
+    QTest::newRow("gapless-playback") << QStringLiteral("Gapless Playback");
+    QTest::newRow("replaygain") << QStringLiteral("ReplayGain");
+    QTest::newRow("equalizer") << QStringLiteral("Equalizer");
+    QTest::newRow("about") << QStringLiteral("About Seriona");
+    QTest::newRow("sort-by-name") << QStringLiteral("Sort by Name");
+    QTest::newRow("sort-by-date") << QStringLiteral("Sort by Date");
+}
+
+void FrontendNotificationsTest::unsupportedSettingsActionsShowLocalFeedback()
+{
+    QFETCH(QString, actionName);
+
     NotificationController controller;
 
-    controller.showUnsupportedAction(QStringLiteral("Crossfade"));
+    controller.showUnsupportedAction(actionName);
 
     QCOMPARE(controller.notificationCount(), 1);
     QCOMPARE(controller.latestKind(), QStringLiteral("UnsupportedAction"));
     QCOMPARE(controller.latestCode(), QStringLiteral("Unsupported"));
-    QCOMPARE(controller.latestMessage(), QStringLiteral("Crossfade 暂未支持"));
+    QCOMPARE(controller.latestMessage(), QStringLiteral("%1 暂未支持").arg(actionName));
     QCOMPARE(controller.latestTitle(), QStringLiteral("暂未支持"));
     QCOMPARE(controller.latestSeverity(), QStringLiteral("warning"));
 }
