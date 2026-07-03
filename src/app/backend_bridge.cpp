@@ -107,7 +107,9 @@ void BackendBridge::drainForTests()
 seriona::control::MediaControllerCommandResult BackendBridge::submitCommand(const seriona::control::MediaControlCommand &command)
 {
     if (m_shuttingDown || !m_controller) {
-        return controllerStoppedResult();
+        seriona::control::MediaControllerCommandResult result = controllerStoppedResult();
+        enqueueCommandFailureNotification(result);
+        return result;
     }
 
     return m_controller->submitCommand(command);
@@ -221,6 +223,19 @@ void BackendBridge::applyLibrarySnapshot(seriona::control::LibraryStateSnapshot 
 {
     m_librarySnapshot = std::move(snapshot);
     emit librarySnapshotChanged();
+}
+
+void BackendBridge::enqueueCommandFailureNotification(const seriona::control::MediaControllerCommandResult &result)
+{
+    if (result.accepted) {
+        return;
+    }
+
+    seriona::control::ControlDomainNotification notification;
+    notification.kind = seriona::control::ControlDomainNotificationKind::CommandRejected;
+    notification.errorCode = result.code;
+    notification.message = result.message;
+    enqueueNotification(std::move(notification));
 }
 
 void BackendBridge::enqueueNotification(seriona::control::ControlDomainNotification notification)

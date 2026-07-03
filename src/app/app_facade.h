@@ -5,6 +5,7 @@
 #include <QString>
 #include <QVariantList>
 
+#include <functional>
 #include <memory>
 
 #ifndef SERIONA_HAS_BACKEND
@@ -12,9 +13,7 @@
 #endif
 
 #if SERIONA_HAS_BACKEND
-namespace seriona::control {
-struct PlayerStateSnapshot;
-}
+#include "seriona/control/control_contracts.h"
 #endif
 
 namespace Seriona::App {
@@ -44,6 +43,10 @@ class PlaybackController : public QObject
     QML_UNCREATABLE("PlaybackController is owned by AppFacade")
 
 public:
+#if SERIONA_HAS_BACKEND
+    using CommandExecutor = std::function<seriona::control::MediaControllerCommandResult(const seriona::control::MediaControlCommand &)>;
+#endif
+
     explicit PlaybackController(QObject *parent = nullptr);
 
     bool ready() const;
@@ -70,6 +73,7 @@ public:
     QVariantList waveformHeights() const;
 
 #if SERIONA_HAS_BACKEND
+    void setCommandExecutor(CommandExecutor executor);
     void applyPlayerStateSnapshot(const seriona::control::PlayerStateSnapshot &snapshot);
 #endif
 
@@ -87,6 +91,9 @@ public:
     Q_INVOKABLE void toggleShuffle();
     // future backend hook: persist and apply repeat mode through playback settings.
     Q_INVOKABLE void cycleRepeatMode();
+    Q_INVOKABLE void skipPrevious();
+    Q_INVOKABLE void skipNext();
+    Q_INVOKABLE void setMuted(bool muted);
 
 signals:
     void capabilityChanged();
@@ -103,8 +110,21 @@ signals:
 private:
     static qreal clamp(qreal value, qreal minimum, qreal maximum);
     static QString formatDuration(qreal seconds);
+    void applyPlaying(bool playing);
+    void applyCurrentPosition(qreal position);
+    void applyTotalDuration(qreal duration);
+    void applyVolume(qreal volume);
+    void applyShuffle(bool shuffle);
+    void applyRepeatMode(int repeatMode);
     void setCurrentSong(const QString &title, const QString &artist, const QString &album);
     void setCapability(const QString &capability);
+
+#if SERIONA_HAS_BACKEND
+    static seriona::control::RepeatMode repeatModeForIndex(int repeatMode);
+    void submitCommand(const seriona::control::MediaControlCommand &command);
+
+    CommandExecutor m_commandExecutor;
+#endif
 
     bool m_isPlaying = false;
     qreal m_currentPosition = 0.0;

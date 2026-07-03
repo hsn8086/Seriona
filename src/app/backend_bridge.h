@@ -62,6 +62,7 @@ private:
     void submitShutdownStop();
     void applyPlayerSnapshot(seriona::control::PlayerStateSnapshot snapshot);
     void applyLibrarySnapshot(seriona::control::LibraryStateSnapshot snapshot);
+    void enqueueCommandFailureNotification(const seriona::control::MediaControllerCommandResult &result);
     void enqueueNotification(seriona::control::ControlDomainNotification notification);
 
     ControllerFactory m_controllerFactory;

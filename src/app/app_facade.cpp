@@ -10,6 +10,11 @@
 #include <QStringList>
 #include <QtMath>
 
+#include <chrono>
+#include <cmath>
+#include <optional>
+#include <utility>
+
 namespace Seriona::App {
 
 namespace {
@@ -71,6 +76,24 @@ qreal secondsFromMilliseconds(std::chrono::milliseconds value)
     return static_cast<qreal>(value.count()) / 1000.0;
 }
 
+std::optional<std::chrono::milliseconds> millisecondsFromSeconds(qreal seconds)
+{
+    if (!std::isfinite(seconds)) {
+        return std::nullopt;
+    }
+
+    return std::chrono::milliseconds{qRound64(qMax(0.0, seconds) * 1000.0)};
+}
+
+std::optional<float> volumeFromQml(qreal volume)
+{
+    if (!std::isfinite(volume)) {
+        return std::nullopt;
+    }
+
+    return static_cast<float>(qBound(0.0, volume, 1.0));
+}
+
 int repeatModeFromSnapshot(seriona::control::RepeatMode repeatMode)
 {
     switch (repeatMode) {
@@ -83,6 +106,19 @@ int repeatModeFromSnapshot(seriona::control::RepeatMode repeatMode)
     }
 
     return 0;
+}
+
+seriona::control::RepeatMode repeatModeFromIndex(int repeatMode)
+{
+    switch (qBound(0, repeatMode, 2)) {
+    case 1:
+        return seriona::control::RepeatMode::All;
+    case 2:
+        return seriona::control::RepeatMode::One;
+    case 0:
+    default:
+        return seriona::control::RepeatMode::Off;
+    }
 }
 
 QString capabilityFromSnapshot(const seriona::control::PlaybackCapabilities &capabilities)
@@ -147,6 +183,17 @@ bool PlaybackController::isPlaying() const
 
 void PlaybackController::setPlaying(bool playing)
 {
+#if SERIONA_HAS_BACKEND
+    seriona::control::MediaControlCommand command;
+    command.kind = playing ? seriona::control::MediaControlCommandKind::Play : seriona::control::MediaControlCommandKind::Pause;
+    submitCommand(command);
+#else
+    Q_UNUSED(playing)
+#endif
+}
+
+void PlaybackController::applyPlaying(bool playing)
+{
     if (m_isPlaying == playing) {
         return;
     }
@@ -161,6 +208,11 @@ qreal PlaybackController::currentPosition() const
 }
 
 void PlaybackController::setCurrentPosition(qreal position)
+{
+    seek(position);
+}
+
+void PlaybackController::applyCurrentPosition(qreal position)
 {
     position = qMax(0.0, position);
     if (m_totalDuration > 0.0) {
@@ -181,6 +233,11 @@ qreal PlaybackController::totalDuration() const
 }
 
 void PlaybackController::setTotalDuration(qreal duration)
+{
+    applyTotalDuration(duration);
+}
+
+void PlaybackController::applyTotalDuration(qreal duration)
 {
     duration = qMax(0.0, duration);
     if (qAbs(m_totalDuration - duration) < 0.001) {
@@ -203,6 +260,18 @@ qreal PlaybackController::volume() const
 
 void PlaybackController::setVolume(qreal volume)
 {
+#if SERIONA_HAS_BACKEND
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::SetVolume;
+    command.volume = volumeFromQml(volume);
+    submitCommand(command);
+#else
+    Q_UNUSED(volume)
+#endif
+}
+
+void PlaybackController::applyVolume(qreal volume)
+{
     volume = clamp(volume, 0.0, 1.0);
     if (qAbs(m_volume - volume) < 0.001) {
         return;
@@ -219,6 +288,18 @@ bool PlaybackController::isShuffle() const
 
 void PlaybackController::setShuffle(bool shuffle)
 {
+#if SERIONA_HAS_BACKEND
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::SetShuffle;
+    command.shuffle = shuffle;
+    submitCommand(command);
+#else
+    Q_UNUSED(shuffle)
+#endif
+}
+
+void PlaybackController::applyShuffle(bool shuffle)
+{
     if (m_isShuffle == shuffle) {
         return;
     }
@@ -233,6 +314,18 @@ int PlaybackController::repeatMode() const
 }
 
 void PlaybackController::setRepeatMode(int repeatMode)
+{
+#if SERIONA_HAS_BACKEND
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::SetRepeatMode;
+    command.repeatMode = repeatModeForIndex(repeatMode);
+    submitCommand(command);
+#else
+    Q_UNUSED(repeatMode)
+#endif
+}
+
+void PlaybackController::applyRepeatMode(int repeatMode)
 {
     repeatMode = qBound(0, repeatMode, 2);
     if (m_repeatMode == repeatMode) {
@@ -284,6 +377,11 @@ QVariantList PlaybackController::waveformHeights() const
 }
 
 #if SERIONA_HAS_BACKEND
+void PlaybackController::setCommandExecutor(CommandExecutor executor)
+{
+    m_commandExecutor = std::move(executor);
+}
+
 void PlaybackController::applyPlayerStateSnapshot(const seriona::control::PlayerStateSnapshot &snapshot)
 {
     const qreal durationSeconds = snapshot.timeline.duration
@@ -292,12 +390,12 @@ void PlaybackController::applyPlayerStateSnapshot(const seriona::control::Player
     const qreal positionSeconds = secondsFromMilliseconds(snapshot.timeline.position);
     const qreal effectiveVolume = snapshot.muted ? 0.0 : static_cast<qreal>(snapshot.volume);
 
-    setTotalDuration(durationSeconds);
-    setCurrentPosition(positionSeconds);
-    setPlaying(snapshot.playback.state == seriona::control::PlaybackStatus::Playing);
-    setVolume(effectiveVolume);
-    setShuffle(snapshot.shuffle);
-    setRepeatMode(repeatModeFromSnapshot(snapshot.repeatMode));
+    applyTotalDuration(durationSeconds);
+    applyCurrentPosition(positionSeconds);
+    applyPlaying(snapshot.playback.state == seriona::control::PlaybackStatus::Playing);
+    applyVolume(effectiveVolume);
+    applyShuffle(snapshot.shuffle);
+    applyRepeatMode(repeatModeFromSnapshot(snapshot.repeatMode));
     setCurrentSong(titleFromSnapshot(snapshot), artistFromSnapshot(snapshot), albumFromSnapshot(snapshot));
     setCapability(capabilityFromSnapshot(snapshot.capabilities));
 }
@@ -310,22 +408,41 @@ QString PlaybackController::describeBackendHook() const
 
 void PlaybackController::play()
 {
-    setPlaying(true);
+#if SERIONA_HAS_BACKEND
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::Play;
+    submitCommand(command);
+#endif
 }
 
 void PlaybackController::pause()
 {
-    setPlaying(false);
+#if SERIONA_HAS_BACKEND
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::Pause;
+    submitCommand(command);
+#endif
 }
 
 void PlaybackController::togglePlay()
 {
-    setPlaying(!m_isPlaying);
+#if SERIONA_HAS_BACKEND
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::TogglePlayPause;
+    submitCommand(command);
+#endif
 }
 
 void PlaybackController::seek(qreal position)
 {
-    setCurrentPosition(position);
+#if SERIONA_HAS_BACKEND
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::SeekTo;
+    command.position = millisecondsFromSeconds(position);
+    submitCommand(command);
+#else
+    Q_UNUSED(position)
+#endif
 }
 
 void PlaybackController::toggleShuffle()
@@ -337,6 +454,52 @@ void PlaybackController::cycleRepeatMode()
 {
     setRepeatMode((m_repeatMode + 1) % 3);
 }
+
+void PlaybackController::skipPrevious()
+{
+#if SERIONA_HAS_BACKEND
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::SkipPrevious;
+    submitCommand(command);
+#endif
+}
+
+void PlaybackController::skipNext()
+{
+#if SERIONA_HAS_BACKEND
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::SkipNext;
+    submitCommand(command);
+#endif
+}
+
+void PlaybackController::setMuted(bool muted)
+{
+#if SERIONA_HAS_BACKEND
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::SetMuted;
+    command.muted = muted;
+    submitCommand(command);
+#else
+    Q_UNUSED(muted)
+#endif
+}
+
+#if SERIONA_HAS_BACKEND
+seriona::control::RepeatMode PlaybackController::repeatModeForIndex(int repeatMode)
+{
+    return repeatModeFromIndex(repeatMode);
+}
+
+void PlaybackController::submitCommand(const seriona::control::MediaControlCommand &command)
+{
+    if (!m_commandExecutor) {
+        return;
+    }
+
+    static_cast<void>(m_commandExecutor(command));
+}
+#endif
 
 qreal PlaybackController::clamp(qreal value, qreal minimum, qreal maximum)
 {
@@ -511,6 +674,9 @@ AppFacade::AppFacade(QObject *parent)
     , m_backendBridge(std::make_unique<BackendBridge>(this))
 {
 #if SERIONA_HAS_BACKEND
+    m_playback.setCommandExecutor([this](const seriona::control::MediaControlCommand &command) {
+        return m_backendBridge->submitCommand(command);
+    });
     connect(m_backendBridge.get(), &BackendBridge::playerSnapshotChanged, this, [this] {
         m_playback.applyPlayerStateSnapshot(m_backendBridge->playerSnapshot());
     });
