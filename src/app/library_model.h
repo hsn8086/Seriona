@@ -51,7 +51,8 @@ public:
         ParentNodeIdRole,
         DepthRole,
         IsVisibleRole,
-        MatchesSearchRole
+        MatchesSearchRole,
+        ArtworkSourceRole
     };
     Q_ENUM(Role)
 
@@ -77,6 +78,7 @@ public:
         int depth = 0;
         bool isVisible = true;
         bool matchesSearch = true;
+        QString artworkSource;
     };
 
     explicit LibraryModel(QObject *parent = nullptr);
@@ -99,7 +101,7 @@ public:
     bool setNodeExpanded(const QString &nodeId, bool expanded);
     bool setFocusedNodeId(const QString &nodeId);
     bool setPlayingTrackId(const QString &trackId);
-    void applyBrowsingState(const QSet<QString> &expandedNodeIds, const QString &focusedNodeId, const QString &playingTrackId, const QString &searchQuery);
+    void applyBrowsingState(const QSet<QString> &expandedNodeIds, const QString &focusedNodeId, const QString &playingTrackId, const QString &searchQuery, const QString &browserRootNodeId = QString());
     int visibleNodeCount() const;
     QString firstVisibleNodeId() const;
     QString firstVisibleMatchingNodeId() const;
@@ -111,6 +113,7 @@ private:
     bool setEntryRoleFlag(int row, Role role, bool value, bool notify);
     bool entryMatchesSearch(const Entry &entry, const QString &trimmedQuery) const;
     bool entryVisibleByExpansion(const Entry &entry, const QSet<QString> &expandedNodeIds) const;
+    bool entryVisibleInBrowserRoot(const Entry &entry, const QString &browserRootNodeId) const;
     void rebuildEntryIndexes();
 
     QVector<Entry> m_entries;
@@ -181,6 +184,7 @@ public:
 #endif
 
     Q_INVOKABLE void enterFolder(int index);
+    Q_INVOKABLE void enterFolder(const QString &nodeId);
     Q_INVOKABLE void goBack();
     Q_INVOKABLE bool refresh();
     Q_INVOKABLE bool scanLibrary(const QUrl &rootUrl);
@@ -249,6 +253,7 @@ private:
     Folder m_folder = Folder::Root;
     QString m_currentFolderName = QStringLiteral("My Music");
     QString m_searchQuery;
+    QString m_currentFolderNodeId;
     QSet<QString> m_expandedNodeIds;
     QString m_focusedNodeId;
     QString m_selectedBrowserNodeId;

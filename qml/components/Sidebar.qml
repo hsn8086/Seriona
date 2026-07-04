@@ -17,6 +17,7 @@ Item {
     property bool isDockCapable: false
     property bool isSidebarOpen: false
     property bool isSearching: false
+    property int folderTransitionDirection: 0
     readonly property bool hasOpenMenu: sidebarMenu.visible
     readonly property bool scanRunning: libraryController.scanStatus === "running"
     readonly property bool scanError: libraryController.scanStatus === "error"
@@ -54,11 +55,20 @@ Item {
         root.closeMenus();
         libraryController.selectBrowserNode(nodeId);
         if (isFolder) {
-            libraryController.toggleExpanded(nodeId);
+            root.folderTransitionDirection = 1;
+            libraryController.enterFolder(nodeId);
+            folderTransitionResetTimer.restart();
             return;
         }
 
+        root.folderTransitionDirection = 0;
         libraryController.playItem(nodeId);
+    }
+
+    Timer {
+        id: folderTransitionResetTimer
+        interval: 300
+        onTriggered: root.folderTransitionDirection = 0
     }
 
     RectangularGlow {
@@ -140,9 +150,11 @@ Item {
                                 }
                                  onClicked: {
                                      root.closeMenus();
+                                     root.folderTransitionDirection = -1;
                                      libraryController.goBack();
-                                 }
-                             }
+                                     folderTransitionResetTimer.restart();
+                                  }
+                              }
 
                             StyleButton {
                                 id: searchButton
@@ -368,11 +380,38 @@ Item {
                     id: playlistView
                     anchors.fill: parent
                     model: libraryController.model
-                    spacing: 2
+                    spacing: 0
                     topMargin: Theme.paddingMedium + (scanBanner.visible ? scanBanner.height + 8 : 0)
                     bottomMargin: 80
                     clip: true
                     reuseItems: true
+
+                    populate: Transition {
+                        NumberAnimation {
+                            property: "x"
+                            from: playlistView.width * root.folderTransitionDirection
+                            to: 0
+                            duration: root.folderTransitionDirection === 0 ? 0 : 260
+                            easing.type: Easing.OutCubic
+                        }
+                        NumberAnimation {
+                            property: "opacity"
+                            from: 0.0
+                            to: 1.0
+                            duration: root.folderTransitionDirection === 0 ? 120 : 220
+                            easing.type: Easing.OutQuad
+                        }
+                    }
+
+                    add: Transition {
+                        NumberAnimation {
+                            property: "opacity"
+                            from: 0.0
+                            to: 1.0
+                            duration: 160
+                            easing.type: Easing.OutQuad
+                        }
+                    }
 
                     delegate: ItemDelegate {
                         id: delegate
@@ -397,14 +436,16 @@ Item {
                         required property int depth
                         required property bool isVisible
                         required property bool matchesSearch
+                        required property string artworkSource
 
                         width: playlistView.width
-                        height: isVisible ? implicitHeight : 0
+                        height: isVisible ? 72 : 0
+                        opacity: isVisible ? 1.0 : 0.0
                         visible: isVisible
                         enabled: isVisible
                         topPadding: 8
                         bottomPadding: 8
-                        leftPadding: 15 + Math.max(0, depth) * 18
+                        leftPadding: 15
                         rightPadding: 15
                         Accessible.role: Accessible.ListItem
                         Accessible.name: isFolder ? name : title
@@ -412,44 +453,22 @@ Item {
                         onClicked: root.activateNode(nodeId, isFolder)
 
                         background: Rectangle {
-                            radius: 10
-                            color: delegate.isFocused ? "#26FF5C5C" : (delegate.hovered ? Theme.hoverColor : (delegate.isPlaying ? "#18FF5C5C" : "transparent"))
-                            border.width: delegate.isFocused ? 1 : 0
-                            border.color: delegate.isFocused ? Theme.accentColor : "transparent"
+                            color: delegate.hovered || delegate.isPlaying ? Theme.hoverColor : "transparent"
 
                             Behavior on color {
                                 ColorAnimation {
-                                    duration: Theme.animationDuration
+                                    duration: 150
                                 }
-                            }
-
-                            Rectangle {
-                                anchors.left: parent.left
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 3
-                                height: parent.height - 12
-                                radius: 2
-                                color: Theme.accentColor
-                                visible: delegate.isFocused
                             }
                         }
 
                         contentItem: RowLayout {
-                            spacing: 10
-
-                            Text {
-                                Layout.preferredWidth: 14
-                                Layout.alignment: Qt.AlignVCenter
-                                text: delegate.isFolder ? (delegate.isExpanded ? "▾" : "▸") : ""
-                                color: delegate.isFocused || delegate.isPlaying ? Theme.accentColor : Theme.secondaryTextColor
-                                font.pixelSize: 13
-                                horizontalAlignment: Text.AlignHCenter
-                            }
+                            spacing: 12
 
                             Rectangle {
+                                Layout.alignment: Qt.AlignVCenter
                                 Layout.preferredWidth: 44
                                 Layout.preferredHeight: 44
-                                Layout.alignment: Qt.AlignVCenter
                                 radius: 8
                                 color: delegate.isFolder ? Theme.accentColor : Theme.mainColor
                                 clip: true
@@ -458,10 +477,12 @@ Item {
                                     id: folderThumbIcon
                                     anchors.fill: parent
                                     anchors.margins: delegate.isFolder ? 10 : 0
-                                    source: delegate.isFolder ? "qrc:/qt/qml/Seriona/qml/assets/folder.svg" : ""
-                                    sourceSize: Qt.size(24, 24)
-                                    fillMode: Image.PreserveAspectFit
-                                    visible: false
+                                    source: delegate.isFolder ? "qrc:/qt/qml/Seriona/qml/assets/folder.svg" : delegate.artworkSource
+                                    sourceSize.width: delegate.isFolder ? 24 : 44
+                                    sourceSize.height: delegate.isFolder ? 24 : 44
+                                    fillMode: delegate.isFolder ? Image.PreserveAspectFit : Image.PreserveAspectCrop
+                                    asynchronous: !delegate.isFolder
+                                    visible: !delegate.isFolder && status === Image.Ready
                                 }
 
                                 ColorOverlay {
@@ -475,12 +496,12 @@ Item {
                                     anchors.fill: parent
                                     radius: 8
                                     color: "#20FFFFFF"
-                                    visible: !delegate.isFolder
+                                    visible: !delegate.isFolder && folderThumbIcon.status !== Image.Ready
 
                                     Text {
                                         anchors.centerIn: parent
                                         text: "♫"
-                                        color: delegate.isPlaying ? Theme.accentColor : "white"
+                                        color: "white"
                                         font.pixelSize: 22
                                     }
                                 }
@@ -500,16 +521,8 @@ Item {
                                         text: delegate.isFolder ? delegate.name : delegate.title
                                         color: delegate.isPlaying ? Theme.accentColor : Theme.textColor
                                         font.pixelSize: 13
-                                        font.weight: delegate.isFocused ? Font.Bold : Font.DemiBold
+                                        font.weight: Font.DemiBold
                                         elide: Text.ElideRight
-                                    }
-
-                                    Text {
-                                        Layout.preferredWidth: visible ? implicitWidth : 0
-                                        text: "▶"
-                                        color: Theme.accentColor
-                                        font.pixelSize: 10
-                                        visible: delegate.isPlaying
                                     }
                                 }
 

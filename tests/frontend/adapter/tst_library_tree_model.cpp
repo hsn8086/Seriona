@@ -74,6 +74,7 @@ private slots:
     void fallsBackToNodeOrderWithoutRoot();
     void fallsBackToNodeOrderWhenRootIdIsMissing();
     void mapsCueTrackIdToNodeId();
+    void exposesArtworkSourceForTrackRows();
     void handlesEmptyTree();
     void resetsOnVersionUpdate();
     void keepsRoleNamesStable();
@@ -195,6 +196,22 @@ void LibraryTreeModelTest::mapsCueTrackIdToNodeId()
     QCOMPARE(model.nodeIdForTrackId(QStringLiteral("cue-track-01")), QStringLiteral("cue-node"));
 }
 
+void LibraryTreeModelTest::exposesArtworkSourceForTrackRows()
+{
+    PlaylistNode track = makeTrack("track-cover", "track-cover-id", "Covered", "Artist", "Album");
+    track.song->artworkPath = "/music/cover.png";
+
+    PlaylistTreeSnapshot snapshot;
+    snapshot.version = 13;
+    snapshot.nodes = {track};
+
+    Seriona::App::LibraryModel model;
+    model.setPlaylistTreeSnapshot(snapshot);
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::ArtworkSourceRole).toString(), QStringLiteral("file:///music/cover.png"));
+}
+
 void LibraryTreeModelTest::handlesEmptyTree()
 {
     PlaylistTreeSnapshot snapshot;
@@ -258,6 +275,7 @@ void LibraryTreeModelTest::keepsRoleNamesStable()
     QCOMPARE(roles.value(Seriona::App::LibraryModel::DepthRole), QByteArray("depth"));
     QCOMPARE(roles.value(Seriona::App::LibraryModel::IsVisibleRole), QByteArray("isVisible"));
     QCOMPARE(roles.value(Seriona::App::LibraryModel::MatchesSearchRole), QByteArray("matchesSearch"));
+    QCOMPARE(roles.value(Seriona::App::LibraryModel::ArtworkSourceRole), QByteArray("artworkSource"));
 }
 
 void LibraryTreeModelTest::invalidChildNodeIdsAreSkipped()

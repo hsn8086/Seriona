@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.VirtualKeyboard
 import QtQuick.Layouts
 import QtQuick.Controls.Basic
 import Qt5Compat.GraphicalEffects
@@ -32,6 +31,88 @@ Window {
         shutdownRequested = true;
         close();
     }
+
+    function applySmokeScenario(scenario) {
+        if (scenario === "" || scenario === "startup")
+            return;
+
+        navigationController.restorePlaylistFromStartup();
+
+        if (scenario === "lyrics") {
+            navigationController.showLyricsView();
+            return;
+        }
+
+        if (scenario === "sidebar-tree") {
+            if (!navigationController.sidebarOpen)
+                navigationController.toggleSidebar();
+            appFacade.library.setFocusedNodeId("favorites");
+            appFacade.library.setPlayingTrackId("track-aurora");
+            return;
+        }
+
+        if (scenario === "empty-library") {
+            appFacade.library.setSearchQuery("__seriona_empty_smoke__");
+            return;
+        }
+
+        navigationController.showPlaybackView();
+    }
+
+    function smokeTextItems(item) {
+        var result = [];
+        if (!item || !item.visible)
+            return result;
+
+        if (item.text !== undefined && item.text !== "") {
+            result.push({
+                "text": String(item.text),
+                "x": Math.round(item.mapToItem(window.contentItem, 0, 0).x),
+                "y": Math.round(item.mapToItem(window.contentItem, 0, 0).y),
+                "width": Math.round(item.width || 0),
+                "height": Math.round(item.height || 0),
+                "paintedWidth": Math.round(item.paintedWidth || 0),
+                "paintedHeight": Math.round(item.paintedHeight || 0),
+                "truncatedRisk": item.paintedWidth !== undefined && item.width !== undefined && item.paintedWidth > item.width + 1
+            });
+        }
+
+        var children = item.children || [];
+        for (var i = 0; i < children.length; ++i)
+            result = result.concat(smokeTextItems(children[i]));
+        return result;
+    }
+
+    function smokeVisualStateJson() {
+        var state = {
+            "scenario": Application.property("seriona.smokeScenario") || "",
+            "window": {
+                "width": window.width,
+                "height": window.height,
+                "startupScreenVisible": navigationController.startupScreenVisible,
+                "currentView": navigationController.currentView,
+                "sidebarOpen": navigationController.sidebarOpen
+            },
+            "library": {
+                "focusedNodeId": appFacade.library.focusedNodeId,
+                "playingTrackId": appFacade.library.playingTrackId,
+                "searchQuery": appFacade.library.searchQuery,
+                "visibleNodeCount": appFacade.library.visibleNodeCount,
+                "scanStatus": appFacade.library.scanStatus,
+                "lastError": appFacade.library.lastError
+            },
+            "playback": {
+                "songTitle": appFacade.playback.songTitle,
+                "artistName": appFacade.playback.artistName,
+                "albumName": appFacade.playback.albumName,
+                "isPlaying": appFacade.playback.isPlaying
+            },
+            "texts": smokeTextItems(window.contentItem)
+        };
+        return JSON.stringify(state, null, 2);
+    }
+
+    Component.onCompleted: applySmokeScenario(Application.property("seriona.smokeScenario") || "")
 
     onClosing: function (closeEvent) {
         shutdownRequested = true;
@@ -232,32 +313,6 @@ Window {
                         libraryController: window.appFacade.library
                     }
                 }
-            }
-        }
-    }
-
-    // Virtual Keyboard Input Panel
-    InputPanel {
-        id: inputPanel
-        z: 99
-        y: window.height
-        width: window.width
-
-        states: State {
-            name: "visible"
-            when: inputPanel.active
-            PropertyChanges {
-                target: inputPanel
-                y: window.height - inputPanel.height
-            }
-        }
-        transitions: Transition {
-            from: ""
-            to: "visible"
-            reversible: true
-            NumberAnimation {
-                properties: "y"
-                easing.type: Easing.InOutQuad
             }
         }
     }

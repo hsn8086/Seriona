@@ -90,6 +90,7 @@ private slots:
     void localSearchFiltersAndFocusesFirstMatch();
     void emptySearchDoesNotMoveBrowserOrPlayback();
     void expansionAndBackStayLocal();
+    void enterFolderShowsFlatDirectChildrenOnly();
 };
 
 void SidebarLocalBrowsingTest::localSearchFiltersAndFocusesFirstMatch()
@@ -178,6 +179,33 @@ void SidebarLocalBrowsingTest::expansionAndBackStayLocal()
     QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-a"), LibraryModel::IsVisibleRole).toBool(), false);
     QCOMPARE(playSpy.count(), 0);
     QCOMPARE(currentSongSpy.count(), 0);
+}
+
+void SidebarLocalBrowsingTest::enterFolderShowsFlatDirectChildrenOnly()
+{
+    LibraryController controller;
+    controller.setPlaylistTreeSnapshot(makeSnapshot());
+    controller.setPlayingTrackId(QStringLiteral("track-c-id"));
+    QSignalSpy playSpy(&controller, &LibraryController::playItemRequested);
+
+    controller.enterFolder(QStringLiteral("album-a"));
+
+    QCOMPARE(controller.currentFolderName(), QStringLiteral("Album A"));
+    QCOMPARE(controller.canGoBack(), true);
+    QCOMPARE(controller.visibleNodeCount(), 2);
+    QCOMPARE(dataForNode(controller.model(), QStringLiteral("root"), LibraryModel::IsVisibleRole).toBool(), false);
+    QCOMPARE(dataForNode(controller.model(), QStringLiteral("album-a"), LibraryModel::IsVisibleRole).toBool(), false);
+    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-a"), LibraryModel::IsVisibleRole).toBool(), true);
+    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-b"), LibraryModel::IsVisibleRole).toBool(), true);
+    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-c"), LibraryModel::IsVisibleRole).toBool(), false);
+    QCOMPARE(playSpy.count(), 0);
+
+    controller.goBack();
+
+    QCOMPARE(controller.currentFolderName(), QStringLiteral("My Music"));
+    QCOMPARE(controller.visibleNodeCount(), 3);
+    QCOMPARE(dataForNode(controller.model(), QStringLiteral("album-a"), LibraryModel::IsVisibleRole).toBool(), true);
+    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-a"), LibraryModel::IsVisibleRole).toBool(), false);
 }
 
 QTEST_GUILESS_MAIN(SidebarLocalBrowsingTest)

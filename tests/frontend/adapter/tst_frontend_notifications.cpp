@@ -47,6 +47,7 @@ private slots:
     void libraryScanErrorExposesBackendMessage();
     void librarySnapshotUpdatedUsesVisibleDefaultMessage();
     void boundedQueueDropsOldestNotifications();
+    void clearHidesLatestNotification();
     void unsupportedSettingsActionsShowLocalFeedback_data();
     void unsupportedSettingsActionsShowLocalFeedback();
 };
@@ -144,6 +145,20 @@ void FrontendNotificationsTest::boundedQueueDropsOldestNotifications()
     QCOMPARE(items.size(), controller.capacity());
     QCOMPARE(items.first().toMap().value(QStringLiteral("message")).toString(), QStringLiteral("error 5"));
     QCOMPARE(controller.latestMessage(), QStringLiteral("error 16"));
+}
+
+void FrontendNotificationsTest::clearHidesLatestNotification()
+{
+    NotificationController controller;
+    QSignalSpy latestSpy(&controller, &NotificationController::latestNotificationChanged);
+
+    controller.showUnsupportedAction(QStringLiteral("Crossfade"));
+    controller.clear();
+
+    QCOMPARE(controller.hasNotification(), false);
+    QCOMPARE(controller.notificationCount(), 0);
+    QCOMPARE(controller.latestTitle(), QString());
+    QCOMPARE(latestSpy.count(), 2);
 }
 
 void FrontendNotificationsTest::unsupportedSettingsActionsShowLocalFeedback_data()

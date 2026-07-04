@@ -27,6 +27,11 @@ Item {
     readonly property real playbackTimelinePosition: playbackController.currentPosition
     readonly property real boundedPlaybackTimelinePosition: playbackTimelineDuration > 0 ? Math.max(0, Math.min(playbackTimelinePosition, playbackTimelineDuration)) : 0
     readonly property real playbackTimelineProgress: playbackTimelineDuration > 0 ? boundedPlaybackTimelinePosition / playbackTimelineDuration : 0
+    property bool toastVisible: false
+    property string toastTitle: ""
+    property string toastMessage: ""
+    property string toastCode: ""
+    property string toastSeverity: "info"
     required property LyricsModel lyricsState
 
     Binding {
@@ -67,19 +72,79 @@ Item {
         mainMenu.close();
     }
 
+    function showLatestNotificationToast() {
+        if (!root.notifications.hasNotification)
+            return;
+
+        toastTitle = root.notifications.latestTitle;
+        toastMessage = root.notifications.latestMessage;
+        toastCode = root.notifications.latestCode;
+        toastSeverity = root.notifications.latestSeverity;
+        notificationClearTimer.stop();
+        toastVisible = true;
+        notificationAutoHideTimer.restart();
+    }
+
+    function hideNotificationToast() {
+        if (!toastVisible)
+            return;
+
+        toastVisible = false;
+        notificationClearTimer.restart();
+    }
+
+    Component.onCompleted: showLatestNotificationToast()
+
+    Connections {
+        target: root.notifications
+
+        function onLatestNotificationChanged() {
+            root.showLatestNotificationToast();
+        }
+    }
+
+    Timer {
+        id: notificationAutoHideTimer
+        interval: 3200
+        onTriggered: root.hideNotificationToast()
+    }
+
+    Timer {
+        id: notificationClearTimer
+        interval: 260
+        onTriggered: {
+            if (!root.toastVisible)
+                root.notifications.clear();
+        }
+    }
+
     Rectangle {
-        id: notificationBanner
-        anchors.top: parent.top
-        anchors.topMargin: Theme.paddingMedium
+        id: notificationToast
         anchors.horizontalCenter: parent.horizontalCenter
-        width: Math.min(parent.width - Theme.paddingLarge * 2, 340)
-        height: notificationColumn.implicitHeight + Theme.paddingMedium
-        radius: 14
-        color: root.notifications.latestSeverity === "error" ? "#332D0D0D" : root.notifications.latestSeverity === "warning" ? "#332D2300" : Theme.baseColor
-        border.color: root.notifications.latestSeverity === "error" ? Theme.accentColor : root.notifications.latestSeverity === "warning" ? "#CCB35C00" : Theme.hoverColor
+        y: root.toastVisible ? parent.height / 2 - height / 2 : parent.height + height
+        width: Math.min(parent.width - Theme.paddingLarge * 2, 360)
+        height: notificationColumn.implicitHeight + Theme.paddingLarge
+        radius: height / 2
+        color: root.toastSeverity === "error" ? "#E62D0D0D" : root.toastSeverity === "warning" ? "#E62D2300" : "#E6202020"
+        border.color: root.toastSeverity === "error" ? Theme.accentColor : root.toastSeverity === "warning" ? "#CCB35C00" : Theme.hoverColor
         border.width: 1
-        visible: root.notifications.hasNotification
+        opacity: root.toastVisible ? 1.0 : 0.0
+        visible: opacity > 0.0 || root.toastVisible
         z: 300
+
+        Behavior on y {
+            NumberAnimation {
+                duration: 240
+                easing.type: root.toastVisible ? Easing.OutCubic : Easing.InCubic
+            }
+        }
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: 180
+                easing.type: root.toastVisible ? Easing.OutQuad : Easing.InQuad
+            }
+        }
 
         Column {
             id: notificationColumn
@@ -92,7 +157,7 @@ Item {
 
             Text {
                 width: parent.width
-                text: root.notifications.latestTitle
+                text: root.toastTitle
                 color: Theme.textColor
                 font.pixelSize: 12
                 font.bold: true
@@ -101,9 +166,9 @@ Item {
 
             Text {
                 width: parent.width
-                text: root.notifications.latestCode.length > 0 && root.notifications.latestCode !== "None" && root.notifications.latestCode !== "Unsupported"
-                    ? qsTr("%1（%2）").arg(root.notifications.latestMessage).arg(root.notifications.latestCode)
-                    : root.notifications.latestMessage
+                text: root.toastCode.length > 0 && root.toastCode !== "None" && root.toastCode !== "Unsupported"
+                    ? qsTr("%1（%2）").arg(root.toastMessage).arg(root.toastCode)
+                    : root.toastMessage
                 color: Theme.secondaryTextColor
                 font.pixelSize: 11
                 elide: Text.ElideRight
