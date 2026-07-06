@@ -1,0 +1,21 @@
+CompileFlags:
+  CompilationDatabase: build
+  Remove:
+    - -flto=*
+    - -fuse-linker-plugin
+  Add:
+    - -flto
+
+Diagnostics:
+  UnusedIncludes: Strict
+  MissingIncludes: Strict
+  Suppress:
+    - drv_unsupported_option_argument
+  
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+
+Hover:
+  ShowAKA: Yes

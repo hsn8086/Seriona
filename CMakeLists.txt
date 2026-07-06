@@ -3,9 +3,50 @@ cmake_minimum_required(VERSION 3.16)
 project(Seriona VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(QT_QML_GENERATE_QMLLS_INI ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick Concurrent QuickDialogs2)
+# Release 模式全量优化配置
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+        include(ProcessorCount)
+        ProcessorCount(N)
+        if(N EQUAL 0)
+            set(N 4)
+        endif()
+        
+        # LTO 配置：GCC 支持 -flto=N，Clang 只支持 -flto
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+            add_compile_options(-O3 -march=native -flto=${N} -DNDEBUG)
+            add_link_options(-flto=${N} -fuse-linker-plugin)
+        else()
+            # Clang: 使用 -flto 不带数字，并行由链接器自动处理
+            add_compile_options(-O3 -march=native -flto -DNDEBUG)
+            add_link_options(-flto)
+        endif()
+        
+        message(STATUS "Seriona frontend: Release mode with full optimization enabled (LTO jobs: ${N})")
+    elseif(MSVC)
+        add_compile_options(/O2 /GL /DNDEBUG)
+        add_link_options(/LTCG)
+        message(STATUS "Seriona frontend: Release mode with full optimization enabled")
+    endif()
+endif()
+
+# 多线程编译配置（充分利用 32 核 CPU）
+if(CMAKE_GENERATOR MATCHES "Ninja")
+    # Ninja 自动检测 CPU 核心数，无需额外配置
+    message(STATUS "Using Ninja generator - parallel compilation enabled automatically")
+elseif(CMAKE_GENERATOR MATCHES "Unix Makefiles")
+    include(ProcessorCount)
+    ProcessorCount(N)
+    if(NOT N EQUAL 0)
+        set(CMAKE_BUILD_PARALLEL_LEVEL ${N} CACHE STRING "Number of parallel build jobs")
+        message(STATUS "Parallel build enabled: ${N} jobs")
+    endif()
+endif()
+
+find_package(Qt6 REQUIRED COMPONENTS Quick Concurrent QuickDialogs2 Widgets)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -156,7 +197,7 @@ set_target_properties(appSeriona PROPERTIES
 )
 
 target_link_libraries(appSeriona
-    PRIVATE Qt6::Quick Qt6::Concurrent Qt6::QuickDialogs2
+    PRIVATE Qt6::Quick Qt6::Concurrent Qt6::QuickDialogs2 Qt6::Widgets
 )
 
 if(SERIONA_BACKEND_CONTROL_TARGET)
