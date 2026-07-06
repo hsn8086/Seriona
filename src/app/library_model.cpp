@@ -475,17 +475,104 @@ void LibraryModel::applyBrowsingState(const QSet<QString> &expandedNodeIds, cons
     const QString playingNodeId = nodeIdForTrackId(m_playingTrackId);
     const QString trimmedQuery = searchQuery.trimmed();
 
+    // 优化：提前计算可见节点集合，避免重复计算
+    QSet<QString> visibleNodeIds;
+    if (!browserRootNodeId.isEmpty()) {
+        // 进入文件夹模式：只有直接子节点可见
+        for (const Entry &entry : m_entries) {
+            if (!entry.nodeId.isEmpty() && m_parentById.value(entry.nodeId) == browserRootNodeId) {
+                visibleNodeIds.insert(entry.nodeId);
+            }
+        }
+    } else if (trimmedQuery.isEmpty()) {
+        // 展开/折叠模式：计算所有可见节点
+        const QString rootNodeId = firstNodeId();
+        for (const Entry &entry : m_entries) {
+            if (entry.nodeId.isEmpty() || entry.depth == 0) {
+                visibleNodeIds.insert(entry.nodeId);
+                continue;
+            }
+            
+            QString parentNodeId = m_parentById.value(entry.nodeId);
+            if (parentNodeId.isEmpty() || parentNodeId == rootNodeId) {
+                visibleNodeIds.insert(entry.nodeId);
+                continue;
+            }
+            
+            // 检查所有父节点是否展开
+            bool allParentsExpanded = true;
+            QSet<QString> visited;
+            while (!parentNodeId.isEmpty() && !visited.contains(parentNodeId)) {
+                visited.insert(parentNodeId);
+                if (parentNodeId != rootNodeId && !expandedNodeIds.contains(parentNodeId)) {
+                    allParentsExpanded = false;
+                    break;
+                }
+                parentNodeId = m_parentById.value(parentNodeId);
+            }
+            
+            if (allParentsExpanded) {
+                visibleNodeIds.insert(entry.nodeId);
+            }
+        }
+    }
+
+    // 批量更新：收集所有变化的行，最后一次性发送信号
+    int firstChangedRow = -1;
+    int lastChangedRow = -1;
+    QSet<int> changedRoles;
+
     for (int row = 0; row < m_entries.size(); ++row) {
         const Entry &entry = m_entries.at(row);
-        const bool matchesSearch = entryMatchesSearch(entry, trimmedQuery);
-        const bool isVisible = trimmedQuery.isEmpty()
-            ? (browserRootNodeId.isEmpty() ? entryVisibleByExpansion(entry, expandedNodeIds) : entryVisibleInBrowserRoot(entry, browserRootNodeId))
-            : matchesSearch;
-        setEntryRoleFlag(row, IsExpandedRole, expandedNodeIds.contains(entry.nodeId), true);
-        setEntryRoleFlag(row, IsFocusedRole, entry.nodeId == m_focusedNodeId, true);
-        setEntryRoleFlag(row, IsPlayingRole, !playingNodeId.isEmpty() && entry.nodeId == playingNodeId, true);
-        setEntryRoleFlag(row, MatchesSearchRole, matchesSearch, true);
-        setEntryRoleFlag(row, IsVisibleRole, isVisible, true);
+        
+        // 优化后的可见性计算：使用预计算的集合
+        bool isVisible;
+        if (!trimmedQuery.isEmpty()) {
+            // 搜索模式：检查匹配
+            const bool matchesSearch = entry.isFolder
+                ? (entry.name.contains(trimmedQuery, Qt::CaseInsensitive) || entry.parentName.contains(trimmedQuery, Qt::CaseInsensitive))
+                : (entry.title.contains(trimmedQuery, Qt::CaseInsensitive) || entry.artist.contains(trimmedQuery, Qt::CaseInsensitive) 
+                   || entry.album.contains(trimmedQuery, Qt::CaseInsensitive) || entry.format.contains(trimmedQuery, Qt::CaseInsensitive));
+            isVisible = matchesSearch;
+            
+            if (setEntryRoleFlag(row, MatchesSearchRole, matchesSearch, false)) {
+                changedRoles.insert(MatchesSearchRole);
+                if (firstChangedRow < 0) firstChangedRow = row;
+                lastChangedRow = row;
+            }
+        } else {
+            // 非搜索模式：使用预计算的可见集合
+            isVisible = visibleNodeIds.contains(entry.nodeId);
+        }
+        
+        // 批量更新，不立即通知
+        if (setEntryRoleFlag(row, IsExpandedRole, expandedNodeIds.contains(entry.nodeId), false)) {
+            changedRoles.insert(IsExpandedRole);
+            if (firstChangedRow < 0) firstChangedRow = row;
+            lastChangedRow = row;
+        }
+        if (setEntryRoleFlag(row, IsFocusedRole, entry.nodeId == m_focusedNodeId, false)) {
+            changedRoles.insert(IsFocusedRole);
+            if (firstChangedRow < 0) firstChangedRow = row;
+            lastChangedRow = row;
+        }
+        if (setEntryRoleFlag(row, IsPlayingRole, !playingNodeId.isEmpty() && entry.nodeId == playingNodeId, false)) {
+            changedRoles.insert(IsPlayingRole);
+            if (firstChangedRow < 0) firstChangedRow = row;
+            lastChangedRow = row;
+        }
+        if (setEntryRoleFlag(row, IsVisibleRole, isVisible, false)) {
+            changedRoles.insert(IsVisibleRole);
+            if (firstChangedRow < 0) firstChangedRow = row;
+            lastChangedRow = row;
+        }
+    }
+
+    // 一次性发送 dataChanged 信号，覆盖所有变化的行
+    if (firstChangedRow >= 0 && lastChangedRow >= 0) {
+        const QModelIndex firstIndex = index(firstChangedRow, 0);
+        const QModelIndex lastIndex = index(lastChangedRow, 0);
+        emit dataChanged(firstIndex, lastIndex, changedRoles.values());
     }
 }
 
