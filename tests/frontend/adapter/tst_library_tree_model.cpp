@@ -200,6 +200,7 @@ void LibraryTreeModelTest::exposesArtworkSourceForTrackRows()
 {
     PlaylistNode track = makeTrack("track-cover", "track-cover-id", "Covered", "Artist", "Album");
     track.song->artworkPath = "/music/cover.png";
+    track.song->thumbnailPath = "/music/thumbnails/cover.png";
 
     PlaylistTreeSnapshot snapshot;
     snapshot.version = 13;
@@ -209,7 +210,7 @@ void LibraryTreeModelTest::exposesArtworkSourceForTrackRows()
     model.setPlaylistTreeSnapshot(snapshot);
 
     QCOMPARE(model.rowCount(), 1);
-    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::ArtworkSourceRole).toString(), QStringLiteral("file:///music/cover.png"));
+    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::ArtworkSourceRole).toString(), QStringLiteral("file:///music/thumbnails/cover.png"));
 }
 
 void LibraryTreeModelTest::handlesEmptyTree()

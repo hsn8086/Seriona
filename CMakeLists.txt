@@ -106,6 +106,14 @@ else()
             message(FATAL_ERROR "Seriona backend was added, but neither SerionaBackend::audio nor seriona_audio exists.")
         endif()
 
+        if(TARGET SerionaBackend::app)
+            set(SERIONA_BACKEND_APP_TARGET SerionaBackend::app)
+        elseif(TARGET seriona_app)
+            set(SERIONA_BACKEND_APP_TARGET seriona_app)
+        else()
+            message(FATAL_ERROR "Seriona backend was added, but neither SerionaBackend::app nor seriona_app exists.")
+        endif()
+
         message(STATUS "Seriona frontend will link backend target: ${SERIONA_BACKEND_CONTROL_TARGET}")
     else()
         message(FATAL_ERROR "Seriona backend source is required unless SERIONA_BACKEND_SOURCE_DIR is empty for mock-only mode.")
@@ -218,7 +226,7 @@ target_link_libraries(appSeriona
 
 if(SERIONA_BACKEND_CONTROL_TARGET)
     target_link_libraries(appSeriona
-        PRIVATE ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET}
+        PRIVATE ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET} ${SERIONA_BACKEND_APP_TARGET}
     )
 endif()
 
@@ -378,7 +386,7 @@ if(BUILD_TESTING)
         )
         if(SERIONA_BACKEND_CONTROL_TARGET)
             target_link_libraries(seriona_frontend_app_facade_smoke_mode
-                PRIVATE ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET}
+                PRIVATE ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET} ${SERIONA_BACKEND_APP_TARGET}
             )
         endif()
     add_test(NAME seriona_frontend_app_facade_smoke_mode COMMAND seriona_frontend_app_facade_smoke_mode)
@@ -406,7 +414,7 @@ if(BUILD_TESTING)
             PRIVATE SERIONA_HAS_BACKEND=1
         )
         target_link_libraries(seriona_frontend_startup_restore_tests
-            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET}
+            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET} ${SERIONA_BACKEND_APP_TARGET}
         )
 
         add_test(NAME seriona_frontend_startup_persist_root COMMAND seriona_frontend_startup_restore_tests scanLibraryPersistsRootForStartupRestore)
@@ -465,7 +473,7 @@ if(BUILD_TESTING)
             PRIVATE SERIONA_HAS_BACKEND=1
         )
         target_link_libraries(seriona_frontend_playback_command_tests
-            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET}
+            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET} ${SERIONA_BACKEND_APP_TARGET}
         )
 
         add_test(NAME seriona_frontend_playback_command_mapping COMMAND seriona_frontend_playback_command_tests visiblePlaybackControlsSubmitCommands)
@@ -580,7 +588,7 @@ if(BUILD_TESTING)
             PRIVATE SERIONA_HAS_BACKEND=1
         )
         target_link_libraries(seriona_frontend_backend_bridge_tests
-            PRIVATE Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
+            PRIVATE Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_APP_TARGET}
         )
 
         add_test(NAME seriona_frontend_backend_bridge_threading COMMAND seriona_frontend_backend_bridge_tests threading)

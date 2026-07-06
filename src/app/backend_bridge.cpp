@@ -2,8 +2,11 @@
 
 #if SERIONA_HAS_BACKEND
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QMetaObject>
 #include <QPointer>
+
+#include "seriona/app/runtime_paths.h"
 
 #include <exception>
 #include <utility>
@@ -171,7 +174,17 @@ const std::deque<seriona::control::ControlDomainNotification> &BackendBridge::no
 BackendBridge::ControllerFactory BackendBridge::defaultControllerFactory()
 {
     return [] {
-        return seriona::control::makeProductionMediaController(seriona::control::MediaControllerOptions{});
+#if SERIONA_HAS_BACKEND
+        const auto exePath = QCoreApplication::applicationFilePath().toStdString();
+        const auto runtimePaths = seriona::app::resolveRuntimePaths(exePath);
+        runtimePaths.ensureDirectoriesExist();
+        return seriona::control::makeProductionMediaController(
+            seriona::control::MediaControllerOptions{},
+            runtimePaths.databasePath,
+            runtimePaths.artworkDir);
+#else
+        return nullptr;
+#endif
     };
 }
 

@@ -170,8 +170,8 @@ LibraryModel::Entry entryFromNode(const seriona::scanner::PlaylistNode &node, co
     entry.sampleRate = song.sampleRate.has_value() ? static_cast<int>(*song.sampleRate) : 0;
     entry.bitDepth = song.bitDepth.has_value() ? static_cast<int>(*song.bitDepth) : 0;
     entry.duration = song.duration.has_value() ? formatDuration(*song.duration) : QString();
-    if (song.artworkPath && !song.artworkPath->empty()) {
-        entry.artworkSource = QUrl::fromLocalFile(QString::fromStdString(song.artworkPath->string())).toString();
+    if (song.thumbnailPath && !song.thumbnailPath->empty()) {
+        entry.artworkSource = QUrl::fromLocalFile(QString::fromStdString(song.thumbnailPath->string())).toString();
     }
     return entry;
 }
