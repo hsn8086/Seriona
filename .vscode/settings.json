@@ -1,20 +1,16 @@
 {
-    "MicroPython.executeButton": [
-        {
-            "text": "▶",
-            "tooltip": "运行",
-            "alignment": "left",
-            "command": "extension.executeFile",
-            "priority": 3.5
-        }
-    ],
-    "MicroPython.syncButton": [
-        {
-            "text": "$(sync)",
-            "tooltip": "同步",
-            "alignment": "left",
-            "command": "extension.execute",
-            "priority": 4
-        }
-    ]
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/build",
+    "--background-index",
+    "--clang-tidy",
+    "--header-insertion=never",
+    "-j=32"
+  ],
+  "clangd.fallbackFlags": [
+    "-std=c++23"
+  ],
+  "cmake.buildArgs": [
+    "-j32"
+  ],
+  "cmake.parallelJobs": 32
 }
