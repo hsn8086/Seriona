@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(QT_QML_GENERATE_QMLLS_INI ON)
 
+include(FetchContent)
+
 # Release 模式全量优化配置
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
@@ -52,9 +54,10 @@ qt_standard_project_setup(REQUIRES 6.8)
 
 option(BUILD_TESTING "Build tests" ON)
 
-set(SERIONA_BACKEND_SOURCE_DIR "../../cppProject(app_and_lib)/Seriona_Backend" CACHE PATH "Seriona backend source tree")
+set(SERIONA_BACKEND_SOURCE_DIR "../Seriona_Backend" CACHE PATH "Seriona backend source tree")
 set(SERIONA_BACKEND_CONTROL_TARGET "")
 set(SERIONA_BACKEND_AUDIO_TARGET "")
+set(SERIONA_BACKEND_BINARY_DIR "")
 
 if(SERIONA_BACKEND_SOURCE_DIR STREQUAL "")
     message(STATUS "SERIONA_BACKEND_SOURCE_DIR is empty; building appSeriona in mock-only mode.")
@@ -67,11 +70,24 @@ else()
 
     if(EXISTS "${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}/CMakeLists.txt")
         message(STATUS "Seriona backend source found: ${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}")
+        set(SERIONA_BACKEND_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/Seriona_Backend")
+    else()
+        message(STATUS "Seriona backend source not found at ${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}; fetching from https://github.com/kaizen857/Seriona_Backend.git")
+        FetchContent_Populate(seriona_backend
+            GIT_REPOSITORY https://github.com/kaizen857/Seriona_Backend.git
+            GIT_TAG main
+            GIT_SHALLOW TRUE
+        )
+        set(SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR "${seriona_backend_SOURCE_DIR}")
+        set(SERIONA_BACKEND_BINARY_DIR "${seriona_backend_BINARY_DIR}")
+    endif()
+
+    if(EXISTS "${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}/CMakeLists.txt")
         set(SERIONA_BUILD_APP OFF CACHE BOOL "Build the standalone Seriona backend app" FORCE)
         set(SERIONA_BUILD_TESTS OFF CACHE BOOL "Build Seriona tests" FORCE)
         set(SERIONA_FRONTEND_BUILD_TESTING "${BUILD_TESTING}")
         set(BUILD_TESTING OFF CACHE BOOL "Build tests" FORCE)
-        add_subdirectory("${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/Seriona_Backend" EXCLUDE_FROM_ALL)
+        add_subdirectory("${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}" "${SERIONA_BACKEND_BINARY_DIR}" EXCLUDE_FROM_ALL)
         set(BUILD_TESTING "${SERIONA_FRONTEND_BUILD_TESTING}" CACHE BOOL "Build tests" FORCE)
 
         if(TARGET SerionaBackend::control)
@@ -92,7 +108,7 @@ else()
 
         message(STATUS "Seriona frontend will link backend target: ${SERIONA_BACKEND_CONTROL_TARGET}")
     else()
-        message(STATUS "Seriona backend source not found at ${SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR}; building appSeriona in mock-only mode.")
+        message(FATAL_ERROR "Seriona backend source is required unless SERIONA_BACKEND_SOURCE_DIR is empty for mock-only mode.")
     endif()
 endif()
 
