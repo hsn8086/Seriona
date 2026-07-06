@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic
-import QtQuick.Dialogs
 import Qt5Compat.GraphicalEffects
+import Qt.labs.platform as Platform
 import Seriona
 
 Item {
@@ -386,33 +386,6 @@ Item {
                     clip: true
                     reuseItems: true
 
-                    populate: Transition {
-                        NumberAnimation {
-                            property: "x"
-                            from: playlistView.width * root.folderTransitionDirection
-                            to: 0
-                            duration: root.folderTransitionDirection === 0 ? 0 : 260
-                            easing.type: Easing.OutCubic
-                        }
-                        NumberAnimation {
-                            property: "opacity"
-                            from: 0.0
-                            to: 1.0
-                            duration: root.folderTransitionDirection === 0 ? 120 : 220
-                            easing.type: Easing.OutQuad
-                        }
-                    }
-
-                    add: Transition {
-                        NumberAnimation {
-                            property: "opacity"
-                            from: 0.0
-                            to: 1.0
-                            duration: 160
-                            easing.type: Easing.OutQuad
-                        }
-                    }
-
                     delegate: ItemDelegate {
                         id: delegate
                         required property int index
@@ -440,7 +413,6 @@ Item {
 
                         width: playlistView.width
                         height: isVisible ? 72 : 0
-                        opacity: isVisible ? 1.0 : 0.0
                         visible: isVisible
                         enabled: isVisible
                         topPadding: 8
@@ -655,11 +627,11 @@ Item {
             }
         }
 
-        FolderDialog {
+        Platform.FolderDialog {
             id: sidebarFolderDialog
             title: qsTr("选择音乐文件夹")
 
-            onAccepted: root.appFacade.scanLibrary(selectedFolder)
+            onAccepted: root.appFacade.scanLibrary(folder)
         }
 
         MouseArea {

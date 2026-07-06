@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic
 import Qt5Compat.GraphicalEffects
+import QtCore
 import Seriona
 
 Window {
@@ -85,7 +86,7 @@ Window {
 
     function smokeVisualStateJson() {
         var state = {
-            "scenario": Application.property("seriona.smokeScenario") || "",
+            "scenario": Qt.application.property("seriona.smokeScenario") || "",
             "window": {
                 "width": window.width,
                 "height": window.height,
@@ -112,7 +113,7 @@ Window {
         return JSON.stringify(state, null, 2);
     }
 
-    Component.onCompleted: applySmokeScenario(Application.property("seriona.smokeScenario") || "")
+    Component.onCompleted: applySmokeScenario(Qt.application.property("seriona.smokeScenario") || "")
 
     onClosing: function (closeEvent) {
         shutdownRequested = true;

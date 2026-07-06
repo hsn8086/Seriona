@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Dialogs
 import QtQuick.Layouts
+import Qt.labs.platform as Platform
 import Seriona
 
 Item {
@@ -166,12 +166,12 @@ Item {
         }
     }
 
-    FolderDialog {
+    Platform.FolderDialog {
         id: startupFolderDialog
         title: qsTr("选择音乐文件夹")
 
         onAccepted: {
-            if (root.appFacade.scanLibrary(selectedFolder))
+            if (root.appFacade.scanLibrary(folder))
                 root.navigationController.addFolderFromStartup();
         }
     }
