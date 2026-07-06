@@ -271,12 +271,16 @@ void NotificationController::append(NotificationEntry entry)
     }
 
     const NotificationEntry &latest = m_notifications.last();
-    const QString line = QStringLiteral("Frontend notification kind=%1 code=%2 message=%3")
-                             .arg(latest.kind, latest.code, latest.message);
-    if (latest.severity == QStringLiteral("error")) {
-        qWarning().noquote() << line;
-    } else {
-        qInfo().noquote() << line;
+    
+    // 只输出错误和警告，跳过普通信息通知（避免进度更新刷屏）
+    if (latest.severity == QStringLiteral("error") || latest.severity == QStringLiteral("warning")) {
+        const QString line = QStringLiteral("Frontend notification kind=%1 code=%2 message=%3")
+                                 .arg(latest.kind, latest.code, latest.message);
+        if (latest.severity == QStringLiteral("error")) {
+            qWarning().noquote() << line;
+        } else {
+            qInfo().noquote() << line;
+        }
     }
 
     emit notificationsChanged();
