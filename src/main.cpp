@@ -1,9 +1,15 @@
+#include <QApplication>
 #include <QCoreApplication>
 #include <QDateTime>
-#include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QStringList>
 #include <QTimer>
+
+#ifdef SERIONA_HAS_BACKEND
+extern "C" {
+#include <libavutil/log.h>
+}
+#endif
 
 #include <filesystem>
 #include <fstream>
@@ -89,7 +95,13 @@ bool writeSmokeLog(const SmokeOptions &options, QString *error)
 
 int main(int argc, char *argv[])
 {
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
+
+#if SERIONA_HAS_BACKEND && !defined(NDEBUG)
+    av_log_set_level(AV_LOG_WARNING);
+#elif SERIONA_HAS_BACKEND
+    av_log_set_level(AV_LOG_QUIET);
+#endif
 
     SmokeOptions smokeOptions;
     QString smokeError;
@@ -104,6 +116,7 @@ int main(int argc, char *argv[])
             return 2;
         }
 
+        app.setProperty("seriona.smokeScenario", smokeOptions.scenario);
         app.setProperty("seriona.backendBridgeAutostartEnabled", false);
 
         if (!writeSmokeLog(smokeOptions, &smokeError)) {
