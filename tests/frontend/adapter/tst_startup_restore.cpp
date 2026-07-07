@@ -31,13 +31,23 @@ MediaControllerCommandResult acceptedResult()
     return result;
 }
 
+MediaControllerCommandResult rejectedResult(const std::string &message)
+{
+    MediaControllerCommandResult result;
+    result.accepted = false;
+    result.code = MediaControllerErrorCode::BackendRejected;
+    result.message = message;
+    return result;
+}
+
 struct ScanRecorder {
     std::vector<QString> roots;
+    MediaControllerCommandResult result = acceptedResult();
 
     MediaControllerCommandResult record(const QString &rootPath)
     {
         roots.push_back(rootPath);
-        return acceptedResult();
+        return result;
     }
 };
 }
@@ -129,6 +139,29 @@ void StartupRestoreTest::restoreSavedRootScansAndEntersMainShell()
     QCOMPARE(savedRoot(), canonicalRoot);
     QCOMPARE(facade.navigation()->startupScreenVisible(), false);
     QCOMPARE(facade.navigation()->currentView(), QStringLiteral("playback"));
+
+    QTemporaryDir rejectedDir;
+    QVERIFY(rejectedDir.isValid());
+    const QString rejectedRoot = QFileInfo(rejectedDir.path()).absoluteFilePath();
+    writeSavedRoot(rejectedRoot);
+
+    AppFacade rejectedFacade;
+    ScanRecorder rejectedRecorder;
+    rejectedRecorder.result = rejectedResult("startup restore scan rejected");
+    rejectedFacade.library()->setScanExecutor([&rejectedRecorder](const QString &rootPath) {
+        return rejectedRecorder.record(rootPath);
+    });
+    rejectedFacade.navigation()->showLyricsView();
+    rejectedFacade.navigation()->syncSidebarForDockCapability(true);
+
+    QCOMPARE(rejectedFacade.restorePlaylistFromStartup(), false);
+
+    QCOMPARE(rejectedRecorder.roots, std::vector<QString>{rejectedRoot});
+    QCOMPARE(rejectedFacade.navigation()->startupScreenVisible(), true);
+    QCOMPARE(rejectedFacade.navigation()->currentView(), QStringLiteral("lyrics"));
+    QCOMPARE(rejectedFacade.navigation()->sidebarOpen(), true);
+    QCOMPARE(rejectedFacade.library()->scanStatus(), QStringLiteral("error"));
+    QCOMPARE(rejectedFacade.library()->lastError(), QStringLiteral("startup restore scan rejected"));
 }
 
 void StartupRestoreTest::missingSavedRoot_data()
@@ -164,11 +197,15 @@ void StartupRestoreTest::missingSavedRoot()
     facade.library()->setScanExecutor([&recorder](const QString &rootPath) {
         return recorder.record(rootPath);
     });
+    facade.navigation()->showLyricsView();
+    facade.navigation()->syncSidebarForDockCapability(true);
 
     QCOMPARE(facade.restorePlaylistFromStartup(), false);
 
     QCOMPARE(recorder.roots.size(), std::size_t{0});
     QCOMPARE(facade.navigation()->startupScreenVisible(), true);
+    QCOMPARE(facade.navigation()->currentView(), QStringLiteral("lyrics"));
+    QCOMPARE(facade.navigation()->sidebarOpen(), true);
     QCOMPARE(facade.library()->savedRootPath(), QString());
     QCOMPARE(facade.library()->scanStatus(), QStringLiteral("error"));
     QVERIFY(facade.library()->lastError().contains(messageFragment));
