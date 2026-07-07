@@ -12,9 +12,10 @@
 - 先跑 `cmake -B build` 再做 QML LSP/qmlls 诊断；`.qmlls.ini` 的 `buildDir` 固定指向本仓库 `build/`。
 - 测试：`ctest --test-dir build` 或 `cmake --build build --target test`；单个测试用 `./build/seriona_frontend_<test_name>`。
 - `./scripts/verify-middle-layer.sh` 会配置、构建、跑断言规则并做 offscreen smoke（期望超时退出码 124）；该脚本强制检查 `docs/architecture/backend-integration-contract.md` 存在。
+- **Smoke 测试**：`./build/appSeriona --smoke-scenario=<name> --smoke-exit-ms=<ms>`；支持场景：`startup`/`main-playback`/`lyrics`/`sidebar-tree`/`settings-menu`/`empty-library`，默认 1000ms 后退出，日志输出到 `.omo/evidence/smoke/smoke-<scenario>.log`。验证脚本用 `QT_QPA_PLATFORM=offscreen timeout 5s` 模式。
 
 ## 后端集成（可选）
-- CMake 变量 `SERIONA_BACKEND_SOURCE_DIR` 指向外部 C++ 后端源码树（默认 `../../cppProject(app_and_lib)/Seriona_Backend`）；后端不存在时以 mock-only 模式构建。
+- CMake 变量 `SERIONA_BACKEND_SOURCE_DIR` 指向外部 C++ 后端源码树（**默认 `../Seriona_Backend`**，相对于本仓库根目录）；后端不存在时尝试从 `https://github.com/kaizen857/Seriona_Backend.git` FetchContent 拉取，仍失败则退回 mock-only 模式。
 - 后端存在时，CMake 会 `add_subdirectory` 后端并链接 `SerionaBackend::control` 和 `SerionaBackend::audio`，同时定义 `SERIONA_HAS_BACKEND=1`。
 - 多数 `tests/frontend/adapter/tst_*.cpp` 需要后端；mock-only 模式下这些测试不会被添加到 CTest。
 
