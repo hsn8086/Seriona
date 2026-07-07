@@ -1,7 +1,11 @@
 #include "app_facade.h"
 
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+#include <QIODevice>
 #include <QObject>
+#include <QStringList>
 #include <QVariant>
 #include <QtTest/QTest>
 
@@ -93,6 +97,7 @@ class AppFacadeSmokeModeTest : public QObject
 
 private slots:
     void doesNotStartBackendBridgeWhenSmokeDisablesAutostart();
+    void sourceKeepsFacadeThin();
     void libraryControllerSubmitsTrackActivationThroughBridge();
     void lateLibrarySnapshotReappliesPlayingHighlight();
 };
@@ -106,6 +111,34 @@ void AppFacadeSmokeModeTest::doesNotStartBackendBridgeWhenSmokeDisablesAutostart
     QCOMPARE(facade.backendBridgeStartedForTests(), false);
 
     QCoreApplication::instance()->setProperty("seriona.backendBridgeAutostartEnabled", QVariant{});
+}
+
+void AppFacadeSmokeModeTest::sourceKeepsFacadeThin()
+{
+    const QDir sourceRoot(QCoreApplication::applicationDirPath() + QStringLiteral("/.."));
+    QFile header(sourceRoot.filePath(QStringLiteral("src/app/app_facade.h")));
+    QFile implementation(sourceRoot.filePath(QStringLiteral("src/app/app_facade.cpp")));
+
+    QVERIFY2(header.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(header.fileName()));
+    QVERIFY2(implementation.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(implementation.fileName()));
+
+    const QString headerText = QString::fromUtf8(header.readAll());
+    const QString implementationText = QString::fromUtf8(implementation.readAll());
+
+    const QStringList forbiddenFacadeTokens = {
+        QStringLiteral("requestWaveformForSnapshots"),
+        QStringLiteral("syncLibraryPlayingTrackId"),
+        QStringLiteral("m_currentWaveformCacheKey"),
+        QStringLiteral("makeWaveformRequest"),
+        QStringLiteral("playingTrackIdFromSnapshot"),
+    };
+
+    for (const QString &token : forbiddenFacadeTokens) {
+        const QByteArray headerMessage = QStringLiteral("AppFacade header still owns business token: %1").arg(token).toUtf8();
+        QVERIFY2(!headerText.contains(token), headerMessage.constData());
+        const QByteArray implementationMessage = QStringLiteral("AppFacade implementation still owns business token: %1").arg(token).toUtf8();
+        QVERIFY2(!implementationText.contains(token), implementationMessage.constData());
+    }
 }
 
 void AppFacadeSmokeModeTest::libraryControllerSubmitsTrackActivationThroughBridge()
