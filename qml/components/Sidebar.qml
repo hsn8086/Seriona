@@ -405,16 +405,10 @@ Item {
                         required property bool isFolder
                         required property bool isPlaying
                         required property bool isFocused
-                        required property bool isExpanded
-                        required property int depth
-                        required property bool isVisible
-                        required property bool matchesSearch
                         required property string artworkSource
 
                         width: playlistView.width
-                        height: isVisible ? 72 : 0
-                        visible: isVisible
-                        enabled: isVisible
+                        height: 72
                         topPadding: 8
                         bottomPadding: 8
                         leftPadding: 15
