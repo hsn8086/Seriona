@@ -72,13 +72,18 @@ PlaylistTreeSnapshot makeSnapshot()
     return snapshot;
 }
 
-QVariant dataForNode(const LibraryModel *model, const QString &nodeId, LibraryModel::Role role)
+QString nodeIdAt(const LibraryModel *model, int row)
 {
-    const int row = model->rowForNodeId(nodeId);
-    if (row < 0) {
-        return {};
+    return model->data(model->index(row, 0), LibraryModel::NodeIdRole).toString();
+}
+
+void expectProjection(const LibraryModel *model, const QVector<QString> &nodeIds)
+{
+    QCOMPARE(model->rowCount(), nodeIds.size());
+    for (int row = 0; row < nodeIds.size(); ++row) {
+        QCOMPARE(nodeIdAt(model, row), nodeIds.at(row));
+        QCOMPARE(model->rowForNodeId(nodeIds.at(row)), row);
     }
-    return model->data(model->index(row, 0), role);
 }
 }
 
@@ -89,8 +94,9 @@ class SidebarLocalBrowsingTest : public QObject
 private slots:
     void localSearchFiltersAndFocusesFirstMatch();
     void emptySearchDoesNotMoveBrowserOrPlayback();
-    void expansionAndBackStayLocal();
+    void enterFolderAndBackStayLocal();
     void enterFolderShowsFlatDirectChildrenOnly();
+    void selectingRootProjectionNodeDoesNotEnableBack();
 };
 
 void SidebarLocalBrowsingTest::localSearchFiltersAndFocusesFirstMatch()
@@ -98,16 +104,14 @@ void SidebarLocalBrowsingTest::localSearchFiltersAndFocusesFirstMatch()
     LibraryController controller;
     controller.setPlaylistTreeSnapshot(makeSnapshot());
     controller.setPlayingTrackId(QStringLiteral("track-c-id"));
-    QSignalSpy playSpy(&controller, &LibraryController::playItemRequested);
-    QSignalSpy currentSongSpy(&controller, &LibraryController::currentSongLocationRequested);
     QSignalSpy scrollSpy(&controller, &LibraryController::scrollRequestChanged);
 
     controller.setSearchQuery(QStringLiteral("Song B"));
 
     QCOMPARE(controller.visibleNodeCount(), 1);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-b"), LibraryModel::MatchesSearchRole).toBool(), true);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-b"), LibraryModel::IsVisibleRole).toBool(), true);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-a"), LibraryModel::IsVisibleRole).toBool(), false);
+    expectProjection(controller.model(), {QStringLiteral("track-b")});
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("track-a")), -1);
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("album-a")), -1);
 
     controller.submitSearch();
 
@@ -115,8 +119,6 @@ void SidebarLocalBrowsingTest::localSearchFiltersAndFocusesFirstMatch()
     QCOMPARE(controller.selectedBrowserNodeId(), QStringLiteral("track-b"));
     QCOMPARE(controller.scrollRequest(), QStringLiteral("track-b"));
     QCOMPARE(controller.playingTrackId(), QStringLiteral("track-c-id"));
-    QCOMPARE(playSpy.count(), 0);
-    QCOMPARE(currentSongSpy.count(), 0);
     QCOMPARE(scrollSpy.count(), 1);
 }
 
@@ -124,61 +126,58 @@ void SidebarLocalBrowsingTest::emptySearchDoesNotMoveBrowserOrPlayback()
 {
     LibraryController controller;
     controller.setPlaylistTreeSnapshot(makeSnapshot());
-    controller.setSelectedBrowserNodeId(QStringLiteral("track-a"));
+    controller.setSelectedBrowserNodeId(QStringLiteral("album-a"));
     controller.setPlayingTrackId(QStringLiteral("track-c-id"));
-    QSignalSpy playSpy(&controller, &LibraryController::playItemRequested);
-    QSignalSpy currentSongSpy(&controller, &LibraryController::currentSongLocationRequested);
     QSignalSpy scrollSpy(&controller, &LibraryController::scrollRequestChanged);
 
     controller.setSearchQuery(QStringLiteral("missing local song"));
     controller.submitSearch();
 
     QCOMPARE(controller.visibleNodeCount(), 0);
-    QCOMPARE(controller.focusedNodeId(), QStringLiteral("track-a"));
-    QCOMPARE(controller.selectedBrowserNodeId(), QStringLiteral("track-a"));
+    expectProjection(controller.model(), {});
+    QCOMPARE(controller.focusedNodeId(), QStringLiteral("album-a"));
+    QCOMPARE(controller.selectedBrowserNodeId(), QStringLiteral("album-a"));
     QCOMPARE(controller.scrollRequest(), QString());
     QCOMPARE(controller.playingTrackId(), QStringLiteral("track-c-id"));
-    QCOMPARE(playSpy.count(), 0);
-    QCOMPARE(currentSongSpy.count(), 0);
     QCOMPARE(scrollSpy.count(), 0);
 
     controller.clearSearch();
 
-    QCOMPARE(controller.visibleNodeCount(), 3);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("album-a"), LibraryModel::IsVisibleRole).toBool(), true);
+    QCOMPARE(controller.visibleNodeCount(), 2);
+    expectProjection(controller.model(), {QStringLiteral("album-a"), QStringLiteral("track-c")});
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("root")), -1);
 }
 
-void SidebarLocalBrowsingTest::expansionAndBackStayLocal()
+void SidebarLocalBrowsingTest::enterFolderAndBackStayLocal()
 {
     LibraryController controller;
     controller.setPlaylistTreeSnapshot(makeSnapshot());
     controller.setPlayingTrackId(QStringLiteral("track-c-id"));
-    QSignalSpy playSpy(&controller, &LibraryController::playItemRequested);
-    QSignalSpy currentSongSpy(&controller, &LibraryController::currentSongLocationRequested);
 
-    QCOMPARE(controller.visibleNodeCount(), 3);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-a"), LibraryModel::IsVisibleRole).toBool(), false);
+    QCOMPARE(controller.currentFolderName(), QStringLiteral("My Music"));
+    QCOMPARE(controller.visibleNodeCount(), 2);
+    expectProjection(controller.model(), {QStringLiteral("album-a"), QStringLiteral("track-c")});
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("root")), -1);
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("track-a")), -1);
 
-    controller.expandNode(QStringLiteral("album-a"));
+    controller.enterFolder(QStringLiteral("album-a"));
 
-    QCOMPARE(controller.visibleNodeCount(), 5);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("album-a"), LibraryModel::IsExpandedRole).toBool(), true);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-a"), LibraryModel::IsVisibleRole).toBool(), true);
+    QCOMPARE(controller.currentFolderName(), QStringLiteral("Album A"));
+    QCOMPARE(controller.canGoBack(), true);
+    QCOMPARE(controller.visibleNodeCount(), 2);
+    expectProjection(controller.model(), {QStringLiteral("track-a"), QStringLiteral("track-b")});
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("album-a")), -1);
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("track-c")), -1);
 
-    controller.selectBrowserNode(QStringLiteral("track-a"));
     controller.goBack();
 
+    QCOMPARE(controller.currentFolderName(), QStringLiteral("My Music"));
+    QCOMPARE(controller.visibleNodeCount(), 2);
+    expectProjection(controller.model(), {QStringLiteral("album-a"), QStringLiteral("track-c")});
     QCOMPARE(controller.focusedNodeId(), QStringLiteral("album-a"));
     QCOMPARE(controller.selectedBrowserNodeId(), QStringLiteral("album-a"));
     QCOMPARE(controller.scrollRequest(), QStringLiteral("album-a"));
     QCOMPARE(controller.playingTrackId(), QStringLiteral("track-c-id"));
-
-    controller.collapseNode(QStringLiteral("album-a"));
-
-    QCOMPARE(controller.visibleNodeCount(), 3);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-a"), LibraryModel::IsVisibleRole).toBool(), false);
-    QCOMPARE(playSpy.count(), 0);
-    QCOMPARE(currentSongSpy.count(), 0);
 }
 
 void SidebarLocalBrowsingTest::enterFolderShowsFlatDirectChildrenOnly()
@@ -186,26 +185,44 @@ void SidebarLocalBrowsingTest::enterFolderShowsFlatDirectChildrenOnly()
     LibraryController controller;
     controller.setPlaylistTreeSnapshot(makeSnapshot());
     controller.setPlayingTrackId(QStringLiteral("track-c-id"));
-    QSignalSpy playSpy(&controller, &LibraryController::playItemRequested);
 
     controller.enterFolder(QStringLiteral("album-a"));
 
     QCOMPARE(controller.currentFolderName(), QStringLiteral("Album A"));
     QCOMPARE(controller.canGoBack(), true);
     QCOMPARE(controller.visibleNodeCount(), 2);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("root"), LibraryModel::IsVisibleRole).toBool(), false);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("album-a"), LibraryModel::IsVisibleRole).toBool(), false);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-a"), LibraryModel::IsVisibleRole).toBool(), true);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-b"), LibraryModel::IsVisibleRole).toBool(), true);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-c"), LibraryModel::IsVisibleRole).toBool(), false);
-    QCOMPARE(playSpy.count(), 0);
+    expectProjection(controller.model(), {QStringLiteral("track-a"), QStringLiteral("track-b")});
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("root")), -1);
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("album-a")), -1);
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("track-c")), -1);
 
     controller.goBack();
 
     QCOMPARE(controller.currentFolderName(), QStringLiteral("My Music"));
-    QCOMPARE(controller.visibleNodeCount(), 3);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("album-a"), LibraryModel::IsVisibleRole).toBool(), true);
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("track-a"), LibraryModel::IsVisibleRole).toBool(), false);
+    QCOMPARE(controller.visibleNodeCount(), 2);
+    expectProjection(controller.model(), {QStringLiteral("album-a"), QStringLiteral("track-c")});
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("track-a")), -1);
+}
+
+void SidebarLocalBrowsingTest::selectingRootProjectionNodeDoesNotEnableBack()
+{
+    LibraryController controller;
+    controller.setPlaylistTreeSnapshot(makeSnapshot());
+
+    controller.setSelectedBrowserNodeId(QStringLiteral("album-a"));
+
+    QCOMPARE(controller.currentFolderName(), QStringLiteral("My Music"));
+    QCOMPARE(controller.canGoBack(), false);
+    expectProjection(controller.model(), {QStringLiteral("album-a"), QStringLiteral("track-c")});
+
+    controller.goBack();
+
+    QCOMPARE(controller.currentFolderName(), QStringLiteral("My Music"));
+    QCOMPARE(controller.canGoBack(), false);
+    QCOMPARE(controller.focusedNodeId(), QStringLiteral("album-a"));
+    QCOMPARE(controller.selectedBrowserNodeId(), QStringLiteral("album-a"));
+    QCOMPARE(controller.scrollRequest(), QString());
+    expectProjection(controller.model(), {QStringLiteral("album-a"), QStringLiteral("track-c")});
 }
 
 QTEST_GUILESS_MAIN(SidebarLocalBrowsingTest)

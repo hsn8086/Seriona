@@ -1,7 +1,9 @@
 #include "library_model.h"
 
 #include <QAbstractItemModel>
+#include <QByteArray>
 #include <QRegularExpression>
+#include <QSet>
 #include <QSignalSpy>
 #include <QString>
 #include <QtTest/QTest>
@@ -59,9 +61,38 @@ PlaylistNode makeTrack(const std::string &nodeId,
     return node;
 }
 
+PlaylistTreeSnapshot makeProjectedTreeSnapshot()
+{
+    PlaylistTreeSnapshot snapshot;
+    snapshot.version = 7;
+    snapshot.rootNodeId = std::string{"root"};
+    snapshot.nodes = {
+        makeFolder("root", "Library", {"album-a", "track-c"}, std::nullopt, PlaylistNodeKind::Root),
+        makeFolder("album-a", "Album A", {"track-a", "track-b"}, std::string{"root"}, PlaylistNodeKind::Album),
+        makeTrack("track-a", "track-a-id", "Song A", "Artist A", "Album A", std::string{"album-a"}),
+        makeTrack("track-b", "track-b-id", "Song B", "Artist B", "Album A", std::string{"album-a"}),
+        makeTrack("track-c", "track-c-id", "Song C", "Artist C", "Singles", std::string{"root"}),
+    };
+    return snapshot;
+}
+
 QVariant dataAt(const Seriona::App::LibraryModel &model, int row, Seriona::App::LibraryModel::Role role)
 {
     return model.data(model.index(row, 0), role);
+}
+
+QString nodeIdAt(const Seriona::App::LibraryModel &model, int row)
+{
+    return dataAt(model, row, Seriona::App::LibraryModel::NodeIdRole).toString();
+}
+
+QSet<QByteArray> roleNameSet(const QHash<int, QByteArray> &roles)
+{
+    QSet<QByteArray> names;
+    for (auto it = roles.cbegin(); it != roles.cend(); ++it) {
+        names.insert(it.value());
+    }
+    return names;
 }
 }
 
@@ -70,101 +101,70 @@ class LibraryTreeModelTest : public QObject
     Q_OBJECT
 
 private slots:
-    void rendersRootedTreeWithFolderAndTracks();
-    void fallsBackToNodeOrderWithoutRoot();
-    void fallsBackToNodeOrderWhenRootIdIsMissing();
-    void mapsCueTrackIdToNodeId();
-    void exposesArtworkSourceForTrackRows();
+    void rootProjectionSkipsVirtualLibraryRow();
+    void currentFolderProjectionUsesDirectChildrenOnly();
+    void searchProjectionUsesResultRowsOnly();
+    void mapsTrackAndLogicalTrackIdsToStableNodeIds();
+    void exposesArtworkAndDurationRoles();
     void handlesEmptyTree();
     void resetsOnVersionUpdate();
-    void keepsRoleNamesStable();
+    void resetsWhenProjectionChanges();
+    void emitsDataChangedOnlyForProjectedRows();
+    void keepsProjectionRoleNamesStable();
     void invalidChildNodeIdsAreSkipped();
 };
 
-void LibraryTreeModelTest::rendersRootedTreeWithFolderAndTracks()
+void LibraryTreeModelTest::rootProjectionSkipsVirtualLibraryRow()
 {
-    PlaylistTreeSnapshot snapshot;
-    snapshot.version = 7;
-    snapshot.rootNodeId = std::string{"root"};
-    snapshot.nodes = {
-        makeFolder("root", "Library", {"album"}, std::nullopt, PlaylistNodeKind::Root),
-        makeFolder("album", "Album A", {"track-1", "track-2"}, std::string{"root"}, PlaylistNodeKind::Album),
-        makeTrack("track-1", "track-id-1", "Song One", "Artist A", "Album A", std::string{"album"}),
-        makeTrack("track-2", "track-id-2", "Song Two", "Artist B", "Album A", std::string{"album"}),
-    };
-
     Seriona::App::LibraryModel model;
-    model.setPlaylistTreeSnapshot(snapshot);
+    model.setPlaylistTreeSnapshot(makeProjectedTreeSnapshot());
 
     QCOMPARE(model.version(), 7ULL);
-    QCOMPARE(model.rowCount(), 4);
-    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::NodeIdRole).toString(), QStringLiteral("root"));
-    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::TypeRole).toString(), QStringLiteral("folder"));
-    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::NameRole).toString(), QStringLiteral("Library"));
+    QVERIFY(model.containsNodeId(QStringLiteral("root")));
+    QCOMPARE(model.childNodeIds(QStringLiteral("root")), QVector<QString>({QStringLiteral("album-a"), QStringLiteral("track-c")}));
+
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(nodeIdAt(model, 0), QStringLiteral("album-a"));
+    QCOMPARE(nodeIdAt(model, 1), QStringLiteral("track-c"));
+    QCOMPARE(model.rowForNodeId(QStringLiteral("root")), -1);
+    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::NameRole).toString(), QStringLiteral("Album A"));
+    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::ParentNameRole).toString(), QStringLiteral("Library"));
     QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::SongCountRole).toInt(), 2);
     QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::IsFolderRole).toBool(), true);
-    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::DepthRole).toInt(), 0);
-
-    QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::NodeIdRole).toString(), QStringLiteral("album"));
-    QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::ParentNameRole).toString(), QStringLiteral("Library"));
-    QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::ParentNodeIdRole).toString(), QStringLiteral("root"));
-    QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::DepthRole).toInt(), 1);
-    QCOMPARE(model.parentNodeId(QStringLiteral("album")), QStringLiteral("root"));
-    QCOMPARE(model.childNodeIds(QStringLiteral("album")), QVector<QString>({QStringLiteral("track-1"), QStringLiteral("track-2")}));
-
-    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::TypeRole).toString(), QStringLiteral("file"));
-    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::ParentNodeIdRole).toString(), QStringLiteral("album"));
-    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::DepthRole).toInt(), 2);
-    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::TitleRole).toString(), QStringLiteral("Song One"));
-    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::ArtistRole).toString(), QStringLiteral("Artist A"));
-    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::AlbumRole).toString(), QStringLiteral("Album A"));
-    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::TrackIdRole).toString(), QStringLiteral("track-id-1"));
-    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::FormatRole).toString(), QStringLiteral("FLAC"));
-    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::SampleRateRole).toInt(), 96000);
-    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::BitDepthRole).toInt(), 24);
-    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::IsPlayingRole).toBool(), false);
-    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::IsFocusedRole).toBool(), false);
-    QCOMPARE(dataAt(model, 2, Seriona::App::LibraryModel::IsExpandedRole).toBool(), false);
+    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::ParentNodeIdRole).toString(), QStringLiteral("root"));
 }
 
-void LibraryTreeModelTest::fallsBackToNodeOrderWithoutRoot()
+void LibraryTreeModelTest::currentFolderProjectionUsesDirectChildrenOnly()
 {
-    PlaylistTreeSnapshot snapshot;
-    snapshot.version = 8;
-    snapshot.nodes = {
-        makeTrack("track-orphan", "track-orphan-id", "Loose Song", "Artist", "Loose Album"),
-        makeFolder("folder", "Folder", {}, std::nullopt),
-    };
-
     Seriona::App::LibraryModel model;
-    model.setPlaylistTreeSnapshot(snapshot);
+    model.setPlaylistTreeSnapshot(makeProjectedTreeSnapshot());
+
+    model.applyBrowsingState({}, {}, {}, QStringLiteral("album-a"));
 
     QCOMPARE(model.rowCount(), 2);
-    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::NodeIdRole).toString(), QStringLiteral("track-orphan"));
-    QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::NodeIdRole).toString(), QStringLiteral("folder"));
+    QCOMPARE(nodeIdAt(model, 0), QStringLiteral("track-a"));
+    QCOMPARE(nodeIdAt(model, 1), QStringLiteral("track-b"));
+    QCOMPARE(model.rowForNodeId(QStringLiteral("track-a")), 0);
+    QCOMPARE(model.rowForNodeId(QStringLiteral("track-b")), 1);
+    QCOMPARE(model.rowForNodeId(QStringLiteral("album-a")), -1);
+    QCOMPARE(model.rowForNodeId(QStringLiteral("track-c")), -1);
 }
 
-void LibraryTreeModelTest::fallsBackToNodeOrderWhenRootIdIsMissing()
+void LibraryTreeModelTest::searchProjectionUsesResultRowsOnly()
 {
-    PlaylistTreeSnapshot snapshot;
-    snapshot.version = 9;
-    snapshot.rootNodeId = std::string{"missing-root"};
-    snapshot.nodes = {
-        makeFolder("first", "First"),
-        makeTrack("second", "second-id", "Second", "Artist", "Album"),
-    };
-
-    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("LibraryModel missing root node missing-root.*")));
-
     Seriona::App::LibraryModel model;
-    model.setPlaylistTreeSnapshot(snapshot);
+    model.setPlaylistTreeSnapshot(makeProjectedTreeSnapshot());
 
-    QCOMPARE(model.rowCount(), 2);
-    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::NodeIdRole).toString(), QStringLiteral("first"));
-    QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::NodeIdRole).toString(), QStringLiteral("second"));
+    model.applyBrowsingState({}, {}, QStringLiteral("Song B"), {});
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(nodeIdAt(model, 0), QStringLiteral("track-b"));
+    QCOMPARE(model.rowForNodeId(QStringLiteral("track-b")), 0);
+    QCOMPARE(model.rowForNodeId(QStringLiteral("track-a")), -1);
+    QCOMPARE(model.rowForNodeId(QStringLiteral("album-a")), -1);
 }
 
-void LibraryTreeModelTest::mapsCueTrackIdToNodeId()
+void LibraryTreeModelTest::mapsTrackAndLogicalTrackIdsToStableNodeIds()
 {
     SongMetadata cueSong;
     cueSong.trackId = "cue-track-01";
@@ -178,29 +178,36 @@ void LibraryTreeModelTest::mapsCueTrackIdToNodeId()
 
     PlaylistNode cueNode;
     cueNode.nodeId = "cue-node";
+    cueNode.parentNodeId = std::string{"root"};
     cueNode.kind = PlaylistNodeKind::Track;
     cueNode.displayName = "Cue Movement";
     cueNode.song = cueSong;
 
     PlaylistTreeSnapshot snapshot;
     snapshot.version = 10;
-    snapshot.nodes = {cueNode};
+    snapshot.rootNodeId = std::string{"root"};
+    snapshot.nodes = {
+        makeFolder("root", "Library", {"cue-node"}, std::nullopt, PlaylistNodeKind::Root),
+        cueNode,
+    };
 
     Seriona::App::LibraryModel model;
     model.setPlaylistTreeSnapshot(snapshot);
 
     QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.nodeIdForTrackId(QStringLiteral("cue-track-01")), QStringLiteral("cue-node"));
+    QCOMPARE(model.nodeIdForTrackId(QStringLiteral("album-cue#01")), QStringLiteral("cue-node"));
+    QVERIFY(model.entryByNodeId(QStringLiteral("cue-node")) != nullptr);
+    QCOMPARE(model.rowForNodeId(QStringLiteral("cue-node")), 0);
     QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::TrackIdRole).toString(), QStringLiteral("cue-track-01"));
     QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::DurationRole).toString(), QStringLiteral("1:01"));
-    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::FormatRole).toString(), QStringLiteral("FLAC"));
-    QCOMPARE(model.nodeIdForTrackId(QStringLiteral("cue-track-01")), QStringLiteral("cue-node"));
 }
 
-void LibraryTreeModelTest::exposesArtworkSourceForTrackRows()
+void LibraryTreeModelTest::exposesArtworkAndDurationRoles()
 {
     PlaylistNode track = makeTrack("track-cover", "track-cover-id", "Covered", "Artist", "Album");
+    track.song->duration = std::chrono::milliseconds{185000};
     track.song->artworkPath = "/music/cover.png";
-    track.song->thumbnailPath = "/music/thumbnails/cover.png";
 
     PlaylistTreeSnapshot snapshot;
     snapshot.version = 13;
@@ -210,7 +217,8 @@ void LibraryTreeModelTest::exposesArtworkSourceForTrackRows()
     model.setPlaylistTreeSnapshot(snapshot);
 
     QCOMPARE(model.rowCount(), 1);
-    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::ArtworkSourceRole).toString(), QStringLiteral("file:///music/thumbnails/cover.png"));
+    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::DurationRole).toString(), QStringLiteral("3:05"));
+    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::ArtworkSourceRole).toString(), QStringLiteral("file:///music/cover.png"));
 }
 
 void LibraryTreeModelTest::handlesEmptyTree()
@@ -234,11 +242,19 @@ void LibraryTreeModelTest::resetsOnVersionUpdate()
 
     PlaylistTreeSnapshot first;
     first.version = 1;
-    first.nodes = {makeTrack("first", "first-track", "First", "Artist", "Album")};
+    first.rootNodeId = std::string{"root"};
+    first.nodes = {
+        makeFolder("root", "Library", {"first"}, std::nullopt, PlaylistNodeKind::Root),
+        makeTrack("first", "first-track", "First", "Artist", "Album", std::string{"root"}),
+    };
 
     PlaylistTreeSnapshot second;
     second.version = 2;
-    second.nodes = {makeTrack("second", "second-track", "Second", "Artist", "Album")};
+    second.rootNodeId = std::string{"root"};
+    second.nodes = {
+        makeFolder("root", "Library", {"second"}, std::nullopt, PlaylistNodeKind::Root),
+        makeTrack("second", "second-track", "Second", "Artist", "Album", std::string{"root"}),
+    };
 
     model.setPlaylistTreeSnapshot(first);
     model.setPlaylistTreeSnapshot(second);
@@ -246,37 +262,83 @@ void LibraryTreeModelTest::resetsOnVersionUpdate()
     QCOMPARE(resetSpy.count(), 2);
     QCOMPARE(model.version(), 2ULL);
     QCOMPARE(model.rowCount(), 1);
-    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::NodeIdRole).toString(), QStringLiteral("second"));
+    QCOMPARE(nodeIdAt(model, 0), QStringLiteral("second"));
     QCOMPARE(model.nodeIdForTrackId(QStringLiteral("first-track")), QString());
 }
 
-void LibraryTreeModelTest::keepsRoleNamesStable()
+void LibraryTreeModelTest::resetsWhenProjectionChanges()
+{
+    Seriona::App::LibraryModel model;
+    model.setPlaylistTreeSnapshot(makeProjectedTreeSnapshot());
+    QSignalSpy resetSpy(&model, &QAbstractItemModel::modelReset);
+    QSignalSpy dataChangedSpy(&model, &QAbstractItemModel::dataChanged);
+
+    model.applyBrowsingState({}, {}, {}, QStringLiteral("album-a"));
+
+    QCOMPARE(resetSpy.count(), 1);
+    QCOMPARE(dataChangedSpy.count(), 0);
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(nodeIdAt(model, 0), QStringLiteral("track-a"));
+    QCOMPARE(nodeIdAt(model, 1), QStringLiteral("track-b"));
+}
+
+void LibraryTreeModelTest::emitsDataChangedOnlyForProjectedRows()
+{
+    Seriona::App::LibraryModel model;
+    model.setPlaylistTreeSnapshot(makeProjectedTreeSnapshot());
+    QSignalSpy dataChangedSpy(&model, &QAbstractItemModel::dataChanged);
+
+    QVERIFY(!model.setPlayingTrackId(QStringLiteral("track-a-id")));
+    QCOMPARE(dataChangedSpy.count(), 0);
+
+    QVERIFY(model.setPlayingTrackId(QStringLiteral("track-c-id")));
+    QCOMPARE(dataChangedSpy.count(), 1);
+    const QList<QVariant> changedArguments = dataChangedSpy.takeFirst();
+    QCOMPARE(changedArguments.at(0).value<QModelIndex>().row(), 1);
+    QCOMPARE(changedArguments.at(1).value<QModelIndex>().row(), 1);
+    QCOMPARE(changedArguments.at(2).value<QList<int>>(), QList<int>{Seriona::App::LibraryModel::IsPlayingRole});
+
+    QVERIFY(model.setFocusedNodeId(QStringLiteral("album-a")));
+    QCOMPARE(dataChangedSpy.count(), 1);
+    const QList<QVariant> focusedArguments = dataChangedSpy.takeFirst();
+    QCOMPARE(focusedArguments.at(0).value<QModelIndex>().row(), 0);
+    QCOMPARE(focusedArguments.at(1).value<QModelIndex>().row(), 0);
+    QCOMPARE(focusedArguments.at(2).value<QList<int>>(), QList<int>{Seriona::App::LibraryModel::IsFocusedRole});
+}
+
+void LibraryTreeModelTest::keepsProjectionRoleNamesStable()
 {
     const Seriona::App::LibraryModel model;
-    const QHash<int, QByteArray> roles = model.roleNames();
+    const QSet<QByteArray> roles = roleNameSet(model.roleNames());
 
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::TypeRole), QByteArray("type"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::NameRole), QByteArray("name"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::TitleRole), QByteArray("title"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::ArtistRole), QByteArray("artist"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::AlbumRole), QByteArray("album"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::ParentNameRole), QByteArray("parentName"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::SongCountRole), QByteArray("songCount"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::DurationRole), QByteArray("duration"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::FormatRole), QByteArray("format"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::SampleRateRole), QByteArray("sampleRate"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::BitDepthRole), QByteArray("bitDepth"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::NodeIdRole), QByteArray("nodeId"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::TrackIdRole), QByteArray("trackId"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::IsFolderRole), QByteArray("isFolder"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::IsPlayingRole), QByteArray("isPlaying"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::IsFocusedRole), QByteArray("isFocused"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::IsExpandedRole), QByteArray("isExpanded"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::ParentNodeIdRole), QByteArray("parentNodeId"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::DepthRole), QByteArray("depth"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::IsVisibleRole), QByteArray("isVisible"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::MatchesSearchRole), QByteArray("matchesSearch"));
-    QCOMPARE(roles.value(Seriona::App::LibraryModel::ArtworkSourceRole), QByteArray("artworkSource"));
+    const QList<QByteArray> expectedRoles = {
+        "type",
+        "name",
+        "title",
+        "artist",
+        "album",
+        "parentName",
+        "songCount",
+        "duration",
+        "format",
+        "sampleRate",
+        "bitDepth",
+        "nodeId",
+        "trackId",
+        "isFolder",
+        "isPlaying",
+        "isFocused",
+        "parentNodeId",
+        "artworkSource",
+    };
+
+    for (const QByteArray &roleName : expectedRoles) {
+        QVERIFY2(roles.contains(roleName), qPrintable(QStringLiteral("missing projection role %1").arg(QString::fromUtf8(roleName))));
+    }
+    QVERIFY2(!roles.contains("isVisible"), "projection model must not expose hidden full-tree visibility state");
+    QVERIFY2(!roles.contains("matchesSearch"), "projection model must not expose full-tree search match state");
+    QVERIFY2(!roles.contains("depth"), "projection rows are flat current-view rows, not tree-depth rows");
+    QVERIFY2(!roles.contains("isExpanded"), "projection rows must not depend on virtual tree expansion state");
 }
 
 void LibraryTreeModelTest::invalidChildNodeIdsAreSkipped()
@@ -294,10 +356,12 @@ void LibraryTreeModelTest::invalidChildNodeIdsAreSkipped()
     Seriona::App::LibraryModel model;
     model.setPlaylistTreeSnapshot(snapshot);
 
-    QCOMPARE(model.rowCount(), 2);
     QCOMPARE(model.childNodeIds(QStringLiteral("root")), QVector<QString>({QStringLiteral("valid-track")}));
     QCOMPARE(model.parentNodeId(QStringLiteral("valid-track")), QStringLiteral("root"));
-    QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::NodeIdRole).toString(), QStringLiteral("valid-track"));
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(nodeIdAt(model, 0), QStringLiteral("valid-track"));
+    QCOMPARE(model.rowForNodeId(QStringLiteral("root")), -1);
+    QCOMPARE(model.rowForNodeId(QStringLiteral("valid-track")), 0);
 }
 
 QTEST_GUILESS_MAIN(LibraryTreeModelTest)

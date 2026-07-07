@@ -83,17 +83,6 @@ QVariant dataForNode(const LibraryModel *model, const QString &nodeId, LibraryMo
     return model->data(model->index(row, 0), role);
 }
 
-void expectRoleChange(const QSignalSpy &spy, int signalIndex, int row, LibraryModel::Role role)
-{
-    const QList<QVariant> arguments = spy.at(signalIndex);
-    const QModelIndex topLeft = arguments.at(0).value<QModelIndex>();
-    const QModelIndex bottomRight = arguments.at(1).value<QModelIndex>();
-    const QList<int> roles = arguments.at(2).value<QList<int>>();
-
-    QCOMPARE(topLeft.row(), row);
-    QCOMPARE(bottomRight.row(), row);
-    QCOMPARE(roles, QList<int>{role});
-}
 }
 
 class LibraryDualCursorTest : public QObject
@@ -104,7 +93,7 @@ private slots:
     void dualCursorKeepsFocusedAndPlayingSeparate();
     void followCurrentlyPlayingControlsBrowserCursor();
     void refreshKeepsAndFallsBackBrowserState();
-    void browsingActionsDoNotEmitBackendHookSignals();
+    void browsingActionsStayLocalToProjection();
 };
 
 void LibraryDualCursorTest::dualCursorKeepsFocusedAndPlayingSeparate()
@@ -112,21 +101,19 @@ void LibraryDualCursorTest::dualCursorKeepsFocusedAndPlayingSeparate()
     LibraryController controller;
     controller.setPlaylistTreeSnapshot(makeInitialSnapshot());
     LibraryModel *model = controller.model();
+    controller.enterFolder(QStringLiteral("album-a"));
     QSignalSpy dataChangedSpy(model, &QAbstractItemModel::dataChanged);
 
-    controller.expandNode(QStringLiteral("album-a"));
     controller.setFocusedNodeId(QStringLiteral("track-b"));
     controller.setPlayingTrackId(QStringLiteral("track-c-id"));
 
     QCOMPARE(controller.focusedNodeId(), QStringLiteral("track-b"));
     QCOMPARE(controller.playingTrackId(), QStringLiteral("track-c-id"));
-    QCOMPARE(dataForNode(model, QStringLiteral("album-a"), LibraryModel::IsExpandedRole).toBool(), true);
     QCOMPARE(dataForNode(model, QStringLiteral("track-b"), LibraryModel::IsFocusedRole).toBool(), true);
     QCOMPARE(dataForNode(model, QStringLiteral("track-b"), LibraryModel::IsPlayingRole).toBool(), false);
-    QCOMPARE(dataForNode(model, QStringLiteral("track-c"), LibraryModel::IsFocusedRole).toBool(), false);
-    QCOMPARE(dataForNode(model, QStringLiteral("track-c"), LibraryModel::IsPlayingRole).toBool(), true);
+    QCOMPARE(model->rowForNodeId(QStringLiteral("track-c")), -1);
 
-    QVERIFY(dataChangedSpy.count() >= 4);
+    QCOMPARE(dataChangedSpy.count(), 1);
 }
 
 void LibraryDualCursorTest::followCurrentlyPlayingControlsBrowserCursor()
@@ -163,7 +150,6 @@ void LibraryDualCursorTest::refreshKeepsAndFallsBackBrowserState()
     LibraryController controller;
     controller.setPlaylistTreeSnapshot(makeInitialSnapshot());
 
-    controller.expandNode(QStringLiteral("album-a"));
     controller.setSelectedBrowserNodeId(QStringLiteral("track-b"));
 
     PlaylistTreeSnapshot trackRemoved;
@@ -181,8 +167,7 @@ void LibraryDualCursorTest::refreshKeepsAndFallsBackBrowserState()
     QCOMPARE(controller.model()->version(), 2ULL);
     QCOMPARE(controller.focusedNodeId(), QStringLiteral("album-a"));
     QCOMPARE(controller.selectedBrowserNodeId(), QStringLiteral("album-a"));
-    QCOMPARE(controller.expandedNodeIds(), QStringList{QStringLiteral("album-a")});
-    QCOMPARE(dataForNode(controller.model(), QStringLiteral("album-a"), LibraryModel::IsExpandedRole).toBool(), true);
+    QCOMPARE(controller.model()->rowForNodeId(QStringLiteral("album-a")), 0);
 
     PlaylistTreeSnapshot albumRemoved;
     albumRemoved.version = 3;
@@ -197,32 +182,27 @@ void LibraryDualCursorTest::refreshKeepsAndFallsBackBrowserState()
     QCOMPARE(controller.model()->version(), 3ULL);
     QCOMPARE(controller.focusedNodeId(), QStringLiteral("root"));
     QCOMPARE(controller.selectedBrowserNodeId(), QStringLiteral("root"));
-    QCOMPARE(controller.expandedNodeIds(), QStringList{});
+    QCOMPARE(controller.model()->rowForNodeId(QStringLiteral("track-c")), 0);
 }
 
-void LibraryDualCursorTest::browsingActionsDoNotEmitBackendHookSignals()
+void LibraryDualCursorTest::browsingActionsStayLocalToProjection()
 {
     LibraryController controller;
     controller.setPlaylistTreeSnapshot(makeInitialSnapshot());
-    QSignalSpy searchSubmittedSpy(&controller, &LibraryController::searchSubmitted);
-    QSignalSpy searchClearedSpy(&controller, &LibraryController::searchCleared);
-    QSignalSpy playItemRequestedSpy(&controller, &LibraryController::playItemRequested);
-    QSignalSpy currentSongLocationSpy(&controller, &LibraryController::currentSongLocationRequested);
 
-    controller.expandNode(QStringLiteral("album-a"));
-    controller.collapseNode(QStringLiteral("album-a"));
-    controller.toggleExpanded(QStringLiteral("album-a"));
-    controller.focusNode(QStringLiteral("track-a"));
+    controller.setFocusedNodeId(QStringLiteral("track-a"));
     controller.selectBrowserNode(QStringLiteral("track-b"));
-    controller.requestScrollToNode(QStringLiteral("track-b"));
     controller.setSearchQuery(QStringLiteral("Song"));
     controller.submitSearch();
     controller.clearSearch();
 
-    QCOMPARE(searchSubmittedSpy.count(), 0);
-    QCOMPARE(searchClearedSpy.count(), 0);
-    QCOMPARE(playItemRequestedSpy.count(), 0);
-    QCOMPARE(currentSongLocationSpy.count(), 0);
+    QCOMPARE(controller.searchQuery(), QString());
+    QCOMPARE(controller.focusedNodeId(), QStringLiteral("track-a"));
+    QCOMPARE(controller.selectedBrowserNodeId(), QStringLiteral("track-a"));
+    QCOMPARE(controller.scrollRequest(), QStringLiteral("track-a"));
+    QCOMPARE(controller.model()->rowCount(), 2);
+    QCOMPARE(controller.model()->rowForNodeId(QStringLiteral("album-a")), 0);
+    QCOMPARE(controller.model()->rowForNodeId(QStringLiteral("track-c")), 1);
 }
 
 QTEST_GUILESS_MAIN(LibraryDualCursorTest)
