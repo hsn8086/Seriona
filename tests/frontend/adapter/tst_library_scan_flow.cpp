@@ -35,13 +35,23 @@ MediaControllerCommandResult acceptedResult()
     return result;
 }
 
+MediaControllerCommandResult rejectedResult(const std::string &message)
+{
+    MediaControllerCommandResult result;
+    result.accepted = false;
+    result.code = MediaControllerErrorCode::BackendRejected;
+    result.message = message;
+    return result;
+}
+
 struct ScanRecorder {
     std::vector<QString> roots;
+    MediaControllerCommandResult result = acceptedResult();
 
     MediaControllerCommandResult record(const QString &rootPath)
     {
         roots.push_back(rootPath);
-        return acceptedResult();
+        return result;
     }
 
     void clear()
@@ -101,6 +111,17 @@ PlaylistTreeSnapshot makeSnapshot()
     };
     return snapshot;
 }
+
+PlaylistTreeSnapshot makeEmptySnapshot()
+{
+    PlaylistTreeSnapshot snapshot;
+    snapshot.version = 16;
+    snapshot.rootNodeId = std::string{"root"};
+    snapshot.nodes = {
+        makeFolder("root", "Library", {}, std::nullopt, PlaylistNodeKind::Root),
+    };
+    return snapshot;
+}
 }
 
 class LibraryScanFlowTest : public QObject
@@ -108,10 +129,51 @@ class LibraryScanFlowTest : public QObject
     Q_OBJECT
 
 private slots:
+    void emptySnapshotExposesEmptyLibraryState();
+    void backendUnavailableDoesNotFabricateRows();
     void scanLibraryRequestSubmitsBackendScanAndUpdatesTree();
     void cancelAndInvalidSelectionDoNotScanOrSaveRoot();
     void scanSnapshotsMapUiStates();
 };
+
+void LibraryScanFlowTest::emptySnapshotExposesEmptyLibraryState()
+{
+    LibraryController controller;
+    controller.setScanExecutor([](const QString &) {
+        return acceptedResult();
+    });
+
+    controller.setPlaylistTreeSnapshot(makeEmptySnapshot());
+
+    QCOMPARE(controller.model()->rowCount(), 0);
+    QCOMPARE(controller.visibleNodeCount(), 0);
+    QCOMPARE(controller.libraryEmpty(), true);
+    QCOMPARE(controller.backendAvailable(), true);
+    QCOMPARE(controller.libraryState(), QStringLiteral("empty"));
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("root")), -1);
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("mock-track-stairway")), -1);
+}
+
+void LibraryScanFlowTest::backendUnavailableDoesNotFabricateRows()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+
+    LibraryController controller;
+
+    QCOMPARE(controller.backendAvailable(), false);
+    QCOMPARE(controller.scanLibrary(QUrl::fromLocalFile(musicDir.path())), false);
+
+    QCOMPARE(controller.model()->rowCount(), 0);
+    QCOMPARE(controller.visibleNodeCount(), 0);
+    QCOMPARE(controller.libraryEmpty(), true);
+    QCOMPARE(controller.backendAvailable(), false);
+    QCOMPARE(controller.libraryState(), QStringLiteral("backendUnavailable"));
+    QCOMPARE(controller.savedRootPath(), QString());
+    QCOMPARE(controller.scanStatus(), QStringLiteral("error"));
+    QVERIFY(controller.lastError().contains(QStringLiteral("后端扫描服务不可用")));
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("mock-track-bohemian")), -1);
+}
 
 void LibraryScanFlowTest::scanLibraryRequestSubmitsBackendScanAndUpdatesTree()
 {
@@ -146,7 +208,28 @@ void LibraryScanFlowTest::scanLibraryRequestSubmitsBackendScanAndUpdatesTree()
     QCOMPARE(controller.scanStatus(), QStringLiteral("completed"));
     QCOMPARE(controller.scanProgress(), 100);
     QCOMPARE(controller.model()->version(), 15ULL);
-    QCOMPARE(controller.visibleNodeCount(), 2);
+    QCOMPARE(controller.visibleNodeCount(), 1);
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("root")), -1);
+    QCOMPARE(controller.rowForNodeId(QStringLiteral("track-a")), 0);
+
+    QTemporaryDir rejectedDir;
+    QVERIFY(rejectedDir.isValid());
+    const QString rejectedRoot = QFileInfo(rejectedDir.path()).absoluteFilePath();
+    const QString previousRoot = controller.savedRootPath();
+    const std::uint64_t previousVersion = controller.model()->version();
+    const int previousVisibleNodeCount = controller.visibleNodeCount();
+
+    recorder.clear();
+    recorder.result = rejectedResult("backend scan rejected");
+
+    QCOMPARE(controller.scanLibrary(QUrl::fromLocalFile(rejectedDir.path())), false);
+
+    QCOMPARE(recorder.roots, std::vector<QString>{rejectedRoot});
+    QCOMPARE(controller.savedRootPath(), previousRoot);
+    QCOMPARE(controller.model()->version(), previousVersion);
+    QCOMPARE(controller.visibleNodeCount(), previousVisibleNodeCount);
+    QCOMPARE(controller.scanStatus(), QStringLiteral("error"));
+    QCOMPARE(controller.lastError(), QStringLiteral("backend scan rejected"));
 }
 
 void LibraryScanFlowTest::cancelAndInvalidSelectionDoNotScanOrSaveRoot()
