@@ -1,13 +1,14 @@
 #include "library_model.h"
 
+#include "backend_snapshot_mapper.h"
+
 #include <QByteArray>
 #include <QDebug>
 #include <QFileInfo>
+#include <QSet>
 #include <QUrl>
 
 #if SERIONA_HAS_BACKEND
-#include <QSet>
-
 #include <algorithm>
 #include <chrono>
 #include <functional>
@@ -36,56 +37,9 @@ seriona::control::TrackIdentity trackIdentityForEntry(const LibraryModel::Entry 
     return identity;
 }
 
-QString uiScanStatus(seriona::control::LibraryScanStatus status)
+QString typeForNode(const LibraryTreeStore::Node &node)
 {
-    switch (status) {
-    case seriona::control::LibraryScanStatus::Idle:
-    case seriona::control::LibraryScanStatus::Stopped:
-        return QStringLiteral("pending");
-    case seriona::control::LibraryScanStatus::Scanning:
-        return QStringLiteral("running");
-    case seriona::control::LibraryScanStatus::Completed:
-        return QStringLiteral("completed");
-    case seriona::control::LibraryScanStatus::Error:
-        return QStringLiteral("error");
-    }
-
-    return QStringLiteral("pending");
-}
-
-int uiScanProgress(const seriona::control::LibraryStateSnapshot &snapshot)
-{
-    if (snapshot.scanStatus == seriona::control::LibraryScanStatus::Completed) {
-        return 100;
-    }
-    if (!snapshot.scanProgress.has_value() || snapshot.scanProgress->filesDiscovered == 0U) {
-        return 0;
-    }
-
-    const std::uint64_t scanned = std::min(snapshot.scanProgress->filesScanned, snapshot.scanProgress->filesDiscovered);
-    return static_cast<int>((scanned * 100U) / snapshot.scanProgress->filesDiscovered);
-}
-
-QString scannerErrorMessage(const seriona::scanner::ScannerError &error)
-{
-    if (!error.message.empty()) {
-        return toQString(error.message);
-    }
-    if (!error.detail.empty()) {
-        return toQString(error.detail);
-    }
-
-    return QStringLiteral("扫描失败");
-}
-
-bool isFolderKind(seriona::scanner::PlaylistNodeKind kind)
-{
-    return kind != seriona::scanner::PlaylistNodeKind::Track;
-}
-
-QString typeForKind(seriona::scanner::PlaylistNodeKind kind)
-{
-    return isFolderKind(kind) ? QStringLiteral("folder") : QStringLiteral("file");
+    return node.isFolder ? QStringLiteral("folder") : QStringLiteral("file");
 }
 
 QString formatDuration(std::chrono::milliseconds duration)
@@ -102,9 +56,9 @@ QString formatDuration(std::chrono::milliseconds duration)
     return QStringLiteral("%1:%2").arg(minutes).arg(seconds, 2, 10, QLatin1Char('0'));
 }
 
-QString formatFromSong(const seriona::scanner::SongMetadata &song)
+QString formatFromNode(const LibraryTreeStore::Node &node)
 {
-    const std::filesystem::path &path = !song.sourceFilePath.empty() ? song.sourceFilePath : song.filePath;
+    const std::filesystem::path &path = !node.sourceFilePath.empty() ? node.sourceFilePath : node.filePath;
     QString extension = QString::fromStdString(path.extension().string());
     if (extension.startsWith(QLatin1Char('.'))) {
         extension.remove(0, 1);
@@ -112,66 +66,32 @@ QString formatFromSong(const seriona::scanner::SongMetadata &song)
     return extension.toUpper();
 }
 
-bool isTrackNode(const seriona::scanner::PlaylistNode &node)
-{
-    return node.kind == seriona::scanner::PlaylistNodeKind::Track && node.song.has_value() && !node.song->trackId.empty();
-}
-
-int descendantTrackCount(const QString &nodeId,
-                         const QHash<QString, const seriona::scanner::PlaylistNode *> &sourceNodeById,
-                         const QHash<QString, QVector<QString>> &childrenById,
-                         QSet<QString> &visited)
-{
-    if (visited.contains(nodeId)) {
-        return 0;
-    }
-    visited.insert(nodeId);
-
-    const seriona::scanner::PlaylistNode *node = sourceNodeById.value(nodeId, nullptr);
-    if (node == nullptr) {
-        return 0;
-    }
-    if (isTrackNode(*node)) {
-        return 1;
-    }
-
-    int total = 0;
-    for (const QString &childNodeId : childrenById.value(nodeId)) {
-        total += descendantTrackCount(childNodeId, sourceNodeById, childrenById, visited);
-    }
-    return total;
-}
-
-LibraryModel::Entry entryFromNode(const seriona::scanner::PlaylistNode &node, const QString &parentName, int songCount)
+LibraryModel::Entry entryFromNode(const LibraryTreeStore::Node &node, const QString &parentName)
 {
     LibraryModel::Entry entry;
-    entry.nodeId = toQString(node.nodeId);
-    entry.type = typeForKind(node.kind);
+    entry.nodeId = node.nodeId;
+    entry.type = typeForNode(node);
     entry.parentName = parentName;
-    entry.songCount = songCount;
-    entry.isFolder = isFolderKind(node.kind);
+    entry.songCount = node.isFolder ? node.descendantTrackCount : 0;
+    entry.isFolder = node.isFolder;
 
     if (entry.isFolder) {
-        entry.name = toQString(node.displayName);
+        entry.name = node.displayName;
         return entry;
     }
 
-    if (!node.song.has_value()) {
-        entry.title = toQString(node.displayName);
-        return entry;
-    }
+    entry.trackId = node.trackId;
+    entry.title = node.title.isEmpty() ? node.displayName : node.title;
+    entry.artist = node.artist;
+    entry.album = node.album;
+    entry.format = formatFromNode(node);
+    entry.sampleRate = node.sampleRate;
+    entry.bitDepth = node.bitDepth;
+    entry.duration = node.duration.has_value() ? formatDuration(*node.duration) : QString();
 
-    const seriona::scanner::SongMetadata &song = *node.song;
-    entry.trackId = toQString(song.trackId);
-    entry.title = song.title.empty() ? toQString(node.displayName) : toQString(song.title);
-    entry.artist = toQString(song.artist);
-    entry.album = toQString(song.album);
-    entry.format = formatFromSong(song);
-    entry.sampleRate = song.sampleRate.has_value() ? static_cast<int>(*song.sampleRate) : 0;
-    entry.bitDepth = song.bitDepth.has_value() ? static_cast<int>(*song.bitDepth) : 0;
-    entry.duration = song.duration.has_value() ? formatDuration(*song.duration) : QString();
-    if (song.thumbnailPath && !song.thumbnailPath->empty()) {
-        entry.artworkSource = QUrl::fromLocalFile(QString::fromStdString(song.thumbnailPath->string())).toString();
+    const std::filesystem::path &artworkPath = !node.thumbnailPath.empty() ? node.thumbnailPath : node.artworkPath;
+    if (!artworkPath.empty()) {
+        entry.artworkSource = QUrl::fromLocalFile(QString::fromStdString(artworkPath.string())).toString();
     }
     return entry;
 }
@@ -195,43 +115,6 @@ QString localDirectoryPath(const QUrl &rootUrl)
     }
 
     return rootInfo.absoluteFilePath();
-}
-
-LibraryModel::Entry mockFolderEntry(const QString &nodeId, const QString &name, int songCount, const QString &duration)
-{
-    LibraryModel::Entry entry;
-    entry.type = QStringLiteral("folder");
-    entry.name = name;
-    entry.parentName = QStringLiteral("Music");
-    entry.songCount = songCount;
-    entry.duration = duration;
-    entry.isFolder = true;
-    entry.nodeId = nodeId;
-    return entry;
-}
-
-LibraryModel::Entry mockFileEntry(const QString &nodeId,
-                                  const QString &trackId,
-                                  const QString &title,
-                                  const QString &artist,
-                                  const QString &album,
-                                  const QString &duration,
-                                  const QString &format,
-                                  int sampleRate,
-                                  int bitDepth)
-{
-    LibraryModel::Entry entry;
-    entry.type = QStringLiteral("file");
-    entry.title = title;
-    entry.artist = artist;
-    entry.album = album;
-    entry.duration = duration;
-    entry.format = format;
-    entry.sampleRate = sampleRate;
-    entry.bitDepth = bitDepth;
-    entry.nodeId = nodeId;
-    entry.trackId = trackId;
-    return entry;
 }
 
 }
@@ -290,16 +173,8 @@ QVariant LibraryModel::data(const QModelIndex &index, int role) const
         return entry->isPlaying;
     case IsFocusedRole:
         return entry->isFocused;
-    case IsExpandedRole:
-        return entry->isExpanded;
     case ParentNodeIdRole:
         return entry->parentNodeId;
-    case DepthRole:
-        return entry->depth;
-    case IsVisibleRole:
-        return entry->isVisible;
-    case MatchesSearchRole:
-        return entry->matchesSearch;
     case ArtworkSourceRole:
         return entry->artworkSource;
     default:
@@ -325,11 +200,7 @@ QHash<int, QByteArray> LibraryModel::roleNames() const
             {IsFolderRole, "isFolder"},
             {IsPlayingRole, "isPlaying"},
             {IsFocusedRole, "isFocused"},
-            {IsExpandedRole, "isExpanded"},
             {ParentNodeIdRole, "parentNodeId"},
-            {DepthRole, "depth"},
-            {IsVisibleRole, "isVisible"},
-            {MatchesSearchRole, "matchesSearch"},
             {ArtworkSourceRole, "artworkSource"}};
 }
 
@@ -369,7 +240,7 @@ QString LibraryModel::nodeIdForTrackId(const QString &trackId) const
 
 bool LibraryModel::containsNodeId(const QString &nodeId) const
 {
-    return !nodeId.isEmpty() && m_rowByNodeId.contains(nodeId);
+    return !nodeId.isEmpty() && m_nodeById.contains(nodeId);
 }
 
 int LibraryModel::rowForNodeId(const QString &nodeId) const
@@ -379,6 +250,14 @@ int LibraryModel::rowForNodeId(const QString &nodeId) const
 
 QString LibraryModel::firstNodeId() const
 {
+    if (!m_rootNodeId.isEmpty() && containsNodeId(m_rootNodeId)) {
+        return m_rootNodeId;
+    }
+    for (const QString &nodeId : m_nodeOrder) {
+        if (!nodeId.isEmpty() && containsNodeId(nodeId)) {
+            return nodeId;
+        }
+    }
     for (const Entry &entry : m_entries) {
         if (!entry.nodeId.isEmpty()) {
             return entry.nodeId;
@@ -410,16 +289,6 @@ QVector<QString> LibraryModel::ancestorChainForNode(const QString &nodeId) const
 std::uint64_t LibraryModel::version() const
 {
     return m_version;
-}
-
-bool LibraryModel::setNodeExpanded(const QString &nodeId, bool expanded)
-{
-    const int row = rowForNodeId(nodeId);
-    if (row < 0) {
-        return false;
-    }
-
-    return setEntryRoleFlag(row, IsExpandedRole, expanded, true);
 }
 
 bool LibraryModel::setFocusedNodeId(const QString &nodeId)
@@ -468,129 +337,33 @@ bool LibraryModel::setPlayingTrackId(const QString &trackId)
     return changed;
 }
 
-void LibraryModel::applyBrowsingState(const QSet<QString> &expandedNodeIds, const QString &focusedNodeId, const QString &playingTrackId, const QString &searchQuery, const QString &browserRootNodeId)
+void LibraryModel::applyBrowsingState(const QString &focusedNodeId, const QString &playingTrackId, const QString &searchQuery, const QString &browserRootNodeId)
 {
     m_focusedNodeId = containsNodeId(focusedNodeId) ? focusedNodeId : QString();
     m_playingTrackId = playingTrackId;
-    const QString playingNodeId = nodeIdForTrackId(m_playingTrackId);
     const QString trimmedQuery = searchQuery.trimmed();
 
-    // 优化：提前计算可见节点集合，避免重复计算
-    QSet<QString> visibleNodeIds;
-    if (!browserRootNodeId.isEmpty()) {
-        // 进入文件夹模式：只有直接子节点可见
-        for (const Entry &entry : m_entries) {
-            if (!entry.nodeId.isEmpty() && m_parentById.value(entry.nodeId) == browserRootNodeId) {
-                visibleNodeIds.insert(entry.nodeId);
-            }
-        }
-    } else if (trimmedQuery.isEmpty()) {
-        // 展开/折叠模式：计算所有可见节点
-        const QString rootNodeId = firstNodeId();
-        for (const Entry &entry : m_entries) {
-            if (entry.nodeId.isEmpty() || entry.depth == 0) {
-                visibleNodeIds.insert(entry.nodeId);
-                continue;
-            }
-            
-            QString parentNodeId = m_parentById.value(entry.nodeId);
-            if (parentNodeId.isEmpty() || parentNodeId == rootNodeId) {
-                visibleNodeIds.insert(entry.nodeId);
-                continue;
-            }
-            
-            // 检查所有父节点是否展开
-            bool allParentsExpanded = true;
-            QSet<QString> visited;
-            while (!parentNodeId.isEmpty() && !visited.contains(parentNodeId)) {
-                visited.insert(parentNodeId);
-                if (parentNodeId != rootNodeId && !expandedNodeIds.contains(parentNodeId)) {
-                    allParentsExpanded = false;
-                    break;
-                }
-                parentNodeId = m_parentById.value(parentNodeId);
-            }
-            
-            if (allParentsExpanded) {
-                visibleNodeIds.insert(entry.nodeId);
-            }
-        }
+    QVector<QString> projectionNodeIds;
+    if (!trimmedQuery.isEmpty()) {
+        projectionNodeIds = searchProjectionNodeIds(trimmedQuery);
+    } else if (!browserRootNodeId.isEmpty() && containsNodeId(browserRootNodeId)) {
+        projectionNodeIds = childNodeIds(browserRootNodeId);
+    } else {
+        projectionNodeIds = m_rootProjectionNodeIds;
     }
 
-    // 批量更新：收集所有变化的行，最后一次性发送信号
-    int firstChangedRow = -1;
-    int lastChangedRow = -1;
-    QSet<int> changedRoles;
-
-    for (int row = 0; row < m_entries.size(); ++row) {
-        const Entry &entry = m_entries.at(row);
-        
-        // 优化后的可见性计算：使用预计算的集合
-        bool isVisible;
-        if (!trimmedQuery.isEmpty()) {
-            // 搜索模式：检查匹配
-            const bool matchesSearch = entry.isFolder
-                ? (entry.name.contains(trimmedQuery, Qt::CaseInsensitive) || entry.parentName.contains(trimmedQuery, Qt::CaseInsensitive))
-                : (entry.title.contains(trimmedQuery, Qt::CaseInsensitive) || entry.artist.contains(trimmedQuery, Qt::CaseInsensitive) 
-                   || entry.album.contains(trimmedQuery, Qt::CaseInsensitive) || entry.format.contains(trimmedQuery, Qt::CaseInsensitive));
-            isVisible = matchesSearch;
-            
-            if (setEntryRoleFlag(row, MatchesSearchRole, matchesSearch, false)) {
-                changedRoles.insert(MatchesSearchRole);
-                if (firstChangedRow < 0) firstChangedRow = row;
-                lastChangedRow = row;
-            }
-        } else {
-            // 非搜索模式：使用预计算的可见集合
-            isVisible = visibleNodeIds.contains(entry.nodeId);
-        }
-        
-        // 批量更新，不立即通知
-        if (setEntryRoleFlag(row, IsExpandedRole, expandedNodeIds.contains(entry.nodeId), false)) {
-            changedRoles.insert(IsExpandedRole);
-            if (firstChangedRow < 0) firstChangedRow = row;
-            lastChangedRow = row;
-        }
-        if (setEntryRoleFlag(row, IsFocusedRole, entry.nodeId == m_focusedNodeId, false)) {
-            changedRoles.insert(IsFocusedRole);
-            if (firstChangedRow < 0) firstChangedRow = row;
-            lastChangedRow = row;
-        }
-        if (setEntryRoleFlag(row, IsPlayingRole, !playingNodeId.isEmpty() && entry.nodeId == playingNodeId, false)) {
-            changedRoles.insert(IsPlayingRole);
-            if (firstChangedRow < 0) firstChangedRow = row;
-            lastChangedRow = row;
-        }
-        if (setEntryRoleFlag(row, IsVisibleRole, isVisible, false)) {
-            changedRoles.insert(IsVisibleRole);
-            if (firstChangedRow < 0) firstChangedRow = row;
-            lastChangedRow = row;
-        }
-    }
-
-    // 一次性发送 dataChanged 信号，覆盖所有变化的行
-    if (firstChangedRow >= 0 && lastChangedRow >= 0) {
-        const QModelIndex firstIndex = index(firstChangedRow, 0);
-        const QModelIndex lastIndex = index(lastChangedRow, 0);
-        emit dataChanged(firstIndex, lastIndex, changedRoles.values());
-    }
+    setProjectionNodeIds(projectionNodeIds);
 }
 
 int LibraryModel::visibleNodeCount() const
 {
-    int count = 0;
-    for (const Entry &entry : m_entries) {
-        if (entry.isVisible) {
-            ++count;
-        }
-    }
-    return count;
+    return m_entries.size();
 }
 
 QString LibraryModel::firstVisibleNodeId() const
 {
     for (const Entry &entry : m_entries) {
-        if (entry.isVisible && !entry.nodeId.isEmpty()) {
+        if (!entry.nodeId.isEmpty()) {
             return entry.nodeId;
         }
     }
@@ -600,24 +373,21 @@ QString LibraryModel::firstVisibleNodeId() const
 QString LibraryModel::firstVisibleMatchingNodeId() const
 {
     for (const Entry &entry : m_entries) {
-        if (entry.isVisible && entry.matchesSearch && !entry.nodeId.isEmpty()) {
+        if (!entry.nodeId.isEmpty()) {
             return entry.nodeId;
         }
     }
     return {};
 }
 
-void LibraryModel::setEntries(const QVector<Entry> &entries)
+bool LibraryModel::hasLibraryContent() const
 {
-    beginResetModel();
-    m_entries = entries;
-    m_childrenById.clear();
-    m_parentById.clear();
-    m_focusedNodeId.clear();
-    m_playingTrackId.clear();
-    rebuildEntryIndexes();
-    m_version = 0;
-    endResetModel();
+    for (const QString &nodeId : m_nodeOrder) {
+        if (!nodeId.isEmpty() && nodeId != m_rootNodeId && m_nodeById.contains(nodeId)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool LibraryModel::setEntryRoleFlag(int row, Role role, bool value, bool notify)
@@ -634,15 +404,6 @@ bool LibraryModel::setEntryRoleFlag(int row, Role role, bool value, bool notify)
         break;
     case IsFocusedRole:
         flag = &entry.isFocused;
-        break;
-    case IsExpandedRole:
-        flag = &entry.isExpanded;
-        break;
-    case IsVisibleRole:
-        flag = &entry.isVisible;
-        break;
-    case MatchesSearchRole:
-        flag = &entry.matchesSearch;
         break;
     default:
         return false;
@@ -680,49 +441,21 @@ bool LibraryModel::entryMatchesSearch(const Entry &entry, const QString &trimmed
         || entry.format.contains(trimmedQuery, Qt::CaseInsensitive);
 }
 
-bool LibraryModel::entryVisibleByExpansion(const Entry &entry, const QSet<QString> &expandedNodeIds) const
-{
-    if (entry.nodeId.isEmpty()) {
-        return true;
-    }
-
-    const QString rootNodeId = firstNodeId();
-    QString parentNodeId = m_parentById.value(entry.nodeId);
-    if (parentNodeId.isEmpty() || parentNodeId == rootNodeId) {
-        return true;
-    }
-
-    QSet<QString> visited;
-    while (!parentNodeId.isEmpty() && !visited.contains(parentNodeId)) {
-        visited.insert(parentNodeId);
-        if (parentNodeId != rootNodeId && !expandedNodeIds.contains(parentNodeId)) {
-            return false;
-        }
-        parentNodeId = m_parentById.value(parentNodeId);
-    }
-
-    return true;
-}
-
-bool LibraryModel::entryVisibleInBrowserRoot(const Entry &entry, const QString &browserRootNodeId) const
-{
-    if (entry.nodeId.isEmpty()) {
-        return true;
-    }
-    return m_parentById.value(entry.nodeId) == browserRootNodeId;
-}
-
 void LibraryModel::rebuildEntryIndexes()
 {
     m_nodeById.clear();
     m_trackIdToNodeId.clear();
     m_rowByNodeId.clear();
+    m_nodeOrder.clear();
+    m_rootProjectionNodeIds.clear();
 
     for (int row = 0; row < m_entries.size(); ++row) {
         const Entry &entry = m_entries.at(row);
         if (!entry.nodeId.isEmpty()) {
             m_nodeById.insert(entry.nodeId, entry);
             m_rowByNodeId.insert(entry.nodeId, row);
+            m_nodeOrder.append(entry.nodeId);
+            m_rootProjectionNodeIds.append(entry.nodeId);
         }
         if (!entry.nodeId.isEmpty() && !entry.parentNodeId.isEmpty() && !m_parentById.contains(entry.nodeId)) {
             m_parentById.insert(entry.nodeId, entry.parentNodeId);
@@ -733,126 +466,141 @@ void LibraryModel::rebuildEntryIndexes()
     }
 }
 
+void LibraryModel::rebuildProjectionIndexes()
+{
+    m_rowByNodeId.clear();
+    for (int row = 0; row < m_entries.size(); ++row) {
+        const Entry &entry = m_entries.at(row);
+        if (!entry.nodeId.isEmpty()) {
+            m_rowByNodeId.insert(entry.nodeId, row);
+        }
+    }
+}
+
+void LibraryModel::setProjectionNodeIds(const QVector<QString> &nodeIds)
+{
+    const QString playingNodeId = nodeIdForTrackId(m_playingTrackId);
+    QVector<Entry> projectedEntries;
+    projectedEntries.reserve(nodeIds.size());
+    QSet<QString> projectedNodeIds;
+
+    for (const QString &nodeId : nodeIds) {
+        if (nodeId.isEmpty() || nodeId == m_rootNodeId || projectedNodeIds.contains(nodeId)) {
+            continue;
+        }
+        const auto entryIt = m_nodeById.constFind(nodeId);
+        if (entryIt == m_nodeById.cend()) {
+            continue;
+        }
+
+        Entry entry = entryIt.value();
+        entry.isFocused = entry.nodeId == m_focusedNodeId;
+        entry.isPlaying = !playingNodeId.isEmpty() && entry.nodeId == playingNodeId;
+        projectedEntries.append(entry);
+        projectedNodeIds.insert(nodeId);
+    }
+
+    beginResetModel();
+    m_entries = projectedEntries;
+    rebuildProjectionIndexes();
+    endResetModel();
+}
+
+QVector<QString> LibraryModel::searchProjectionNodeIds(const QString &searchQuery) const
+{
+    const QString trimmedQuery = searchQuery.trimmed();
+    QVector<QString> nodeIds;
+    if (trimmedQuery.isEmpty()) {
+        return nodeIds;
+    }
+
+    for (const QString &nodeId : m_nodeOrder) {
+        if (nodeId == m_rootNodeId) {
+            continue;
+        }
+        const auto entryIt = m_nodeById.constFind(nodeId);
+        if (entryIt != m_nodeById.cend() && entryMatchesSearch(entryIt.value(), trimmedQuery)) {
+            nodeIds.append(nodeId);
+        }
+    }
+    return nodeIds;
+}
+
 #if SERIONA_HAS_BACKEND
 void LibraryModel::setPlaylistTreeSnapshot(const seriona::scanner::PlaylistTreeSnapshot &snapshot)
 {
-    QHash<QString, const seriona::scanner::PlaylistNode *> sourceNodeById;
-    QVector<QString> sourceOrderNodeIds;
-    sourceOrderNodeIds.reserve(static_cast<qsizetype>(snapshot.nodes.size()));
+    m_treeStore.setSnapshot(snapshot);
 
-    for (const seriona::scanner::PlaylistNode &node : snapshot.nodes) {
-        const QString nodeId = toQString(node.nodeId);
-        if (nodeId.isEmpty()) {
-            qWarning().noquote() << QStringLiteral("LibraryModel skipped node with empty nodeId");
-            continue;
-        }
-        sourceNodeById.insert(nodeId, &node);
-        sourceOrderNodeIds.append(nodeId);
+    for (const LibraryTreeStore::SkippedChild &skippedChild : m_treeStore.skippedChildren()) {
+        qWarning().noquote() << QStringLiteral("LibraryModel skipped missing child node %1 under %2").arg(skippedChild.childNodeId, skippedChild.parentNodeId);
     }
-
-    QHash<QString, QVector<QString>> childrenById;
-    QHash<QString, QString> parentById;
-    for (const QString &nodeId : sourceOrderNodeIds) {
-        childrenById.insert(nodeId, {});
-        const seriona::scanner::PlaylistNode *node = sourceNodeById.value(nodeId, nullptr);
-        if (node != nullptr && node->parentNodeId.has_value()) {
-            const QString parentNodeId = toQString(*node->parentNodeId);
-            if (sourceNodeById.contains(parentNodeId)) {
-                parentById.insert(nodeId, parentNodeId);
-            }
-        }
-    }
-
-    for (const QString &nodeId : sourceOrderNodeIds) {
-        const seriona::scanner::PlaylistNode *node = sourceNodeById.value(nodeId, nullptr);
-        if (node == nullptr) {
-            continue;
-        }
-
-        QVector<QString> validChildren;
-        validChildren.reserve(static_cast<qsizetype>(node->childNodeIds.size()));
-        for (const std::string &rawChildNodeId : node->childNodeIds) {
-            const QString childNodeId = toQString(rawChildNodeId);
-            if (!sourceNodeById.contains(childNodeId)) {
-                qWarning().noquote() << QStringLiteral("LibraryModel skipped missing child node %1 under %2").arg(childNodeId, nodeId);
-                continue;
-            }
-            validChildren.append(childNodeId);
-            parentById.insert(childNodeId, nodeId);
-        }
-        childrenById.insert(nodeId, validChildren);
+    if (!m_treeStore.missingRootNodeId().isEmpty()) {
+        qWarning().noquote() << QStringLiteral("LibraryModel missing root node %1; falling back to snapshot node order").arg(m_treeStore.missingRootNodeId());
     }
 
     QHash<QString, Entry> nodeById;
-    for (const QString &nodeId : sourceOrderNodeIds) {
-        const seriona::scanner::PlaylistNode *node = sourceNodeById.value(nodeId, nullptr);
+    QHash<QString, QVector<QString>> childrenById;
+    QHash<QString, QString> parentById;
+    QHash<QString, QString> trackIdToNodeId;
+
+    for (const QString &nodeId : m_treeStore.nodeOrder()) {
+        const LibraryTreeStore::Node *node = m_treeStore.nodeById(nodeId);
         if (node == nullptr) {
             continue;
         }
 
         QString parentName;
-        const QString parentNodeId = parentById.value(nodeId);
+        const QString parentNodeId = m_treeStore.parentNodeId(nodeId);
         if (!parentNodeId.isEmpty()) {
-            const seriona::scanner::PlaylistNode *parentNode = sourceNodeById.value(parentNodeId, nullptr);
+            const LibraryTreeStore::Node *parentNode = m_treeStore.nodeById(parentNodeId);
             if (parentNode != nullptr) {
-                parentName = toQString(parentNode->displayName);
+                parentName = parentNode->displayName;
             }
         }
 
-        QSet<QString> visitedForCount;
-        const int songCount = isFolderKind(node->kind)
-            ? descendantTrackCount(nodeId, sourceNodeById, childrenById, visitedForCount)
-            : 0;
-        Entry entry = entryFromNode(*node, parentName, songCount);
+        Entry entry = entryFromNode(*node, parentName);
         entry.parentNodeId = parentNodeId;
         nodeById.insert(nodeId, entry);
-    }
-
-    QVector<Entry> entries;
-    QSet<QString> renderedNodeIds;
-    const std::function<void(const QString &, int)> appendSubtree = [&](const QString &nodeId, int depth) {
-        if (renderedNodeIds.contains(nodeId)) {
-            return;
+        childrenById.insert(nodeId, m_treeStore.childNodeIds(nodeId));
+        if (!parentNodeId.isEmpty()) {
+            parentById.insert(nodeId, parentNodeId);
         }
-        const auto entryIt = nodeById.constFind(nodeId);
-        if (entryIt == nodeById.cend()) {
-            return;
+        if (!node->trackId.isEmpty() && !trackIdToNodeId.contains(node->trackId)) {
+            trackIdToNodeId.insert(node->trackId, nodeId);
         }
-
-        renderedNodeIds.insert(nodeId);
-        Entry entry = entryIt.value();
-        entry.depth = depth;
-        entries.append(entry);
-        for (const QString &childNodeId : childrenById.value(nodeId)) {
-            appendSubtree(childNodeId, depth + 1);
-        }
-    };
-
-    if (snapshot.rootNodeId.has_value()) {
-        const QString rootNodeId = toQString(*snapshot.rootNodeId);
-        if (nodeById.contains(rootNodeId)) {
-            appendSubtree(rootNodeId, 0);
-        } else {
-            qWarning().noquote() << QStringLiteral("LibraryModel missing root node %1; falling back to snapshot node order").arg(rootNodeId);
-        }
-    }
-
-    if (entries.isEmpty() && !sourceOrderNodeIds.isEmpty()) {
-        for (const QString &nodeId : sourceOrderNodeIds) {
-            const auto entryIt = nodeById.constFind(nodeId);
-            if (entryIt != nodeById.cend()) {
-                entries.append(entryIt.value());
-            }
+        if (!node->logicalTrackId.isEmpty() && !trackIdToNodeId.contains(node->logicalTrackId)) {
+            trackIdToNodeId.insert(node->logicalTrackId, nodeId);
         }
     }
 
     beginResetModel();
-    m_entries = entries;
+    m_nodeById = nodeById;
     m_childrenById = childrenById;
     m_parentById = parentById;
+    m_trackIdToNodeId = trackIdToNodeId;
+    m_nodeOrder = m_treeStore.nodeOrder();
+    m_rootNodeId = m_treeStore.rootNodeId();
+    m_rootProjectionNodeIds = m_treeStore.rootChildNodeIds();
     m_focusedNodeId.clear();
     m_playingTrackId.clear();
-    rebuildEntryIndexes();
+    m_entries.clear();
+    const QString playingNodeId = nodeIdForTrackId(m_playingTrackId);
+    QSet<QString> projectedNodeIds;
+    for (const QString &nodeId : m_rootProjectionNodeIds) {
+        if (nodeId.isEmpty() || nodeId == m_rootNodeId || projectedNodeIds.contains(nodeId)) {
+            continue;
+        }
+        const auto entryIt = m_nodeById.constFind(nodeId);
+        if (entryIt == m_nodeById.cend()) {
+            continue;
+        }
+        Entry entry = entryIt.value();
+        entry.isFocused = false;
+        entry.isPlaying = !playingNodeId.isEmpty() && entry.nodeId == playingNodeId;
+        m_entries.append(entry);
+        projectedNodeIds.insert(nodeId);
+    }
+    rebuildProjectionIndexes();
     m_version = snapshot.version;
     endResetModel();
 }
@@ -862,7 +610,6 @@ LibraryController::LibraryController(QObject *parent)
     : QObject(parent)
     , m_model(this)
 {
-    m_model.setEntries(rootEntries());
     reconcileBrowsingState({}, {});
 }
 
@@ -878,33 +625,12 @@ QString LibraryController::currentFolderName() const
 
 bool LibraryController::canGoBack() const
 {
-    if (!m_currentFolderNodeId.isEmpty()) {
-        return true;
-    }
-    if (m_folder != Folder::Root) {
-        return true;
-    }
-
-    const QString nodeId = !m_selectedBrowserNodeId.isEmpty() ? m_selectedBrowserNodeId : m_focusedNodeId;
-    return !m_model.parentNodeId(nodeId).isEmpty();
+    return !m_currentFolderNodeId.isEmpty();
 }
 
 QString LibraryController::searchQuery() const
 {
     return m_searchQuery;
-}
-
-QStringList LibraryController::expandedNodeIds() const
-{
-    QStringList nodeIds;
-    nodeIds.reserve(m_expandedNodeIds.size());
-    for (int row = 0; row < m_model.rowCount(); ++row) {
-        const LibraryModel::Entry *entry = m_model.entryAt(row);
-        if (entry != nullptr && m_expandedNodeIds.contains(entry->nodeId)) {
-            nodeIds.append(entry->nodeId);
-        }
-    }
-    return nodeIds;
 }
 
 QString LibraryController::focusedNodeId() const
@@ -1005,6 +731,9 @@ void LibraryController::setPlayingTrackId(const QString &trackId)
 
     const QString playingNodeId = m_model.nodeIdForTrackId(m_playingTrackId);
     if (!playingNodeId.isEmpty()) {
+        if (!showNodeInBrowserProjection(playingNodeId)) {
+            return;
+        }
         setSelectedBrowserNodeId(playingNodeId);
         requestScrollToNode(playingNodeId);
     }
@@ -1030,9 +759,33 @@ void LibraryController::setFollowCurrentlyPlaying(bool follow)
 
     const QString playingNodeId = m_model.nodeIdForTrackId(m_playingTrackId);
     if (!playingNodeId.isEmpty()) {
+        if (!showNodeInBrowserProjection(playingNodeId)) {
+            return;
+        }
         setSelectedBrowserNodeId(playingNodeId);
         requestScrollToNode(playingNodeId);
     }
+}
+
+bool LibraryController::libraryEmpty() const
+{
+    return !m_model.hasLibraryContent();
+}
+
+bool LibraryController::backendAvailable() const
+{
+    return m_backendAvailable;
+}
+
+QString LibraryController::libraryState() const
+{
+    if (!m_backendAvailable) {
+        return QStringLiteral("backendUnavailable");
+    }
+    if (libraryEmpty()) {
+        return QStringLiteral("empty");
+    }
+    return QStringLiteral("ready");
 }
 
 #if SERIONA_HAS_BACKEND
@@ -1044,27 +797,44 @@ void LibraryController::setCommandExecutor(CommandExecutor executor)
 void LibraryController::setScanExecutor(ScanExecutor executor)
 {
     m_scanExecutor = std::move(executor);
+    setBackendAvailable(static_cast<bool>(m_scanExecutor));
 }
 
 void LibraryController::setPlaylistTreeSnapshot(const seriona::scanner::PlaylistTreeSnapshot &snapshot)
 {
+    const bool previousLibraryEmpty = libraryEmpty();
+    const QString previousLibraryState = libraryState();
+    const bool previousBackendAvailable = m_backendAvailable;
     const QVector<QString> focusedFallbackChain = m_model.ancestorChainForNode(m_focusedNodeId);
     const QVector<QString> selectedFallbackChain = m_model.ancestorChainForNode(m_selectedBrowserNodeId);
 
+    m_backendAvailable = true;
     m_model.setPlaylistTreeSnapshot(snapshot);
     reconcileBrowsingState(focusedFallbackChain, selectedFallbackChain);
+    if (previousBackendAvailable != m_backendAvailable) {
+        emit backendAvailableChanged();
+    }
+    emitLibraryStateChanges(previousLibraryEmpty, previousLibraryState);
+}
+
+void LibraryController::applyPlayerStateSnapshot(const seriona::control::PlayerStateSnapshot &snapshot, bool forceReapply)
+{
+    const QString trackId = playingTrackIdFromSnapshot(snapshot);
+    if (forceReapply && !trackId.isEmpty() && m_playingTrackId == trackId) {
+        setPlayingTrackId(QString());
+    }
+    setPlayingTrackId(trackId);
 }
 
 void LibraryController::applyLibraryStateSnapshot(const seriona::control::LibraryStateSnapshot &snapshot)
 {
-    setScanStatus(uiScanStatus(snapshot.scanStatus));
-    setScanProgress(uiScanProgress(snapshot));
-    if (snapshot.lastError.has_value()) {
-        setLastError(scannerErrorMessage(*snapshot.lastError));
-    } else if (snapshot.scanStatus == seriona::control::LibraryScanStatus::Error) {
-        setLastError(QStringLiteral("扫描失败"));
-    } else {
-        setLastError(QString());
+    setBackendAvailable(true);
+    const LibrarySnapshotViewState mapped = mapLibrarySnapshot(snapshot);
+    setScanStatus(mapped.scanStatus);
+    setScanProgress(mapped.scanProgress);
+    setLastError(mapped.lastError);
+    if (snapshot.libraryTree.has_value()) {
+        setPlaylistTreeSnapshot(*snapshot.libraryTree);
     }
 }
 #endif
@@ -1101,7 +871,6 @@ void LibraryController::enterFolder(const QString &nodeId)
     const bool folderChanged = m_currentFolderNodeId != nodeId;
     const bool nameChanged = m_currentFolderName != entry->name;
 
-    m_folder = Folder::Root;
     m_currentFolderNodeId = nodeId;
     m_currentFolderName = entry->name;
     setSelectedBrowserNodeId(nodeId);
@@ -1144,16 +913,6 @@ void LibraryController::goBack()
         }
         return;
     }
-
-    const QString nodeId = !m_selectedBrowserNodeId.isEmpty() ? m_selectedBrowserNodeId : m_focusedNodeId;
-    const QString parentNodeId = m_model.parentNodeId(nodeId);
-    if (!parentNodeId.isEmpty()) {
-        setSelectedBrowserNodeId(parentNodeId);
-        requestScrollToNode(parentNodeId);
-        return;
-    }
-
-    setFolder(Folder::Root, QStringLiteral("My Music"));
 }
 
 bool LibraryController::refresh()
@@ -1191,13 +950,13 @@ bool LibraryController::scanLibrary(const QUrl &rootUrl)
 
 bool LibraryController::requestScanForRoot(const QString &rootPath)
 {
-    setSavedRootPath(rootPath);
     setScanStatus(QStringLiteral("running"));
     setScanProgress(0);
     setLastError(QString());
 
 #if SERIONA_HAS_BACKEND
     if (!m_scanExecutor) {
+        setBackendAvailable(false);
         setScanStatus(QStringLiteral("error"));
         setLastError(tr("后端扫描服务不可用"));
         return false;
@@ -1210,11 +969,13 @@ bool LibraryController::requestScanForRoot(const QString &rootPath)
         return false;
     }
 #else
+    setBackendAvailable(false);
     setScanStatus(QStringLiteral("error"));
     setLastError(tr("后端扫描服务不可用"));
     return false;
 #endif
 
+    setSavedRootPath(rootPath);
     applyBrowsingState();
     return true;
 }
@@ -1260,6 +1021,29 @@ void LibraryController::setSavedRootPath(const QString &rootPath)
     emit savedRootPathChanged();
 }
 
+void LibraryController::setBackendAvailable(bool available)
+{
+    if (m_backendAvailable == available) {
+        return;
+    }
+
+    const bool previousLibraryEmpty = libraryEmpty();
+    const QString previousLibraryState = libraryState();
+    m_backendAvailable = available;
+    emit backendAvailableChanged();
+    emitLibraryStateChanges(previousLibraryEmpty, previousLibraryState);
+}
+
+void LibraryController::emitLibraryStateChanges(bool previousLibraryEmpty, const QString &previousLibraryState)
+{
+    if (previousLibraryEmpty != libraryEmpty()) {
+        emit libraryEmptyChanged();
+    }
+    if (previousLibraryState != libraryState()) {
+        emit libraryStateChanged();
+    }
+}
+
 void LibraryController::playItem(int index)
 {
     activateTrack(m_model.entryAt(index));
@@ -1277,6 +1061,9 @@ void LibraryController::locateCurrentSong()
         return;
     }
 
+    if (!showNodeInBrowserProjection(playingNodeId)) {
+        return;
+    }
     setSelectedBrowserNodeId(playingNodeId);
     requestScrollToNode(playingNodeId);
 }
@@ -1334,30 +1121,6 @@ void LibraryController::submitSearch()
     requestScrollToNode(nodeId);
 }
 
-void LibraryController::expandNode(const QString &nodeId)
-{
-    setExpanded(nodeId, true);
-}
-
-void LibraryController::collapseNode(const QString &nodeId)
-{
-    setExpanded(nodeId, false);
-}
-
-void LibraryController::toggleExpanded(const QString &nodeId)
-{
-    if (!m_model.containsNodeId(nodeId)) {
-        return;
-    }
-
-    setExpanded(nodeId, !m_expandedNodeIds.contains(nodeId));
-}
-
-void LibraryController::focusNode(const QString &nodeId)
-{
-    setFocusedNodeId(nodeId);
-}
-
 void LibraryController::selectBrowserNode(const QString &nodeId)
 {
     setSelectedBrowserNodeId(nodeId);
@@ -1378,115 +1141,60 @@ int LibraryController::rowForNodeId(const QString &nodeId) const
     return m_model.rowForNodeId(nodeId);
 }
 
-QString LibraryController::describeBackendHook() const
+void LibraryController::applyBrowsingState()
 {
-    return QStringLiteral("Future backend hook: library folder browsing, refresh, item playback, current-song location, and library search intent.");
+    m_model.applyBrowsingState(m_focusedNodeId, m_playingTrackId, m_searchQuery, m_currentFolderNodeId);
+    updateVisibleNodeCount();
 }
 
-QVector<LibraryModel::Entry> LibraryController::rootEntries()
+bool LibraryController::showNodeInBrowserProjection(const QString &nodeId)
 {
-    return {mockFolderEntry(QStringLiteral("mock-folder-hires"), QStringLiteral("Hi-Res Collection"), 128, QStringLiteral("12:45:30")),
-            mockFileEntry(QStringLiteral("mock-track-stairway"), QStringLiteral("mock-track-stairway-id"), QStringLiteral("Stairway to Heaven"), QStringLiteral("Led Zeppelin"), QStringLiteral("Led Zeppelin IV"), QStringLiteral("08:02"), QStringLiteral("FLAC"), 96000, 24),
-            mockFileEntry(QStringLiteral("mock-track-bohemian"), QStringLiteral("mock-track-bohemian-id"), QStringLiteral("Bohemian Rhapsody"), QStringLiteral("Queen"), QStringLiteral("A Night at the Opera"), QStringLiteral("05:55"), QStringLiteral("WAV"), 192000, 24),
-            mockFolderEntry(QStringLiteral("mock-folder-rock"), QStringLiteral("Rock Classics"), 45, QStringLiteral("03:12:00")),
-            mockFileEntry(QStringLiteral("mock-track-imagine"), QStringLiteral("mock-track-imagine-id"), QStringLiteral("Imagine"), QStringLiteral("John Lennon"), QStringLiteral("Imagine"), QStringLiteral("03:03"), QStringLiteral("MP3"), 44100, 16),
-            mockFileEntry(QStringLiteral("mock-track-hotel"), QStringLiteral("mock-track-hotel-id"), QStringLiteral("Hotel California"), QStringLiteral("Eagles"), QStringLiteral("Hotel California"), QStringLiteral("06:30"), QStringLiteral("FLAC"), 48000, 24),
-            mockFolderEntry(QStringLiteral("mock-folder-jazz"), QStringLiteral("Jazz Essentials"), 32, QStringLiteral("02:45:15"))};
-}
-
-QVector<LibraryModel::Entry> LibraryController::childEntries()
-{
-    return {mockFileEntry(QStringLiteral("mock-child-track-1"), QStringLiteral("mock-child-track-1-id"), QStringLiteral("Sub Song 1"), QStringLiteral("Artist A"), QStringLiteral("Album X"), QStringLiteral("03:45"), QStringLiteral("FLAC"), 44100, 16),
-            mockFileEntry(QStringLiteral("mock-child-track-2"), QStringLiteral("mock-child-track-2-id"), QStringLiteral("Sub Song 2"), QStringLiteral("Artist B"), QStringLiteral("Album Y"), QStringLiteral("04:20"), QStringLiteral("MP3"), 44100, 16)};
-}
-
-QVector<LibraryModel::Entry> LibraryController::currentSourceEntries() const
-{
-    return m_folder == Folder::Root ? rootEntries() : childEntries();
-}
-
-QVector<LibraryModel::Entry> LibraryController::filteredEntries(const QVector<LibraryModel::Entry> &entries) const
-{
-    const QString trimmedQuery = m_searchQuery.trimmed();
-    if (trimmedQuery.isEmpty()) {
-        return entries;
+    const LibraryModel::Entry *entry = m_model.entryByNodeId(nodeId);
+    if (entry == nullptr) {
+        return false;
     }
 
-    QVector<LibraryModel::Entry> filtered;
-    filtered.reserve(entries.size());
-    for (const LibraryModel::Entry &entry : entries) {
-        const bool matchesFolder = entry.type == QStringLiteral("folder")
-            && (entry.name.contains(trimmedQuery, Qt::CaseInsensitive)
-                || entry.parentName.contains(trimmedQuery, Qt::CaseInsensitive));
-        const bool matchesFile = entry.type == QStringLiteral("file")
-            && (entry.title.contains(trimmedQuery, Qt::CaseInsensitive)
-                || entry.artist.contains(trimmedQuery, Qt::CaseInsensitive)
-                || entry.album.contains(trimmedQuery, Qt::CaseInsensitive)
-                || entry.format.contains(trimmedQuery, Qt::CaseInsensitive));
-
-        if (matchesFolder || matchesFile) {
-            filtered.append(entry);
-        }
-    }
-
-    return filtered;
-}
-
-void LibraryController::updateModelEntries()
-{
-    const QVector<QString> focusedFallbackChain = m_model.ancestorChainForNode(m_focusedNodeId);
-    const QVector<QString> selectedFallbackChain = m_model.ancestorChainForNode(m_selectedBrowserNodeId);
-
-    m_model.setEntries(currentSourceEntries());
-    reconcileBrowsingState(focusedFallbackChain, selectedFallbackChain);
-}
-
-void LibraryController::setFolder(Folder folder, const QString &folderName)
-{
     const bool previousCanGoBack = canGoBack();
-    const bool folderChanged = m_folder != folder;
-    const bool nameChanged = m_currentFolderName != folderName;
+    const QString rootNodeId = m_model.firstNodeId();
+    const QString parentNodeId = m_model.parentNodeId(nodeId);
+    QString folderNodeId;
 
-    m_folder = folder;
+    if (!parentNodeId.isEmpty() && parentNodeId != rootNodeId) {
+        folderNodeId = parentNodeId;
+    }
+
+    QString folderName = QStringLiteral("My Music");
+    if (!folderNodeId.isEmpty()) {
+        const LibraryModel::Entry *folderEntry = m_model.entryByNodeId(folderNodeId);
+        if (folderEntry == nullptr || !folderEntry->isFolder) {
+            return false;
+        }
+        folderName = folderEntry->name;
+    }
+
+    const bool folderChanged = m_currentFolderNodeId != folderNodeId;
+    const bool folderNameChanged = m_currentFolderName != folderName;
+    const bool searchChanged = !m_searchQuery.isEmpty();
+
+    m_currentFolderNodeId = folderNodeId;
     m_currentFolderName = folderName;
-    updateModelEntries();
+    if (searchChanged) {
+        m_searchQuery.clear();
+    }
 
-    if (nameChanged) {
+    applyBrowsingState();
+
+    if (searchChanged) {
+        emit searchQueryChanged();
+    }
+    if (folderNameChanged) {
         emit currentFolderNameChanged();
     }
     if (previousCanGoBack != canGoBack() || folderChanged) {
         emit canGoBackChanged();
     }
-}
 
-void LibraryController::setExpanded(const QString &nodeId, bool expanded)
-{
-    const LibraryModel::Entry *entry = m_model.entryByNodeId(nodeId);
-    if (entry == nullptr || !entry->isFolder) {
-        return;
-    }
-
-    if (expanded) {
-        if (m_expandedNodeIds.contains(nodeId)) {
-            return;
-        }
-        m_expandedNodeIds.insert(nodeId);
-    } else {
-        if (!m_expandedNodeIds.contains(nodeId)) {
-            return;
-        }
-        m_expandedNodeIds.remove(nodeId);
-    }
-
-    m_model.setNodeExpanded(nodeId, expanded);
-    applyBrowsingState();
-    emit expandedNodeIdsChanged();
-}
-
-void LibraryController::applyBrowsingState()
-{
-    m_model.applyBrowsingState(m_expandedNodeIds, m_focusedNodeId, m_playingTrackId, m_searchQuery, m_currentFolderNodeId);
-    updateVisibleNodeCount();
+    return m_model.rowForNodeId(nodeId) >= 0;
 }
 
 void LibraryController::updateVisibleNodeCount()
@@ -1502,19 +1210,9 @@ void LibraryController::updateVisibleNodeCount()
 
 void LibraryController::reconcileBrowsingState(const QVector<QString> &focusedFallbackChain, const QVector<QString> &selectedFallbackChain)
 {
-    const QSet<QString> previousExpandedNodeIds = m_expandedNodeIds;
     const QString previousFocusedNodeId = m_focusedNodeId;
     const QString previousSelectedNodeId = m_selectedBrowserNodeId;
     const bool previousCanGoBack = canGoBack();
-
-    for (auto it = m_expandedNodeIds.begin(); it != m_expandedNodeIds.end();) {
-        const LibraryModel::Entry *entry = m_model.entryByNodeId(*it);
-        if (entry == nullptr || !entry->isFolder) {
-            it = m_expandedNodeIds.erase(it);
-        } else {
-            ++it;
-        }
-    }
 
     if (!m_focusedNodeId.isEmpty() && !m_model.containsNodeId(m_focusedNodeId)) {
         m_focusedNodeId = firstExistingNode(focusedFallbackChain);
@@ -1537,9 +1235,6 @@ void LibraryController::reconcileBrowsingState(const QVector<QString> &focusedFa
 
     applyBrowsingState();
 
-    if (previousExpandedNodeIds != m_expandedNodeIds) {
-        emit expandedNodeIdsChanged();
-    }
     if (previousFocusedNodeId != m_focusedNodeId) {
         emit focusedNodeIdChanged();
     }
