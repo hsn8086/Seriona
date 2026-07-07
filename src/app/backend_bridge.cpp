@@ -1,6 +1,8 @@
 #include "backend_bridge.h"
 
 #if SERIONA_HAS_BACKEND
+#include "backend_command_adapter.h"
+
 #include <QByteArray>
 #include <QCoreApplication>
 #include <QMetaObject>
@@ -178,10 +180,13 @@ BackendBridge::ControllerFactory BackendBridge::defaultControllerFactory()
         const auto exePath = QCoreApplication::applicationFilePath().toStdString();
         const auto runtimePaths = seriona::app::resolveRuntimePaths(exePath);
         runtimePaths.ensureDirectoriesExist();
+        const auto &[dataRoot, logFile, mediaStorePath, artworkDir] = runtimePaths;
+        static_cast<void>(dataRoot);
+        static_cast<void>(logFile);
         return seriona::control::makeProductionMediaController(
             seriona::control::MediaControllerOptions{},
-            runtimePaths.databasePath,
-            runtimePaths.artworkDir);
+            mediaStorePath,
+            artworkDir);
 #else
         return nullptr;
 #endif
@@ -278,15 +283,11 @@ void BackendBridge::applyLibrarySnapshot(seriona::control::LibraryStateSnapshot 
 
 void BackendBridge::enqueueCommandFailureNotification(const seriona::control::MediaControllerCommandResult &result)
 {
-    if (result.accepted) {
+    std::optional<seriona::control::ControlDomainNotification> notification = notificationFromRejectedCommandResult(result);
+    if (!notification.has_value()) {
         return;
     }
-
-    seriona::control::ControlDomainNotification notification;
-    notification.kind = seriona::control::ControlDomainNotificationKind::CommandRejected;
-    notification.errorCode = result.code;
-    notification.message = result.message;
-    enqueueNotification(std::move(notification));
+    enqueueNotification(std::move(*notification));
 }
 
 void BackendBridge::enqueueNotification(seriona::control::ControlDomainNotification notification)
