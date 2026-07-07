@@ -1,76 +1,206 @@
+#include "backend_snapshot_mapper.h"
+
+#if SERIONA_HAS_BACKEND
+#include "seriona/control/control_contracts.h"
+#endif
+
 #include <QObject>
-#include <QString>
 #include <QtTest/QTest>
 
-namespace {
-enum class FakePlaybackState {
-    Playing,
-    Paused,
-};
-
-struct FakePlayerSnapshot {
-    FakePlaybackState state;
-    QString title;
-    QString artist;
-    QString album;
-    int positionMs;
-    int durationMs;
-};
-
-struct QtFacingSnapshot {
-    bool isPlaying;
-    QString songTitle;
-    QString artistName;
-    QString albumName;
-    QString currentPosition;
-    QString totalDuration;
-};
-
-QString formatMilliseconds(int value)
-{
-    return QStringLiteral("%1:%2").arg(value / 60000).arg((value / 1000) % 60, 2, 10, QLatin1Char('0'));
-}
-
-QtFacingSnapshot mapFakeSnapshot(const FakePlayerSnapshot &snapshot)
-{
-    return {
-        snapshot.state == FakePlaybackState::Playing,
-        snapshot.title,
-        snapshot.artist,
-        snapshot.album,
-        formatMilliseconds(snapshot.positionMs),
-        formatMilliseconds(snapshot.durationMs),
-    };
-}
-}
+#if SERIONA_HAS_BACKEND
+#include <chrono>
+#include <filesystem>
+#endif
 
 class SnapshotMappingTest : public QObject {
     Q_OBJECT
 
 private slots:
-    void mapsPlayingSnapshotToQtFacingProperties();
+#if SERIONA_HAS_BACKEND
+    void mapsPlayerSnapshotToQtFacingProperties();
+    void mapsPartialPlayerSnapshotToSafeDefaults();
+    void mapsLibraryScanStatusAndProgress();
+    void mapsLibraryErrorFallbacks();
+#else
+    void mapperUnavailableWithoutBackend();
+#endif
 };
 
-void SnapshotMappingTest::mapsPlayingSnapshotToQtFacingProperties()
-{
-    const FakePlayerSnapshot snapshot{
-        FakePlaybackState::Playing,
-        QStringLiteral("Seriona Echo"),
-        QStringLiteral("Adapter Fixture"),
-        QStringLiteral("Contract Smoke"),
-        42000,
-        185000,
-    };
+#if SERIONA_HAS_BACKEND
+namespace {
 
-    const QtFacingSnapshot mapped = mapFakeSnapshot(snapshot);
+using seriona::control::LibraryScanStatus;
+using seriona::control::LibraryStateSnapshot;
+using seriona::control::PlaybackStatus;
+using seriona::control::PlayerStateSnapshot;
+using seriona::control::RepeatMode;
+
+LibraryStateSnapshot libraryWithTrack()
+{
+    seriona::scanner::SongMetadata song;
+    song.trackId = "track-1";
+    song.filePath = std::filesystem::path{"/music/display.flac"};
+    song.sourceFilePath = std::filesystem::path{"/music/source.wav"};
+    song.title = "Library Title";
+    song.artist = "Library Artist";
+    song.album = "Library Album";
+    song.duration = std::chrono::milliseconds{185000};
+    song.sampleRate = 96000;
+    song.bitDepth = 24;
+    song.channels = 2;
+    song.artworkPath = std::filesystem::path{"/covers/library.png"};
+
+    seriona::scanner::PlaylistNode root;
+    root.nodeId = "root";
+    root.kind = seriona::scanner::PlaylistNodeKind::Root;
+    root.displayName = "Library";
+    root.childNodeIds = {"track-node"};
+
+    seriona::scanner::PlaylistNode track;
+    track.nodeId = "track-node";
+    track.parentNodeId = "root";
+    track.kind = seriona::scanner::PlaylistNodeKind::Track;
+    track.displayName = "Track Node";
+    track.song = song;
+
+    seriona::scanner::PlaylistTreeSnapshot tree;
+    tree.version = 7;
+    tree.rootNodeId = "root";
+    tree.nodes = {root, track};
+
+    LibraryStateSnapshot library;
+    library.version = 7;
+    library.libraryTree = tree;
+    return library;
+}
+
+}
+
+void SnapshotMappingTest::mapsPlayerSnapshotToQtFacingProperties()
+{
+    LibraryStateSnapshot library = libraryWithTrack();
+    PlayerStateSnapshot player;
+    player.currentTrack = seriona::control::TrackIdentity{
+        .trackId = "track-1",
+        .filePath = std::filesystem::path{"/fallback/fallback.mp3"},
+        .sourceId = {},
+        .libraryId = {},
+    };
+    player.display = seriona::control::DisplayMetadata{
+        .title = "Seriona Echo",
+        .artist = "Adapter Fixture",
+        .album = "Contract Smoke",
+        .albumArtist = {},
+        .genre = {},
+    };
+    player.artwork = seriona::control::ArtworkRef{.localPath = std::filesystem::path{"/covers/player.png"}};
+    player.playback.state = PlaybackStatus::Playing;
+    player.repeatMode = RepeatMode::One;
+    player.shuffle = true;
+    player.volume = 0.5F;
+    player.timeline.position = std::chrono::milliseconds{42000};
+    player.timeline.duration = std::chrono::milliseconds{180000};
+    player.capabilities.canPlay = true;
+    player.capabilities.canPause = true;
+    player.capabilities.canSeek = true;
+    player.capabilities.canSetVolume = true;
+    player.capabilities.canSelectTrack = true;
+
+    const Seriona::App::PlayerSnapshotViewState mapped = Seriona::App::mapPlayerSnapshot(player, &library);
 
     QCOMPARE(mapped.isPlaying, true);
-    QCOMPARE(mapped.songTitle, QStringLiteral("Seriona Echo"));
-    QCOMPARE(mapped.artistName, QStringLiteral("Adapter Fixture"));
-    QCOMPARE(mapped.albumName, QStringLiteral("Contract Smoke"));
-    QCOMPARE(mapped.currentPosition, QStringLiteral("0:42"));
-    QCOMPARE(mapped.totalDuration, QStringLiteral("3:05"));
+    QCOMPARE(mapped.currentTrack.trackId, QStringLiteral("track-1"));
+    QCOMPARE(mapped.currentTrack.nodeId, QStringLiteral("track-node"));
+    QCOMPARE(mapped.currentTrack.title, QStringLiteral("Seriona Echo"));
+    QCOMPARE(mapped.currentTrack.artist, QStringLiteral("Adapter Fixture"));
+    QCOMPARE(mapped.currentTrack.album, QStringLiteral("Contract Smoke"));
+    QCOMPARE(mapped.currentTrack.artworkPath, QStringLiteral("/covers/player.png"));
+    QCOMPARE(mapped.currentTrack.durationSeconds, 185.0);
+    QCOMPARE(mapped.currentTrack.audioFormat, QStringLiteral("WAV"));
+    QCOMPARE(mapped.currentTrack.audioSampleRate, 96000);
+    QCOMPARE(mapped.currentTrack.audioBitDepth, 24);
+    QCOMPARE(mapped.currentTrack.audioChannels, 2);
+    QCOMPARE(mapped.volume, 0.5);
+    QCOMPARE(mapped.shuffle, true);
+    QCOMPARE(mapped.repeatMode, 2);
+    QCOMPARE(mapped.capability, QStringLiteral("play,pause,seek,set-volume,select-track"));
+    QCOMPARE(mapped.timeline.position, std::chrono::milliseconds{42000});
+    QCOMPARE(mapped.timeline.durationSeconds, 180.0);
+    QCOMPARE(mapped.timeline.smooth, true);
+    QCOMPARE(Seriona::App::playingTrackIdFromSnapshot(player), QStringLiteral("track-1"));
 }
+
+void SnapshotMappingTest::mapsPartialPlayerSnapshotToSafeDefaults()
+{
+    PlayerStateSnapshot player;
+
+    const Seriona::App::PlayerSnapshotViewState mapped = Seriona::App::mapPlayerSnapshot(player, nullptr);
+
+    QCOMPARE(mapped.isPlaying, false);
+    QCOMPARE(mapped.currentTrack.trackId, QString());
+    QCOMPARE(mapped.currentTrack.nodeId, QString());
+    QCOMPARE(mapped.currentTrack.title, QStringLiteral("No song selected"));
+    QCOMPARE(mapped.currentTrack.artist, QStringLiteral("Unknown Artist"));
+    QCOMPARE(mapped.currentTrack.album, QStringLiteral("Unknown Album"));
+    QCOMPARE(mapped.currentTrack.durationSeconds, 0.0);
+    QCOMPARE(mapped.currentTrack.audioFormat, QString());
+    QCOMPARE(mapped.volume, 1.0);
+    QCOMPARE(mapped.shuffle, false);
+    QCOMPARE(mapped.repeatMode, 0);
+    QCOMPARE(mapped.capability, QStringLiteral("none"));
+    QCOMPARE(mapped.timeline.durationSeconds, 0.0);
+    QCOMPARE(mapped.timeline.positionSeconds, 0.0);
+    QCOMPARE(mapped.timeline.smooth, false);
+    QCOMPARE(Seriona::App::playingTrackIdFromSnapshot(player), QString());
+}
+
+void SnapshotMappingTest::mapsLibraryScanStatusAndProgress()
+{
+    LibraryStateSnapshot scanning;
+    scanning.scanStatus = LibraryScanStatus::Scanning;
+    scanning.scanProgress = seriona::scanner::ScanProgress{.filesDiscovered = 10, .filesScanned = 3};
+
+    LibraryStateSnapshot completed;
+    completed.scanStatus = LibraryScanStatus::Completed;
+
+    LibraryStateSnapshot stopped;
+    stopped.scanStatus = LibraryScanStatus::Stopped;
+
+    const Seriona::App::LibrarySnapshotViewState scanningMapped = Seriona::App::mapLibrarySnapshot(scanning);
+    const Seriona::App::LibrarySnapshotViewState completedMapped = Seriona::App::mapLibrarySnapshot(completed);
+    const Seriona::App::LibrarySnapshotViewState stoppedMapped = Seriona::App::mapLibrarySnapshot(stopped);
+
+    QCOMPARE(scanningMapped.scanStatus, QStringLiteral("running"));
+    QCOMPARE(scanningMapped.scanProgress, 30);
+    QCOMPARE(completedMapped.scanStatus, QStringLiteral("completed"));
+    QCOMPARE(completedMapped.scanProgress, 100);
+    QCOMPARE(stoppedMapped.scanStatus, QStringLiteral("pending"));
+    QCOMPARE(stoppedMapped.scanProgress, 0);
+}
+
+void SnapshotMappingTest::mapsLibraryErrorFallbacks()
+{
+    LibraryStateSnapshot detailError;
+    detailError.scanStatus = LibraryScanStatus::Error;
+    detailError.lastError = seriona::scanner::ScannerError{.message = {}, .detail = "metadata parser failed"};
+
+    LibraryStateSnapshot missingError;
+    missingError.scanStatus = LibraryScanStatus::Error;
+
+    const Seriona::App::LibrarySnapshotViewState detailMapped = Seriona::App::mapLibrarySnapshot(detailError);
+    const Seriona::App::LibrarySnapshotViewState missingMapped = Seriona::App::mapLibrarySnapshot(missingError);
+
+    QCOMPARE(detailMapped.scanStatus, QStringLiteral("error"));
+    QCOMPARE(detailMapped.lastError, QStringLiteral("metadata parser failed"));
+    QCOMPARE(missingMapped.scanStatus, QStringLiteral("error"));
+    QCOMPARE(missingMapped.lastError, QStringLiteral("扫描失败"));
+}
+#else
+void SnapshotMappingTest::mapperUnavailableWithoutBackend()
+{
+    QVERIFY(true);
+}
+#endif
 
 QTEST_GUILESS_MAIN(SnapshotMappingTest)
 
