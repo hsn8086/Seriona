@@ -75,6 +75,8 @@ private:
 
     QString displayLine(const QString &line) const;
     QString translationLine(const QString &line) const;
+    void clearLyrics();
+    void applyMissingTrackSnapshot(const QString &trackId);
     void replaceLyrics(QVector<Line> lines, bool hasTimedLyrics);
     int currentIndexForPlaybackPosition() const;
     void syncCurrentIndexToPlaybackPosition();
@@ -87,6 +89,7 @@ private:
     bool m_hasTimedLyrics = false;
     bool m_showTranslation = true;
     QString m_lyricDelimiter = QStringLiteral(" / ");
+    QString m_visibleTrackId;
 };
 
 }

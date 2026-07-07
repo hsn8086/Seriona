@@ -1,14 +1,16 @@
 #pragma once
 
+#ifndef SERIONA_HAS_BACKEND
+#define SERIONA_HAS_BACKEND 0
+#endif
+
+#include "backend_command_adapter.h"
+
 #include <QObject>
 #include <QQmlEngine>
 #include <QString>
 #include <QVariantList>
 #include <QVector>
-
-#ifndef SERIONA_HAS_BACKEND
-#define SERIONA_HAS_BACKEND 0
-#endif
 
 #if SERIONA_HAS_BACKEND
 #include "seriona/control/control_contracts.h"
@@ -57,20 +59,12 @@ signals:
     void latestNotificationChanged();
 
 private:
-    struct NotificationEntry {
-        QString kind;
-        QString code;
-        QString message;
-        QString title;
-        QString severity;
-    };
-
     static constexpr int kCapacity = 12;
 
-    const NotificationEntry *latestEntry() const;
-    void append(NotificationEntry entry);
+    const NotificationViewState *latestEntry() const;
+    void append(NotificationViewState entry);
 
-    QVector<NotificationEntry> m_notifications;
+    QVector<NotificationViewState> m_notifications;
 };
 
 }

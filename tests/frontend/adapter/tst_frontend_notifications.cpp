@@ -182,12 +182,22 @@ void FrontendNotificationsTest::unsupportedSettingsActionsShowLocalFeedback()
 
     controller.showUnsupportedAction(actionName);
 
+    const QString expectedMessage = QStringLiteral("%1 暂未支持").arg(actionName);
     QCOMPARE(controller.notificationCount(), 1);
     QCOMPARE(controller.latestKind(), QStringLiteral("UnsupportedAction"));
     QCOMPARE(controller.latestCode(), QStringLiteral("Unsupported"));
-    QCOMPARE(controller.latestMessage(), QStringLiteral("%1 暂未支持").arg(actionName));
+    QCOMPARE(controller.latestMessage(), expectedMessage);
     QCOMPARE(controller.latestTitle(), QStringLiteral("暂未支持"));
     QCOMPARE(controller.latestSeverity(), QStringLiteral("warning"));
+
+    MediaControllerCommandResult accepted;
+    accepted.accepted = true;
+    accepted.code = MediaControllerErrorCode::None;
+    controller.enqueueCommandResult(accepted);
+
+    QCOMPARE(controller.notificationCount(), 1);
+    QCOMPARE(controller.latestKind(), QStringLiteral("UnsupportedAction"));
+    QCOMPARE(controller.latestMessage(), expectedMessage);
 }
 
 QTEST_GUILESS_MAIN(FrontendNotificationsTest)

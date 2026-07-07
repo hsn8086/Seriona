@@ -76,6 +76,13 @@ public:
     ~WaveformProvider() override;
 
     [[nodiscard]] quint64 requestWaveform(WaveformRequest request);
+    void requestForSnapshots(
+        const seriona::control::PlayerStateSnapshot &player,
+        const seriona::control::LibraryStateSnapshot &library);
+    void requestForSnapshots(
+        const seriona::control::PlayerStateSnapshot &player,
+        const seriona::control::LibraryStateSnapshot &library,
+        const WaveformParameters &parameters);
     void cancelPending();
     void setGeneratorForTests(Generator generator);
 
@@ -95,6 +102,7 @@ private:
     QHash<QString, CachedWaveform> m_cache;
     QThreadPool m_threadPool;
     quint64 m_latestRequestId = 0;
+    QString m_currentCacheKey;
 };
 
 [[nodiscard]] WaveformParameters defaultWaveformParameters();

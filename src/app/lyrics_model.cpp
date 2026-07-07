@@ -141,8 +141,14 @@ void LyricsModel::applyPlayerStateSnapshot(
     const seriona::control::PlayerStateSnapshot &snapshot,
     const seriona::control::LibraryStateSnapshot *library)
 {
-    if (!snapshot.currentTrack || snapshot.currentTrack->trackId.empty() || library == nullptr || !library->libraryTree) {
-        replaceLyrics({}, false);
+    if (!snapshot.currentTrack || snapshot.currentTrack->trackId.empty()) {
+        clearLyrics();
+        return;
+    }
+
+    const QString visibleTrackId = fromBackendString(snapshot.currentTrack->trackId);
+    if (library == nullptr || !library->libraryTree) {
+        applyMissingTrackSnapshot(visibleTrackId);
         return;
     }
 
@@ -155,7 +161,13 @@ void LyricsModel::applyPlayerStateSnapshot(
         }
     }
 
-    if (song == nullptr || song->effectiveLyrics.empty()) {
+    if (song == nullptr) {
+        applyMissingTrackSnapshot(visibleTrackId);
+        return;
+    }
+
+    m_visibleTrackId = visibleTrackId;
+    if (song->effectiveLyrics.empty()) {
         replaceLyrics({}, false);
         return;
     }
@@ -208,6 +220,21 @@ QString LyricsModel::translationLine(const QString &line) const
     }
 
     return line.mid(delimiterIndex + m_lyricDelimiter.size()).trimmed();
+}
+
+void LyricsModel::clearLyrics()
+{
+    m_visibleTrackId.clear();
+    replaceLyrics({}, false);
+}
+
+void LyricsModel::applyMissingTrackSnapshot(const QString &trackId)
+{
+    if (!trackId.isEmpty() && trackId == m_visibleTrackId) {
+        return;
+    }
+
+    clearLyrics();
 }
 
 void LyricsModel::replaceLyrics(QVector<Line> lines, bool hasTimedLyrics)

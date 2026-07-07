@@ -1,6 +1,7 @@
 #include "waveform_provider.h"
 
 #if SERIONA_HAS_BACKEND
+#include <QDebug>
 #include <QFutureWatcher>
 #include <QMetaObject>
 #include <QThread>
@@ -157,7 +158,9 @@ quint64 WaveformProvider::requestWaveform(WaveformRequest request)
         }
 
         if (!result.errorMessage.isEmpty()) {
+            qWarning().noquote() << QStringLiteral("Waveform generation failed:") << result.errorMessage;
             emit waveformFailed(result);
+            emit waveformReady(result);
             return;
         }
 
@@ -171,8 +174,40 @@ quint64 WaveformProvider::requestWaveform(WaveformRequest request)
     return requestId;
 }
 
+void WaveformProvider::requestForSnapshots(
+    const seriona::control::PlayerStateSnapshot &player,
+    const seriona::control::LibraryStateSnapshot &library)
+{
+    requestForSnapshots(player, library, defaultWaveformParameters());
+}
+
+void WaveformProvider::requestForSnapshots(
+    const seriona::control::PlayerStateSnapshot &player,
+    const seriona::control::LibraryStateSnapshot &library,
+    const WaveformParameters &parameters)
+{
+    std::optional<WaveformRequest> request = makeWaveformRequest(player, library, parameters);
+    if (!request.has_value()) {
+        cancelPending();
+
+        WaveformResult result;
+        result.requestId = m_latestRequestId;
+        emit waveformReady(result);
+        return;
+    }
+
+    const QString cacheKey = request->cacheKey();
+    if (cacheKey == m_currentCacheKey) {
+        return;
+    }
+
+    m_currentCacheKey = cacheKey;
+    static_cast<void>(requestWaveform(std::move(*request)));
+}
+
 void WaveformProvider::cancelPending()
 {
+    m_currentCacheKey.clear();
     ++m_latestRequestId;
 }
 

@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace {
@@ -47,6 +48,60 @@ WaveformResult resultAt(const QSignalSpy &spy, qsizetype index)
     return qvariant_cast<WaveformResult>(spy.at(index).at(0));
 }
 
+seriona::scanner::LyricLine lyricLine(std::chrono::milliseconds timestamp, const std::string &text)
+{
+    seriona::scanner::LyricLine line;
+    line.timestamp = timestamp;
+    line.text = text;
+    return line;
+}
+
+seriona::scanner::PlaylistNode lyricsTrackNode(
+    const std::string &nodeId,
+    const std::string &trackId,
+    const std::string &lineText)
+{
+    seriona::scanner::SongMetadata song;
+    song.trackId = trackId;
+    song.filePath = "/music/" + trackId + ".flac";
+    song.sourceFilePath = song.filePath;
+    song.title = trackId;
+    song.effectiveLyrics = {lyricLine(std::chrono::milliseconds{0}, lineText)};
+
+    seriona::scanner::PlaylistNode node;
+    node.nodeId = nodeId;
+    node.kind = seriona::scanner::PlaylistNodeKind::Track;
+    node.displayName = trackId;
+    node.song = std::move(song);
+    return node;
+}
+
+seriona::control::LibraryStateSnapshot lyricsLibrary(
+    const std::string &trackId,
+    const std::string &lineText)
+{
+    seriona::control::LibraryStateSnapshot library;
+    library.libraryTree = seriona::scanner::PlaylistTreeSnapshot{};
+    library.libraryTree->version = 1;
+    library.libraryTree->rootNodeId = "root";
+    library.libraryTree->nodes = {lyricsTrackNode("node-" + trackId, trackId, lineText)};
+    return library;
+}
+
+seriona::control::PlayerStateSnapshot lyricsPlayer(const std::string &trackId)
+{
+    seriona::control::PlayerStateSnapshot player;
+    player.currentTrack = seriona::control::TrackIdentity{};
+    player.currentTrack->trackId = trackId;
+    player.currentTrack->filePath = "/music/" + trackId + ".flac";
+    return player;
+}
+
+QString lyricsDisplayLine(const Seriona::App::LyricsModel &model, int row)
+{
+    return model.data(model.index(row, 0), Seriona::App::LyricsModel::DisplayLineRole).toString();
+}
+
 }
 
 class WaveformWorkerTest : public QObject
@@ -59,6 +114,7 @@ private slots:
     void cacheKeyUsesTrackIdentityParametersAndImmutableDefaultConfig();
     void cueMetadataChoosesSourceFilePathAndTimeWindow();
     void staleWorkerResultIsIgnored();
+    void staleLyricsSnapshotForDifferentTrackIsIgnored();
     void missingFileFailureReturnsEmptyWaveform();
 };
 
@@ -211,9 +267,40 @@ void WaveformWorkerTest::staleWorkerResultIsIgnored()
     QCOMPARE(fastResult.heights, QVariantList({9, 8, 7, 6}));
     QCOMPARE(fastResult.barWidth, 4);
 
+    Seriona::App::PlaybackController controller;
+    controller.applyWaveform(fastResult.heights, fastResult.barWidth);
+    QCOMPARE(controller.waveformHeights(), QVariantList({9, 8, 7, 6}));
+    QCOMPARE(controller.waveformBarWidth(), 4);
+
     releaseSlow.release();
     QTest::qWait(150);
     QCOMPARE(readySpy.count(), 1);
+    QCOMPARE(controller.waveformHeights(), QVariantList({9, 8, 7, 6}));
+    QCOMPARE(controller.waveformBarWidth(), 4);
+}
+
+void WaveformWorkerTest::staleLyricsSnapshotForDifferentTrackIsIgnored()
+{
+    const seriona::control::PlayerStateSnapshot currentPlayer = lyricsPlayer("current-track");
+    const seriona::control::LibraryStateSnapshot currentLibrary = lyricsLibrary(
+        "current-track",
+        "Current lyric | 当前歌词");
+    const seriona::control::LibraryStateSnapshot staleLibrary = lyricsLibrary(
+        "previous-track",
+        "Stale lyric | 过期歌词");
+
+    Seriona::App::LyricsModel model;
+    model.setShowTranslation(false);
+    model.setLyricDelimiter(QStringLiteral(" | "));
+    model.applyPlayerStateSnapshot(currentPlayer, &currentLibrary);
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(lyricsDisplayLine(model, 0), QStringLiteral("Current lyric"));
+
+    model.applyPlayerStateSnapshot(currentPlayer, &staleLibrary);
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(lyricsDisplayLine(model, 0), QStringLiteral("Current lyric"));
 }
 
 void WaveformWorkerTest::missingFileFailureReturnsEmptyWaveform()
