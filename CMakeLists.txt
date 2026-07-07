@@ -142,60 +142,82 @@ qt_add_executable(appSeriona
 # 注册 Theme.qml 为 Singleton
 set_source_files_properties(qml/theme/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
+set(SERIONA_APP_LAYER_SOURCES
+    src/app/app_facade.cpp
+    src/app/app_facade.h
+    src/app/playback_controller.cpp
+    src/app/playback_controller.h
+    src/app/navigation_controller.cpp
+    src/app/navigation_controller.h
+    src/app/backend_snapshot_mapper.cpp
+    src/app/backend_snapshot_mapper.h
+    src/app/backend_command_adapter.cpp
+    src/app/backend_command_adapter.h
+    src/app/backend_bridge.cpp
+    src/app/backend_bridge.h
+    src/app/notification_controller.cpp
+    src/app/notification_controller.h
+    src/app/waveform_provider.cpp
+    src/app/waveform_provider.h
+    src/app/lyrics_model.cpp
+    src/app/lyrics_model.h
+    src/app/library_model.cpp
+    src/app/library_model.h
+    src/app/library_tree_store.cpp
+    src/app/library_tree_store.h
+)
+
+set(SERIONA_QML_MODULE_FILES
+    qml/Main.qml
+    qml/theme/Theme.qml
+    qml/components/BubbleMenu.qml
+    qml/components/BubbleMenuItem.qml
+    qml/components/BubbleSubMenuItem.qml
+    qml/components/StyleButton.qml
+    qml/components/Sidebar.qml
+    qml/components/WindowControls.qml
+    qml/components/WaveformProgressBar.qml
+    qml/components/MarqueeText.qml
+    qml/views/MainContent.qml
+    qml/views/StartupView.qml
+)
+
+set(SERIONA_QML_MODULE_RESOURCES
+    qml/assets/play.svg
+    qml/assets/pause.svg
+    qml/assets/prev.svg
+    qml/assets/next.svg
+    qml/assets/shuffle_on.svg
+    qml/assets/shuffle_off.svg
+    qml/assets/repeat_list.svg
+    qml/assets/repeat_one.svg
+    qml/assets/repeat_off.svg
+    qml/assets/playlist.svg
+    qml/assets/settings.svg
+    qml/assets/minimize.svg
+    qml/assets/maximize.svg
+    qml/assets/restore.svg
+    qml/assets/close.svg
+    qml/assets/volume_down.svg
+    qml/assets/volume_up.svg
+    qml/assets/back.svg
+    qml/assets/arrow_back.svg
+    qml/assets/search.svg
+    qml/assets/more_vert.svg
+    qml/assets/folder.svg
+    qml/assets/music_note.svg
+    qml/assets/my_location.svg
+    qml/assets/translate.svg
+)
+
 qt_add_qml_module(appSeriona
     URI Seriona
     SOURCES
-        src/app/app_facade.cpp
-        src/app/app_facade.h
-        src/app/backend_bridge.cpp
-        src/app/backend_bridge.h
-        src/app/notification_controller.cpp
-        src/app/notification_controller.h
-        src/app/waveform_provider.cpp
-        src/app/waveform_provider.h
-        src/app/lyrics_model.cpp
-        src/app/lyrics_model.h
-        src/app/library_model.cpp
-        src/app/library_model.h
+        ${SERIONA_APP_LAYER_SOURCES}
     QML_FILES
-        qml/Main.qml
-        qml/theme/Theme.qml
-        qml/components/BubbleMenu.qml
-        qml/components/BubbleMenuItem.qml
-        qml/components/BubbleSubMenuItem.qml
-        qml/components/StyleButton.qml
-        qml/components/Sidebar.qml
-        qml/components/WindowControls.qml
-        qml/components/WaveformProgressBar.qml
-        qml/components/MarqueeText.qml
-        qml/views/MainContent.qml
-        qml/views/StartupView.qml
+        ${SERIONA_QML_MODULE_FILES}
     RESOURCES
-        qml/assets/play.svg
-        qml/assets/pause.svg
-        qml/assets/prev.svg
-        qml/assets/next.svg
-        qml/assets/shuffle_on.svg
-        qml/assets/shuffle_off.svg
-        qml/assets/repeat_list.svg
-        qml/assets/repeat_one.svg
-        qml/assets/repeat_off.svg
-        qml/assets/playlist.svg
-        qml/assets/settings.svg
-        qml/assets/minimize.svg
-        qml/assets/maximize.svg
-        qml/assets/restore.svg
-        qml/assets/close.svg
-        qml/assets/volume_down.svg
-        qml/assets/volume_up.svg
-        qml/assets/back.svg
-        qml/assets/arrow_back.svg
-        qml/assets/search.svg
-        qml/assets/more_vert.svg
-        qml/assets/folder.svg
-        qml/assets/music_note.svg
-        qml/assets/my_location.svg
-        qml/assets/translate.svg
+        ${SERIONA_QML_MODULE_RESOURCES}
 )
 
 target_include_directories(appSeriona
@@ -205,9 +227,6 @@ target_include_directories(appSeriona
 target_compile_definitions(appSeriona
     PRIVATE SERIONA_HAS_BACKEND=$<BOOL:${SERIONA_BACKEND_CONTROL_TARGET}>
 )
-
-# target_sources(appSeriona PRIVATE
-# )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
@@ -235,18 +254,44 @@ if(BUILD_TESTING)
 
     add_executable(seriona_frontend_command_result_mapping
         tests/frontend/adapter/tst_command_result_mapping.cpp
+        src/app/backend_command_adapter.cpp
+        src/app/backend_command_adapter.h
+    )
+    target_include_directories(seriona_frontend_command_result_mapping
+        PRIVATE src/app
+    )
+    target_compile_definitions(seriona_frontend_command_result_mapping
+        PRIVATE SERIONA_HAS_BACKEND=$<BOOL:${SERIONA_BACKEND_CONTROL_TARGET}>
     )
     target_link_libraries(seriona_frontend_command_result_mapping
         PRIVATE Qt6::Test
     )
+    if(SERIONA_BACKEND_CONTROL_TARGET)
+        target_link_libraries(seriona_frontend_command_result_mapping
+            PRIVATE ${SERIONA_BACKEND_CONTROL_TARGET}
+        )
+    endif()
     add_test(NAME seriona_frontend_command_result_mapping COMMAND seriona_frontend_command_result_mapping)
 
     add_executable(seriona_frontend_snapshot_mapping
         tests/frontend/adapter/tst_snapshot_mapping.cpp
+        src/app/backend_snapshot_mapper.cpp
+        src/app/backend_snapshot_mapper.h
+    )
+    target_include_directories(seriona_frontend_snapshot_mapping
+        PRIVATE src/app
+    )
+    target_compile_definitions(seriona_frontend_snapshot_mapping
+        PRIVATE SERIONA_HAS_BACKEND=$<BOOL:${SERIONA_BACKEND_CONTROL_TARGET}>
     )
     target_link_libraries(seriona_frontend_snapshot_mapping
         PRIVATE Qt6::Test
     )
+    if(SERIONA_BACKEND_CONTROL_TARGET)
+        target_link_libraries(seriona_frontend_snapshot_mapping
+            PRIVATE ${SERIONA_BACKEND_CONTROL_TARGET}
+        )
+    endif()
     add_test(NAME seriona_frontend_snapshot_mapping COMMAND seriona_frontend_snapshot_mapping)
 
     add_executable(seriona_frontend_library_tree_mapping
@@ -262,6 +307,10 @@ if(BUILD_TESTING)
             tests/frontend/adapter/tst_library_tree_model.cpp
             src/app/library_model.cpp
             src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
         )
         target_include_directories(seriona_frontend_library_tree_model_tests
             PRIVATE src/app
@@ -279,6 +328,10 @@ if(BUILD_TESTING)
             tests/frontend/adapter/tst_library_dual_cursor.cpp
             src/app/library_model.cpp
             src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
         )
         target_include_directories(seriona_frontend_library_dual_cursor_tests
             PRIVATE src/app
@@ -290,14 +343,19 @@ if(BUILD_TESTING)
             PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
         )
         add_test(NAME seriona_frontend_library_dual_cursor COMMAND seriona_frontend_library_dual_cursor_tests dualCursorKeepsFocusedAndPlayingSeparate)
+        add_test(NAME seriona_frontend_library_dual_follow_playing COMMAND seriona_frontend_library_dual_cursor_tests followCurrentlyPlayingControlsBrowserCursor)
         add_test(NAME seriona_frontend_library_follow_playing COMMAND seriona_frontend_library_dual_cursor_tests followCurrentlyPlayingControlsBrowserCursor)
         add_test(NAME seriona_frontend_library_dual_cursor_refresh COMMAND seriona_frontend_library_dual_cursor_tests refreshKeepsAndFallsBackBrowserState)
-        add_test(NAME seriona_frontend_library_dual_cursor_no_commands COMMAND seriona_frontend_library_dual_cursor_tests browsingActionsDoNotEmitBackendHookSignals)
+        add_test(NAME seriona_frontend_library_dual_cursor_no_commands COMMAND seriona_frontend_library_dual_cursor_tests browsingActionsStayLocalToProjection)
 
         add_executable(seriona_frontend_sidebar_local_browsing_tests
             tests/frontend/adapter/tst_sidebar_local_browsing.cpp
             src/app/library_model.cpp
             src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
         )
         target_include_directories(seriona_frontend_sidebar_local_browsing_tests
             PRIVATE src/app
@@ -310,7 +368,8 @@ if(BUILD_TESTING)
         )
         add_test(NAME seriona_frontend_sidebar_search_local COMMAND seriona_frontend_sidebar_local_browsing_tests localSearchFiltersAndFocusesFirstMatch)
         add_test(NAME seriona_frontend_sidebar_search_empty COMMAND seriona_frontend_sidebar_local_browsing_tests emptySearchDoesNotMoveBrowserOrPlayback)
-        add_test(NAME seriona_frontend_sidebar_tree_local COMMAND seriona_frontend_sidebar_local_browsing_tests expansionAndBackStayLocal)
+        add_test(NAME seriona_frontend_sidebar_tree_local COMMAND seriona_frontend_sidebar_local_browsing_tests enterFolderAndBackStayLocal)
+        add_test(NAME seriona_frontend_sidebar_root_select_no_back COMMAND seriona_frontend_sidebar_local_browsing_tests selectingRootProjectionNodeDoesNotEnableBack)
 
         add_executable(seriona_frontend_ui_only_handler_policy_tests
             tests/frontend/adapter/tst_ui_only_handler_policy.cpp
@@ -322,11 +381,16 @@ if(BUILD_TESTING)
             PRIVATE Qt6::Test
         )
         add_test(NAME seriona_frontend_ui_only_no_backend_command COMMAND seriona_frontend_ui_only_handler_policy_tests uiOnlyHandlersDoNotUseBackendCommands)
+        add_test(NAME seriona_frontend_qml_layout COMMAND seriona_frontend_ui_only_handler_policy_tests qmlLayoutSourceContractsStayStable)
 
         add_executable(seriona_frontend_library_select_track_tests
             tests/frontend/adapter/tst_library_select_track.cpp
             src/app/library_model.cpp
             src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
         )
         target_include_directories(seriona_frontend_library_select_track_tests
             PRIVATE src/app
@@ -339,12 +403,19 @@ if(BUILD_TESTING)
         )
         add_test(NAME seriona_frontend_library_select_track COMMAND seriona_frontend_library_select_track_tests explicitTrackNodeActivationSubmitsSelectTrack)
         add_test(NAME seriona_frontend_library_select_track_by_index COMMAND seriona_frontend_library_select_track_tests indexedTrackActivationSubmitsSelectTrack)
+        add_test(NAME seriona_frontend_library_select_locate_projection COMMAND seriona_frontend_library_select_track_tests locateCurrentSongMovesToContainingProjection)
+        add_test(NAME seriona_frontend_library_select_locate_missing COMMAND seriona_frontend_library_select_track_tests locateMissingCurrentSongPreservesBrowserState)
+        add_test(NAME seriona_frontend_library_select_browse_no_command COMMAND seriona_frontend_library_select_track_tests browsingAndLocateCurrentSongDoNotSubmitCommands)
         add_test(NAME seriona_frontend_library_browse_no_command COMMAND seriona_frontend_library_select_track_tests browsingAndLocateCurrentSongDoNotSubmitCommands)
 
         add_executable(seriona_frontend_library_scan_flow_tests
             tests/frontend/adapter/tst_library_scan_flow.cpp
             src/app/library_model.cpp
             src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
         )
         target_include_directories(seriona_frontend_library_scan_flow_tests
             PRIVATE src/app
@@ -355,15 +426,25 @@ if(BUILD_TESTING)
         target_link_libraries(seriona_frontend_library_scan_flow_tests
             PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
         )
-        add_test(NAME seriona_frontend_scan_library_request COMMAND seriona_frontend_library_scan_flow_tests scanLibraryRequestSubmitsBackendScanAndUpdatesTree)
-        add_test(NAME seriona_frontend_scan_library_cancel_invalid COMMAND seriona_frontend_library_scan_flow_tests cancelAndInvalidSelectionDoNotScanOrSaveRoot)
-        add_test(NAME seriona_frontend_scan_state_mapping COMMAND seriona_frontend_library_scan_flow_tests scanSnapshotsMapUiStates)
+add_test(NAME seriona_frontend_library_scan_request COMMAND seriona_frontend_library_scan_flow_tests scanLibraryRequestSubmitsBackendScanAndUpdatesTree)
+add_test(NAME seriona_frontend_library_scan_cancel_invalid COMMAND seriona_frontend_library_scan_flow_tests cancelAndInvalidSelectionDoNotScanOrSaveRoot)
+add_test(NAME seriona_frontend_library_scan_state_mapping COMMAND seriona_frontend_library_scan_flow_tests scanSnapshotsMapUiStates)
+add_test(NAME seriona_frontend_library_scan_empty_state COMMAND seriona_frontend_library_scan_flow_tests emptySnapshotExposesEmptyLibraryState)
+add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_frontend_library_scan_flow_tests backendUnavailableDoesNotFabricateRows)
     endif()
 
         add_executable(seriona_frontend_app_facade_smoke_mode
             tests/frontend/adapter/tst_app_facade_smoke_mode.cpp
             src/app/app_facade.cpp
             src/app/app_facade.h
+            src/app/playback_controller.cpp
+            src/app/playback_controller.h
+            src/app/navigation_controller.cpp
+            src/app/navigation_controller.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
+            src/app/backend_command_adapter.cpp
+            src/app/backend_command_adapter.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
             src/app/notification_controller.cpp
@@ -374,6 +455,8 @@ if(BUILD_TESTING)
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
         )
     target_include_directories(seriona_frontend_app_facade_smoke_mode
         PRIVATE src/app
@@ -396,6 +479,14 @@ if(BUILD_TESTING)
             tests/frontend/adapter/tst_startup_restore.cpp
             src/app/app_facade.cpp
             src/app/app_facade.h
+            src/app/playback_controller.cpp
+            src/app/playback_controller.h
+            src/app/navigation_controller.cpp
+            src/app/navigation_controller.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
+            src/app/backend_command_adapter.cpp
+            src/app/backend_command_adapter.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
             src/app/notification_controller.cpp
@@ -406,6 +497,8 @@ if(BUILD_TESTING)
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
         )
         target_include_directories(seriona_frontend_startup_restore_tests
             PRIVATE src/app
@@ -425,6 +518,14 @@ if(BUILD_TESTING)
             tests/frontend/adapter/tst_playback_snapshot_mapping.cpp
             src/app/app_facade.cpp
             src/app/app_facade.h
+            src/app/playback_controller.cpp
+            src/app/playback_controller.h
+            src/app/navigation_controller.cpp
+            src/app/navigation_controller.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
+            src/app/backend_command_adapter.cpp
+            src/app/backend_command_adapter.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
             src/app/notification_controller.cpp
@@ -435,6 +536,8 @@ if(BUILD_TESTING)
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
         )
         target_include_directories(seriona_frontend_playback_snapshot_tests
             PRIVATE src/app
@@ -455,6 +558,14 @@ if(BUILD_TESTING)
             tests/frontend/adapter/tst_playback_command_mapping.cpp
             src/app/app_facade.cpp
             src/app/app_facade.h
+            src/app/playback_controller.cpp
+            src/app/playback_controller.h
+            src/app/navigation_controller.cpp
+            src/app/navigation_controller.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
+            src/app/backend_command_adapter.cpp
+            src/app/backend_command_adapter.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
             src/app/notification_controller.cpp
@@ -465,6 +576,8 @@ if(BUILD_TESTING)
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
         )
         target_include_directories(seriona_frontend_playback_command_tests
             PRIVATE src/app
@@ -483,6 +596,8 @@ if(BUILD_TESTING)
             tests/frontend/adapter/tst_frontend_notifications.cpp
             src/app/notification_controller.cpp
             src/app/notification_controller.h
+            src/app/backend_command_adapter.cpp
+            src/app/backend_command_adapter.h
         )
         target_include_directories(seriona_frontend_notifications_tests
             PRIVATE src/app
@@ -506,6 +621,14 @@ if(BUILD_TESTING)
             tests/frontend/adapter/tst_waveform_worker.cpp
             src/app/app_facade.cpp
             src/app/app_facade.h
+            src/app/playback_controller.cpp
+            src/app/playback_controller.h
+            src/app/navigation_controller.cpp
+            src/app/navigation_controller.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
+            src/app/backend_command_adapter.cpp
+            src/app/backend_command_adapter.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
             src/app/notification_controller.cpp
@@ -516,6 +639,8 @@ if(BUILD_TESTING)
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
         )
         target_include_directories(seriona_frontend_waveform_worker_tests
             PRIVATE src/app
@@ -534,6 +659,14 @@ if(BUILD_TESTING)
             tests/frontend/adapter/tst_current_track_lookup.cpp
             src/app/app_facade.cpp
             src/app/app_facade.h
+            src/app/playback_controller.cpp
+            src/app/playback_controller.h
+            src/app/navigation_controller.cpp
+            src/app/navigation_controller.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
+            src/app/backend_command_adapter.cpp
+            src/app/backend_command_adapter.h
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
             src/app/notification_controller.cpp
@@ -544,6 +677,8 @@ if(BUILD_TESTING)
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
         )
         target_include_directories(seriona_frontend_current_track_lookup_tests
             PRIVATE src/app
@@ -580,6 +715,8 @@ if(BUILD_TESTING)
             tests/frontend/adapter/tst_backend_bridge.cpp
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
+            src/app/backend_command_adapter.cpp
+            src/app/backend_command_adapter.h
         )
         target_include_directories(seriona_frontend_backend_bridge_tests
             PRIVATE src/app

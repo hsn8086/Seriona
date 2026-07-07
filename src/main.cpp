@@ -5,12 +5,16 @@
 #include <QStringList>
 #include <QTimer>
 
-#ifdef SERIONA_HAS_BACKEND
+#if SERIONA_HAS_BACKEND
+#include "seriona/app/application_logging.h"
+#include "seriona/app/runtime_paths.h"
+
 extern "C" {
 #include <libavutil/log.h>
 }
 #endif
 
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -101,6 +105,16 @@ int main(int argc, char *argv[])
     av_log_set_level(AV_LOG_WARNING);
 #elif SERIONA_HAS_BACKEND
     av_log_set_level(AV_LOG_QUIET);
+#endif
+
+#if SERIONA_HAS_BACKEND
+    try {
+        const auto runtimePaths = seriona::app::resolveRuntimePaths(
+            QCoreApplication::applicationFilePath().toStdString());
+        seriona::app::initializeApplicationLogging(runtimePaths);
+    } catch (const std::exception &error) {
+        std::cerr << "seriona: logging initialization failed: " << error.what() << '\n';
+    }
 #endif
 
     SmokeOptions smokeOptions;
