@@ -21,7 +21,6 @@ Item {
     property bool isTogglingTranslation: false
     readonly property real currentItemHeight: lyricsContainer.currentItem ? lyricsContainer.currentItem.height : 0
     readonly property real currentItemOriginalHeight: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.originalHeight !== "undefined") ? lyricsContainer.currentItem.originalHeight : 0
-    readonly property real currentItemHeightUnscaled: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.fullHeightUnscaled !== "undefined") ? lyricsContainer.currentItem.fullHeightUnscaled : 0
     readonly property real currentItemOriginalHeightUnscaled: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.originalHeightUnscaled !== "undefined") ? lyricsContainer.currentItem.originalHeightUnscaled : 0
     readonly property real playbackTimelineDuration: playbackController.totalDuration
     readonly property real playbackTimelinePosition: playbackController.currentPosition
@@ -51,7 +50,7 @@ Item {
 
     Timer {
         id: toggleTranslationTimer
-        interval: 350
+        interval: 320  // 覆盖翻译动画（300ms）+ 20ms 缓冲
         onTriggered: root.isTogglingTranslation = false
     }
 
@@ -121,8 +120,12 @@ Item {
     Rectangle {
         id: notificationToast
         anchors.horizontalCenter: parent.horizontalCenter
-        y: root.toastVisible ? parent.height / 2 - height / 2 : parent.height + height
-        width: Math.min(parent.width - Theme.paddingLarge * 2, 360)
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: root.toastVisible ? 12 : -height
+        width: Math.min(
+            Math.max(notificationColumn.implicitWidth + Theme.paddingLarge * 2, 240),
+            320
+        )
         height: notificationColumn.implicitHeight + Theme.paddingLarge
         radius: height / 2
         color: root.toastSeverity === "error" ? "#E62D0D0D" : root.toastSeverity === "warning" ? "#E62D2300" : "#E6202020"
@@ -132,7 +135,7 @@ Item {
         visible: opacity > 0.0 || root.toastVisible
         z: 300
 
-        Behavior on y {
+        Behavior on anchors.bottomMargin {
             NumberAnimation {
                 duration: 240
                 easing.type: root.toastVisible ? Easing.OutCubic : Easing.InCubic
@@ -162,6 +165,7 @@ Item {
                 font.pixelSize: 12
                 font.bold: true
                 elide: Text.ElideRight
+                horizontalAlignment: Text.AlignHCenter
             }
 
             Text {
@@ -172,6 +176,7 @@ Item {
                 color: Theme.secondaryTextColor
                 font.pixelSize: 11
                 elide: Text.ElideRight
+                horizontalAlignment: Text.AlignHCenter
             }
         }
     }
@@ -179,25 +184,27 @@ Item {
     // 1. 播放布局定位辅助器 (仅在 playback 状态下用于定位)
     Item {
         id: positionHelper
-        anchors.centerIn: parent
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: Math.max(8, (parent.height - 650) / 2)
         width: 320
-        height: 604
+        height: 650
         visible: false
     }
 
     // 2. 封面组件 (共享元素)
     Item {
         id: coverContainer
-        width: 250
-        height: 250
+        width: 240
+        height: 240
         z: 10
-        x: (parent.width - 250) / 2
-        y: positionHelper.y
+        x: (parent.width - 240) / 2
+        y: positionHelper.y + 5
 
         RectangularGlow {
             id: coverGlow
             anchors.fill: coverRect
-            glowRadius: 40
+            glowRadius: 30
             spread: 0.1
             color: "#40000000"
             cornerRadius: coverRect.radius + 15
@@ -208,9 +215,17 @@ Item {
         Rectangle {
             id: coverRect
             anchors.fill: parent
-            radius: 16
+            radius: 24
             color: Theme.mainColor
-            clip: true
+            antialiasing: true
+            layer.enabled: true
+            layer.effect: OpacityMask {
+                maskSource: Rectangle {
+                    width: coverRect.width
+                    height: coverRect.height
+                    radius: coverRect.radius
+                }
+            }
 
             Text {
                 id: coverIcon
@@ -226,8 +241,8 @@ Item {
                 id: coverArtwork
                 anchors.fill: parent
                 source: root.playbackController.coverArtworkSource
-                sourceSize.width: 250
-                sourceSize.height: 250
+                sourceSize.width: 240
+                sourceSize.height: 240
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 visible: status === Image.Ready
@@ -277,10 +292,10 @@ Item {
     Item {
         id: metadataContainer
         width: 320
-        height: 64
+        height: metadataLayout.implicitHeight
         z: 9
         anchors.top: coverContainer.bottom
-        anchors.topMargin: 30
+        anchors.topMargin: 16
         anchors.horizontalCenter: positionHelper.horizontalCenter
 
         Item {
@@ -304,10 +319,10 @@ Item {
                 width: Math.min(implicitWidth, parent.width)
                 text: root.playbackController.artistName
                 color: Theme.secondaryTextColor
-                font.pixelSize: 14
+                font.pixelSize: 15
                 font.weight: Font.Medium
                 anchors.top: titleText.bottom
-                anchors.topMargin: 6
+                anchors.topMargin: 8
                 anchors.horizontalCenter: parent.horizontalCenter
             }
 
@@ -316,7 +331,7 @@ Item {
                 width: Math.min(implicitWidth, parent.width)
                 text: " — "
                 color: Theme.secondaryTextColor
-                font.pixelSize: 14
+                font.pixelSize: 15
                 opacity: 0.0
                 anchors.verticalCenter: artistText.verticalCenter
             }
@@ -329,7 +344,7 @@ Item {
                 font.pixelSize: 13
                 opacity: 0.8
                 anchors.top: artistText.bottom
-                anchors.topMargin: 4
+                anchors.topMargin: 6
                 anchors.horizontalCenter: parent.horizontalCenter
             }
         }
@@ -349,40 +364,47 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         model: lyricsState
         currentIndex: lyricsState.currentIndex
-        preferredHighlightBegin: height / 2 - root.currentItemHeightUnscaled / 2 - 30
+        preferredHighlightBegin: height / 2 - 40
         preferredHighlightEnd: preferredHighlightBegin
-        
-        Behavior on preferredHighlightBegin {
-            id: highlightBehavior
-            enabled: false
-            NumberAnimation { duration: 400; easing.type: Easing.InOutQuad }
-        }
-
-        onCurrentIndexChanged: {
-            if (!root.isTogglingTranslation) {
-                highlightBehavior.enabled = true;
-                disableBehaviorTimer.restart();
-            }
-        }
-
-        Timer {
-            id: disableBehaviorTimer
-            interval: 450
-            onTriggered: highlightBehavior.enabled = false
-        }
-        highlightRangeMode: ListView.StrictlyEnforceRange
-        highlightMoveDuration: root.isTogglingTranslation ? 0 : 400
+        anchors.top: metadataContainer.bottom
+        anchors.topMargin: 8
+        anchors.bottom: linearProgressContainer.top
+        anchors.bottomMargin: 10
+        width: 320
+        anchors.horizontalCenter: positionHelper.horizontalCenter
         opacity: 0.0
         visible: opacity > 0.0
-        z: 5
-        anchors.top: coverContainer.bottom
-        anchors.bottom: linearProgressContainer.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.topMargin: Theme.paddingLarge
-        anchors.bottomMargin: Theme.paddingLarge
-        anchors.leftMargin: Theme.paddingLarge
-        anchors.rightMargin: Theme.paddingLarge
+        z: 11
+        
+        highlightRangeMode: ListView.StrictlyEnforceRange
+        highlightMoveDuration: root.isTogglingTranslation ? 0 : 400
+
+        Connections {
+            target: lyricsState
+            
+            function onShowTranslationChanged() {
+                if (!lyricsContainer.currentItem) {
+                    return;
+                }
+                
+                // 记录切换前当前项的视觉 Y 位置（相对于 viewport 顶部）
+                const itemY = lyricsContainer.currentItem.y - lyricsContainer.contentY;
+                
+                // 等待一帧让高度变化完成
+                Qt.callLater(function() {
+                    if (!lyricsContainer.currentItem) {
+                        return;
+                    }
+                    
+                    // 计算切换后当前项的新 Y 位置
+                    const newItemY = lyricsContainer.currentItem.y - lyricsContainer.contentY;
+                    
+                    // 调整 contentY 抵消位移
+                    const offset = newItemY - itemY;
+                    lyricsContainer.contentY += offset;
+                });
+            }
+        }
 
         delegate: Item {
             id: delegateItem
@@ -390,8 +412,9 @@ Item {
             required property string displayLine
             required property string translation
             required property bool isCurrent
+            required property real timestampSec
             width: lyricsContainer.width
-            height: lyricColumn.implicitHeight * lyricColumn.scale + Theme.paddingLarge
+            height: lyricColumn.implicitHeight + Theme.paddingLarge
 
             readonly property bool isActive: isCurrent
             readonly property real originalHeight: lyricText.implicitHeight * lyricColumn.scale + Theme.paddingLarge
@@ -405,7 +428,7 @@ Item {
                 width: Math.min(parent.width - Theme.paddingLarge * 2, 600)
                 spacing: 4
 
-                transformOrigin: Item.TopLeft
+                transformOrigin: Item.Center
                 scale: delegateItem.isActive ? 1.0 : 0.75
 
                 Behavior on scale {
@@ -420,7 +443,7 @@ Item {
                     font.pixelSize: 32
                     font.weight: delegateItem.isActive ? Font.Bold : Font.Normal
                     opacity: delegateItem.isActive ? 1.0 : 0.4
-                    horizontalAlignment: Text.AlignLeft
+                    horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     Behavior on opacity {
                         NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
@@ -434,17 +457,19 @@ Item {
                     color: Theme.secondaryTextColor
                     font.pixelSize: 22
                     font.weight: delegateItem.isActive ? Font.Bold : Font.Normal
-                    horizontalAlignment: Text.AlignLeft
+                    horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     clip: true
                     
-                    height: (lyricsState.showTranslation && delegateItem.translation !== "") ? implicitHeight : 0
+                    // 缓存自然高度，避免绑定循环
+                    readonly property real naturalHeight: translationTextCtrl.implicitHeight
+                    
+                    height: (lyricsState.showTranslation && delegateItem.translation !== "") ? naturalHeight : 0
                     opacity: (lyricsState.showTranslation && delegateItem.translation !== "") ? (delegateItem.isActive ? 0.8 : 0.3) : 0.0
                     visible: height > 0
 
-                    Behavior on height {
-                        NumberAnimation { duration: 300; easing.type: Easing.InOutQuad }
-                    }
+                    // 禁用高度动画，防止在切换翻译时所有 delegate 同时改变高度导致 ListView 的内容高度在动画期间发生剧烈变化，
+                    // 进而引起高亮行的错误位移和瞬移。高度将瞬间改变，结合 highlightMoveDuration=0 使当前行位置视觉上绝对不动。
                     Behavior on opacity {
                         NumberAnimation { duration: 300; easing.type: Easing.InOutQuad }
                     }
@@ -454,7 +479,11 @@ Item {
             MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: lyricsState.selectLyric(index)
+                onClicked: function () {
+                    if (delegateItem.timestampSec > 0) {
+                        root.playbackController.seek(delegateItem.timestampSec);
+                    }
+                }
             }
         }
     }
@@ -463,12 +492,12 @@ Item {
     Item {
         id: waveformProgressContainer
         width: 320
-        height: 60
+        height: 85
         opacity: 1.0
         visible: opacity > 0.0
         z: 8
         anchors.top: metadataContainer.bottom
-        anchors.topMargin: 20
+        anchors.topMargin: 14
         anchors.horizontalCenter: positionHelper.horizontalCenter
 
         WaveformProgressBar {
@@ -476,7 +505,7 @@ Item {
             anchors.top: parent.top
             anchors.horizontalCenter: parent.horizontalCenter
             width: 320
-            height: 44
+            height: 68
             waveformHeights: root.playbackController.waveformHeights
             barWidth: root.playbackController.waveformBarWidth
             progress: root.playbackTimelineProgress
@@ -488,7 +517,8 @@ Item {
         }
 
         Item {
-            anchors.bottom: parent.bottom
+            anchors.top: waveProgress.bottom
+            anchors.topMargin: 0
             anchors.horizontalCenter: parent.horizontalCenter
             width: 320
             height: 15
@@ -523,11 +553,12 @@ Item {
     // 6. 线性进度条区域 (仅在 lyrics 状态下显示)
     Item {
         id: linearProgressContainer
-        height: 40
+        height: 30
         opacity: 0.0
         visible: opacity > 0.0
         z: 7
-        anchors.top: metadataContainer.bottom
+        anchors.bottom: controlsContainer.top
+        anchors.bottomMargin: 10
         anchors.left: positionHelper.left
         anchors.right: positionHelper.right
 
@@ -536,7 +567,7 @@ Item {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 20
+            height: 15
             from: 0
             to: root.playbackTimelineDuration
             value: root.boundedPlaybackTimelinePosition
@@ -559,6 +590,7 @@ Item {
                     height: parent.height
                     color: Theme.accentColor
                     radius: 2
+                    opacity: 0.8
                 }
             }
 
@@ -581,6 +613,7 @@ Item {
 
             Text {
                 anchors.left: parent.left
+                anchors.leftMargin: 0
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.playbackController.currentPositionText
                 color: Theme.secondaryTextColor
@@ -590,6 +623,7 @@ Item {
 
             Text {
                 anchors.right: parent.right
+                anchors.rightMargin: 0
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.playbackController.remainingDurationText
                 color: Theme.secondaryTextColor
@@ -603,16 +637,16 @@ Item {
     Item {
         id: controlsContainer
         width: 320
-        height: 60
+        height: 68
         z: 6
         anchors.top: waveformProgressContainer.bottom
-        anchors.topMargin: 20
+        anchors.topMargin: 12
         anchors.horizontalCenter: positionHelper.horizontalCenter
 
         StyleButton {
             id: prevButton
-            width: 45
-            height: 45
+            width: 40
+            height: 40
             anchors.verticalCenter: playButton.verticalCenter
             anchors.right: playButton.left
             anchors.rightMargin: 35
@@ -623,8 +657,8 @@ Item {
 
         StyleButton {
             id: playButton
-            width: 56
-            height: 56
+            width: 68
+            height: 68
             anchors.centerIn: parent
             iconSource: root.playbackController.isPlaying ? "qrc:/qt/qml/Seriona/qml/assets/pause.svg" : "qrc:/qt/qml/Seriona/qml/assets/play.svg"
             baseColor: Theme.playButtonBg
@@ -636,11 +670,11 @@ Item {
 
         StyleButton {
             id: nextButton
-            width: 45
-            height: 45
+            width: 40
+            height: 40
             anchors.verticalCenter: playButton.verticalCenter
             anchors.left: playButton.right
-            anchors.leftMargin: 35
+            anchors.leftMargin: 25
             iconSource: "qrc:/qt/qml/Seriona/qml/assets/next.svg"
             textColor: Theme.textColor
             onClicked: root.playbackController.skipNext()
@@ -651,24 +685,24 @@ Item {
     RowLayout {
         id: volumeContainer
         width: 320
-        height: 30
+        height: 25
         spacing: 12
         opacity: 1.0
         visible: opacity > 0.0
         z: 4
         anchors.top: controlsContainer.bottom
-        anchors.topMargin: 15
+        anchors.topMargin: 12
         anchors.horizontalCenter: positionHelper.horizontalCenter
 
         Item {
-            Layout.preferredWidth: 16
-            Layout.preferredHeight: 16
+            Layout.preferredWidth: 20
+            Layout.preferredHeight: 20
             Image {
                 id: volDownIcon
                 anchors.fill: parent
                 source: "qrc:/qt/qml/Seriona/qml/assets/volume_down.svg"
-                sourceSize.width: 16
-                sourceSize.height: 16
+                sourceSize.width: 20
+                sourceSize.height: 20
                 visible: false
             }
             ColorOverlay {
@@ -685,41 +719,42 @@ Item {
             from: 0.0
             to: 1.0
             value: root.playbackController.volume
-            onMoved: root.playbackController.setVolume(value)
+            onMoved: root.playbackController.volume = value
             background: Rectangle {
                 x: volumeSlider.leftPadding
                 y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
                 width: volumeSlider.availableWidth
-                height: 4
-                radius: 2
+                height: 10
+                radius: 5
                 color: Theme.baseColor
                 Rectangle {
                     width: volumeSlider.visualPosition * parent.width
                     height: parent.height
                     color: Theme.textColor
-                    radius: 2
+                    radius: 5
+                    opacity: 0.6
                 }
             }
             handle: Rectangle {
                 x: volumeSlider.leftPadding + volumeSlider.visualPosition * (volumeSlider.availableWidth - width)
                 y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
-                width: 10
-                height: 10
-                radius: 5
+                width: 14
+                height: 14
+                radius: 7
                 color: Theme.textColor
                 visible: volumeSlider.hovered || volumeSlider.pressed
             }
         }
 
         Item {
-            Layout.preferredWidth: 16
-            Layout.preferredHeight: 16
+            Layout.preferredWidth: 20
+            Layout.preferredHeight: 20
             Image {
                 id: volUpIcon
                 anchors.fill: parent
                 source: "qrc:/qt/qml/Seriona/qml/assets/volume_up.svg"
-                sourceSize.width: 16
-                sourceSize.height: 16
+                sourceSize.width: 20
+                sourceSize.height: 20
                 visible: false
             }
             ColorOverlay {
@@ -739,11 +774,11 @@ Item {
         visible: opacity > 0.0
         z: 3
         anchors.top: volumeContainer.bottom
-        anchors.topMargin: 15
+        anchors.topMargin: 16
         anchors.horizontalCenter: positionHelper.horizontalCenter
 
         Row {
-            spacing: 16
+            spacing: 20
             StyleButton {
                 buttonWidth: 36
                 buttonHeight: 36
@@ -769,7 +804,7 @@ Item {
         }
 
         Row {
-            spacing: 16
+            spacing: 20
             StyleButton {
                 iconSource: root.playbackController.repeatMode === 1 ? "qrc:/qt/qml/Seriona/qml/assets/repeat_list.svg" : root.playbackController.repeatMode === 2 ? "qrc:/qt/qml/Seriona/qml/assets/repeat_one.svg" : "qrc:/qt/qml/Seriona/qml/assets/repeat_off.svg"
                 buttonWidth: 36
@@ -906,8 +941,8 @@ Item {
     // 10. 打开/关闭翻译按钮 (仅在 lyrics 状态下显示，位于右下角)
     StyleButton {
         id: toggleTranslationBtn
-        buttonWidth: 36
-        buttonHeight: 36
+        buttonWidth: 40
+        buttonHeight: 40
         iconSource: "qrc:/qt/qml/Seriona/qml/assets/translate.svg"
         textColor: Theme.textColor
         checkable: true
@@ -932,10 +967,14 @@ Item {
             name: "playback"
             PropertyChanges {
                 target: coverContainer
-                x: (parent.width - 250) / 2
-                y: positionHelper.y
-                width: 250
-                height: 250
+                x: (parent.width - 240) / 2
+                y: positionHelper.y + 5
+                width: 240
+                height: 240
+            }
+            PropertyChanges {
+                target: metadataContainer
+                height: 70
             }
             AnchorChanges {
                 target: titleText
@@ -973,12 +1012,12 @@ Item {
             }
             PropertyChanges {
                 target: waveformProgressContainer
-                height: 60
+                height: 98
             }
             PropertyChanges {
                 target: waveProgress
                 flatMode: false
-                height: 44
+                height: 68
             }
             PropertyChanges {
                 target: toggleTranslationBtn
@@ -1046,7 +1085,7 @@ Item {
             }
             PropertyChanges {
                 target: coverRect
-                radius: 8
+                radius: 12
             }
             PropertyChanges {
                 target: coverIcon
@@ -1058,6 +1097,7 @@ Item {
             }
             PropertyChanges {
                 target: metadataContainer
+                height: 44
                 anchors.topMargin: Theme.paddingLarge
                 anchors.leftMargin: Theme.paddingMedium
                 anchors.rightMargin: Theme.paddingLarge

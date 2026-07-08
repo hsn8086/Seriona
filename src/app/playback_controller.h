@@ -52,6 +52,9 @@ class PlaybackController : public QObject
     Q_PROPERTY(QString remainingDurationText READ remainingDurationText NOTIFY durationDisplayChanged)
     Q_PROPERTY(QVariantList waveformHeights READ waveformHeights NOTIFY waveformHeightsChanged)
     Q_PROPERTY(int waveformBarWidth READ waveformBarWidth NOTIFY waveformBarWidthChanged)
+    Q_PROPERTY(QString gradientColor0 READ gradientColor0 NOTIFY gradientColorsChanged)
+    Q_PROPERTY(QString gradientColor1 READ gradientColor1 NOTIFY gradientColorsChanged)
+    Q_PROPERTY(QString gradientColor2 READ gradientColor2 NOTIFY gradientColorsChanged)
     QML_ELEMENT
     QML_UNCREATABLE("PlaybackController is owned by AppFacade")
 
@@ -95,6 +98,9 @@ public:
     QVariantList waveformHeights() const;
     int waveformBarWidth() const;
     void applyWaveform(const QVariantList &heights, int barWidth);
+    QString gradientColor0() const;
+    QString gradientColor1() const;
+    QString gradientColor2() const;
 
 #if SERIONA_HAS_BACKEND
     void setCommandExecutor(CommandExecutor executor);
@@ -125,6 +131,7 @@ signals:
     void durationDisplayChanged();
     void waveformHeightsChanged();
     void waveformBarWidthChanged();
+    void gradientColorsChanged();
 
 private:
     static qreal clamp(qreal value, qreal minimum, qreal maximum);
@@ -137,6 +144,7 @@ private:
     void applyRepeatMode(int repeatMode);
     void setCurrentTrackViewState(const CurrentTrackViewState &state);
     void setCapability(const QString &capability);
+    void updateGradientColors(const QString &imagePath);
 
 #if SERIONA_HAS_BACKEND
     static seriona::control::RepeatMode repeatModeForIndex(int repeatMode);
@@ -168,6 +176,9 @@ private:
         15, 10, 20, 35, 45, 40, 30, 25, 35, 45, 50, 40, 30, 20, 15, 25, 35, 40, 30, 20
     };
     int m_waveformBarWidth = 3;
+    QString m_gradientColor0 = QStringLiteral("#2d2d2d");
+    QString m_gradientColor1 = QStringLiteral("#1a1a1a");
+    QString m_gradientColor2 = QStringLiteral("#121212");
 };
 
 }

@@ -84,7 +84,12 @@ Item {
     Rectangle {
         id: contentRect
         anchors.fill: parent
-        color: Theme.sidebarBackgroundColor
+        color: "transparent"
+
+        DynamicBackground {
+            anchors.fill: parent
+            playbackController: root.appFacade.playback
+        }
 
         // Right border line
         Rectangle {
@@ -435,9 +440,17 @@ Item {
                                 Layout.alignment: Qt.AlignVCenter
                                 Layout.preferredWidth: 44
                                 Layout.preferredHeight: 44
-                                radius: 8
+                                radius: 12
                                 color: delegate.isFolder ? Theme.accentColor : Theme.mainColor
-                                clip: true
+                                antialiasing: true
+                                layer.enabled: true
+                                layer.effect: OpacityMask {
+                                    maskSource: Rectangle {
+                                        width: 44
+                                        height: 44
+                                        radius: 12
+                                    }
+                                }
 
                                 Image {
                                     id: folderThumbIcon
@@ -460,9 +473,10 @@ Item {
 
                                 Rectangle {
                                     anchors.fill: parent
-                                    radius: 8
+                                    radius: 12
                                     color: "#20FFFFFF"
                                     visible: !delegate.isFolder && folderThumbIcon.status !== Image.Ready
+                                    antialiasing: true
 
                                     Text {
                                         anchors.centerIn: parent

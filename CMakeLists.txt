@@ -173,6 +173,7 @@ set(SERIONA_QML_MODULE_FILES
     qml/components/BubbleMenu.qml
     qml/components/BubbleMenuItem.qml
     qml/components/BubbleSubMenuItem.qml
+    qml/components/DynamicBackground.qml
     qml/components/StyleButton.qml
     qml/components/Sidebar.qml
     qml/components/WindowControls.qml

@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import Qt5Compat.GraphicalEffects
 import Seriona
 
@@ -21,6 +21,13 @@ RoundButton {
     property real iconSize: Math.min(control.width, control.height) * 0.65
 
     checkable: false
+    
+    // 禁用所有内边距，防止 Control 基类通过 padding 影响 contentItem 位置
+    padding: 0
+    topPadding: 0
+    bottomPadding: 0
+    leftPadding: 0
+    rightPadding: 0
 
     background: Rectangle {
         id: bgRect
@@ -57,7 +64,9 @@ RoundButton {
 
     contentItem: Item {
         id: contentItem
-        anchors.fill: parent
+        anchors.centerIn: parent
+        width: control.iconSize
+        height: control.iconSize
 
         Image {
             id: iconImage

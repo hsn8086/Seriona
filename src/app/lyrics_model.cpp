@@ -49,6 +49,8 @@ QVariant LyricsModel::data(const QModelIndex &index, int role) const
         return translationLine(line);
     case CurrentRole:
         return index.row() == m_currentIndex;
+    case LyricsModel::TimestampRole:
+        return m_lines.at(index.row()).timestamp.count() / 1000.0;
     default:
         return {};
     }
@@ -59,7 +61,8 @@ QHash<int, QByteArray> LyricsModel::roleNames() const
     return {{RawLineRole, "rawLine"},
             {DisplayLineRole, "displayLine"},
             {TranslationRole, "translation"},
-            {CurrentRole, "isCurrent"}};
+            {CurrentRole, "isCurrent"},
+            {LyricsModel::TimestampRole, "timestampSec"}};
 }
 
 int LyricsModel::currentIndex() const

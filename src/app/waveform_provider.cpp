@@ -238,7 +238,7 @@ WaveformParameters defaultWaveformParameters()
     WaveformParameters parameters;
     parameters.barCount = 60;
     parameters.totalWidth = 320;
-    parameters.maxHeight = 44;
+    parameters.maxHeight = 68;
     parameters.config = seriona::audio::WaveformConfig{};
     return parameters;
 }

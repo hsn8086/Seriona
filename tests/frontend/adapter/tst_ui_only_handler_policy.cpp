@@ -171,9 +171,9 @@ void UiOnlyHandlerPolicyTest::qmlLayoutSourceContractsStayStable()
     expectContains(themeQml, QStringLiteral("readonly property int sidebarWidth: 350"));
 
     expectContainsAll(mainQml, {
-        "width: 370",
+        "width: 360",
         "height: 720",
-        "minimumWidth: 370",
+        "minimumWidth: 360",
         "minimumHeight: 720",
         "readonly property int sidebarWidth: 350",
         "readonly property int playerMinWidth: 450",
@@ -200,10 +200,10 @@ void UiOnlyHandlerPolicyTest::qmlLayoutSourceContractsStayStable()
         "id: positionHelper",
         "width: 320",
         "id: coverContainer",
-        "width: 250",
-        "height: 250",
-        "sourceSize.width: 250",
-        "sourceSize.height: 250",
+        "width: 240",
+        "height: 240",
+        "sourceSize.width: 240",
+        "sourceSize.height: 240",
         "id: metadataContainer",
         "anchors.top: coverContainer.bottom",
         "anchors.horizontalCenter: positionHelper.horizontalCenter",
@@ -221,7 +221,7 @@ void UiOnlyHandlerPolicyTest::qmlLayoutSourceContractsStayStable()
         "width: 44",
         "height: 44",
         "target: coverRect",
-        "radius: 8",
+        "radius: 12",
         "target: coverIcon",
         "font.pixelSize: 20"
     });

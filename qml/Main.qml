@@ -7,9 +7,9 @@ import Seriona
 
 Window {
     id: window
-    width: 370
+    width: 360
     height: 720
-    minimumWidth: 370
+    minimumWidth: 360
     minimumHeight: 720
     visible: true
     title: qsTr("Seriona Music Player")
@@ -163,10 +163,9 @@ Window {
             onPressed: window.startSystemMove()
         }
 
-        // 背景色 (使用 Theme.backgroundColor)
-        Rectangle {
+        DynamicBackground {
             anchors.fill: parent
-            color: Theme.backgroundColor
+            playbackController: window.appFacade.playback
         }
 
         // Sidebar Container

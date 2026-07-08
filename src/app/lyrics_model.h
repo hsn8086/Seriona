@@ -30,7 +30,8 @@ public:
         RawLineRole = Qt::UserRole + 1,
         DisplayLineRole,
         TranslationRole,
-        CurrentRole
+        CurrentRole,
+        TimestampRole
     };
     Q_ENUM(Role)
 
