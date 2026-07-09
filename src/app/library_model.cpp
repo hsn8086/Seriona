@@ -4,6 +4,7 @@
 
 #include <QByteArray>
 #include <QDebug>
+#include <QDir>
 #include <QFileInfo>
 #include <QSet>
 #include <QUrl>
@@ -18,6 +19,21 @@
 #endif
 
 namespace Seriona::App {
+
+namespace {
+
+QString normalizeFolderSortRootPath(const QString &rootPath)
+{
+    if (rootPath.isEmpty()) {
+        return QString();
+    }
+
+    const QFileInfo rootInfo(rootPath);
+    const QString absolutePath = rootInfo.absoluteFilePath();
+    return absolutePath.isEmpty() ? QDir::cleanPath(rootPath) : QDir::cleanPath(absolutePath);
+}
+
+}
 
 #if SERIONA_HAS_BACKEND
 namespace {
@@ -1129,7 +1145,7 @@ void LibraryController::applyLibraryStateSnapshot(const seriona::control::Librar
 
 void LibraryController::applyFolderSortSetting(const seriona::control::FolderSortSetting &setting)
 {
-    const QString rootPath = fromBackendPath(setting.rootPath);
+    const QString rootPath = normalizeFolderSortRootPath(fromBackendPath(setting.rootPath));
     const QString folderNodeId = toQString(setting.folderNodeId);
     const std::optional<QVector<LibraryModel::SortRule>> rules = modelSortRulesFromBackendRules(setting.rules);
     if (rootPath.isEmpty() || folderNodeId.isEmpty() || !rules.has_value()) {
@@ -1323,11 +1339,12 @@ void LibraryController::setLastError(const QString &error)
 
 void LibraryController::setSavedRootPath(const QString &rootPath)
 {
-    if (m_savedRootPath == rootPath) {
+    const QString normalizedRootPath = normalizeFolderSortRootPath(rootPath);
+    if (m_savedRootPath == normalizedRootPath) {
         return;
     }
 
-    m_savedRootPath = rootPath;
+    m_savedRootPath = normalizedRootPath;
     emit savedRootPathChanged();
 }
 
@@ -1548,10 +1565,11 @@ QVector<LibraryModel::SortRule> LibraryController::sortRulesForCurrentProjection
 
 QString LibraryController::folderSortKey(const QString &rootPath, const QString &folderNodeId) const
 {
-    if (rootPath.isEmpty() || folderNodeId.isEmpty()) {
+    const QString normalizedRootPath = normalizeFolderSortRootPath(rootPath);
+    if (normalizedRootPath.isEmpty() || folderNodeId.isEmpty()) {
         return QString();
     }
-    return rootPath + QLatin1Char('\n') + folderNodeId;
+    return normalizedRootPath + QLatin1Char('\n') + folderNodeId;
 }
 
 QString LibraryController::currentFolderSortKey() const

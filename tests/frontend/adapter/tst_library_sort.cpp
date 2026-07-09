@@ -278,6 +278,7 @@ private slots:
     void folderSortSendsApplyCommandWithRootAndFolderKey();
     void sameFolderNodeIdUnderDifferentRootsDoesNotReuseSavedRules();
     void reenterFolderAndBackendStateReloadRestoreSavedRules();
+    void equivalentBackendRootPathVariantsReloadSavedRules();
     void backendFolderSortNotificationUpdatesActiveCurrentRules();
     void currentSortRulesExposeFolderRulesForQmlAndFallbacks();
     void searchProjectionSortDoesNotPersistOrOverwriteSavedFolderRules();
@@ -544,6 +545,27 @@ void LibrarySortTest::reenterFolderAndBackendStateReloadRestoreSavedRules()
 
     FolderSortSetting saved;
     saved.rootPath = std::filesystem::path(rootPath.toStdString());
+    saved.folderNodeId = "folder-jazz";
+    saved.rules = {FolderSortRule{FolderSortField::Duration, FolderSortDirection::Descending, FolderSortMissingValuePolicy::Last}};
+    reloaded.applyFolderSortSetting(saved);
+    reloaded.enterFolder(QStringLiteral("folder-jazz"));
+
+    expectProjection(reloaded.model(), {QStringLiteral("track-folder-c"), QStringLiteral("track-folder-b"), QStringLiteral("track-folder-a")});
+}
+
+void LibrarySortTest::equivalentBackendRootPathVariantsReloadSavedRules()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+    LibraryController reloaded;
+    const QString rootPath = scanTemporaryRoot(reloaded, musicDir);
+    reloaded.setPlaylistTreeSnapshot(makeSortableSnapshot());
+
+    const QString variantRootPath = rootPath + QStringLiteral("/./");
+    QVERIFY(variantRootPath != rootPath);
+
+    FolderSortSetting saved;
+    saved.rootPath = std::filesystem::path(variantRootPath.toStdString());
     saved.folderNodeId = "folder-jazz";
     saved.rules = {FolderSortRule{FolderSortField::Duration, FolderSortDirection::Descending, FolderSortMissingValuePolicy::Last}};
     reloaded.applyFolderSortSetting(saved);
