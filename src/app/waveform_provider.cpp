@@ -268,6 +268,9 @@ std::optional<WaveformRequest> makeWaveformRequest(
         }
     }
     if (waveformPath.empty()) {
+        if (track.filePath.extension() == ".cue") {
+            return std::nullopt;
+        }
         waveformPath = track.filePath;
     }
     if (waveformPath.empty()) {

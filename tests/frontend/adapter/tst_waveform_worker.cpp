@@ -113,6 +113,7 @@ private slots:
     void workerCallsBackendToolSignatureAndAppliesBarWidth();
     void cacheKeyUsesTrackIdentityParametersAndImmutableDefaultConfig();
     void cueMetadataChoosesSourceFilePathAndTimeWindow();
+    void cueTrackDefersWaveformGenerationUntilLibraryMetadataArrives();
     void staleWorkerResultIsIgnored();
     void staleLyricsSnapshotForDifferentTrackIsIgnored();
     void missingFileFailureReturnsEmptyWaveform();
@@ -201,7 +202,10 @@ void WaveformWorkerTest::cueMetadataChoosesSourceFilePathAndTimeWindow()
     seriona::control::PlayerStateSnapshot player;
     player.currentTrack = seriona::control::TrackIdentity{};
     player.currentTrack->trackId = "cue-track";
-    player.currentTrack->filePath = "/virtual/cue-track.flac";
+    player.currentTrack->filePath = "/music/cue-sheet.cue";
+
+    const seriona::control::LibraryStateSnapshot emptyLibrary;
+    QVERIFY(!Seriona::App::makeWaveformRequest(player, emptyLibrary, testParameters()).has_value());
 
     seriona::scanner::SongMetadata cueSong;
     cueSong.trackId = "cue-track";
@@ -241,6 +245,60 @@ void WaveformWorkerTest::cueMetadataChoosesSourceFilePathAndTimeWindow()
     QCOMPARE(normalRequest->waveformFilePath, QStringLiteral("/music/normal.flac"));
     QCOMPARE(normalRequest->startTimeUS, 0);
     QCOMPARE(normalRequest->endTimeUS, 0);
+}
+
+void WaveformWorkerTest::cueTrackDefersWaveformGenerationUntilLibraryMetadataArrives()
+{
+    WaveformProvider provider;
+    int generatorCalls = 0;
+    provider.setGeneratorForTests([&generatorCalls](const WaveformBuildInput &input) -> WaveformPayload {
+        ++generatorCalls;
+        if (input.trackId != QStringLiteral("cue-track")) {
+            throw std::runtime_error("unexpected track id");
+        }
+        if (input.waveformFilePath != QStringLiteral("/music/source-album.flac")) {
+            throw std::runtime_error("unexpected waveform path");
+        }
+        if (input.startTimeUS != 12000000 || input.endTimeUS != 46000000) {
+            throw std::runtime_error("unexpected waveform time window");
+        }
+        return WaveformPayload{{5, 4, 3, 2}, 6};
+    });
+    QSignalSpy readySpy(&provider, &WaveformProvider::waveformReady);
+
+    seriona::control::PlayerStateSnapshot player;
+    player.currentTrack = seriona::control::TrackIdentity{};
+    player.currentTrack->trackId = "cue-track";
+    player.currentTrack->filePath = "/music/cue-sheet.cue";
+
+    const seriona::control::LibraryStateSnapshot emptyLibrary;
+    static_cast<void>(provider.requestForSnapshots(player, emptyLibrary));
+
+    QTRY_COMPARE(readySpy.count(), 1);
+    QCOMPARE(generatorCalls, 0);
+    QCOMPARE(resultAt(readySpy, 0).heights, QVariantList{});
+
+    seriona::scanner::SongMetadata cueSong;
+    cueSong.trackId = "cue-track";
+    cueSong.filePath = "/music/cue-sheet.cue";
+    cueSong.sourceFilePath = "/music/source-album.flac";
+    cueSong.offset = std::chrono::milliseconds{12000};
+    cueSong.duration = std::chrono::milliseconds{34000};
+
+    seriona::scanner::PlaylistNode cueNode;
+    cueNode.nodeId = "node-cue-track";
+    cueNode.song = cueSong;
+
+    seriona::control::LibraryStateSnapshot library;
+    library.libraryTree = seriona::scanner::PlaylistTreeSnapshot{};
+    library.libraryTree->nodes = {cueNode};
+
+    static_cast<void>(provider.requestForSnapshots(player, library));
+
+    QTRY_COMPARE(readySpy.count(), 2);
+    QCOMPARE(generatorCalls, 1);
+    QCOMPARE(resultAt(readySpy, 1).heights, QVariantList({5, 4, 3, 2}));
+    QCOMPARE(resultAt(readySpy, 1).barWidth, 6);
 }
 
 void WaveformWorkerTest::staleWorkerResultIsIgnored()
