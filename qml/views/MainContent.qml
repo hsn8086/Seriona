@@ -827,8 +827,8 @@ Item {
                     targetItem: settingsBtn
 
                     BubbleSubMenuItem {
-                        text: qsTr("Settings")
-                        title: qsTr("Settings")
+                        text: qsTr("设置")
+                        title: qsTr("设置")
                         page: Component {
                             Column {
                                 width: parent ? parent.width : 180
@@ -846,7 +846,7 @@ Item {
                                         spacing: 8
 
                                         Text {
-                                            text: qsTr("Lyric Delimiter")
+                                            text: qsTr("歌词分隔符")
                                             color: Theme.textColor
                                             font.pixelSize: 13
                                             font.bold: true
@@ -873,7 +873,7 @@ Item {
                                         }
 
                                         Text {
-                                            text: qsTr("Presets:")
+                                            text: qsTr("预设：")
                                             color: Theme.secondaryTextColor
                                             font.pixelSize: 11
                                         }
@@ -917,22 +917,22 @@ Item {
                         }
                     }
                     BubbleSubMenuItem {
-                        text: qsTr("Playback")
-                        title: qsTr("Playback")
+                        text: qsTr("播放")
+                        title: qsTr("播放")
                         page: Component {
                             Column {
                                 width: parent ? parent.width : 160
                                 spacing: 0
 
-                                BubbleMenuItem { text: qsTr("Crossfade"); onTriggered: root.showUnsupportedFeedback(qsTr("Crossfade")) }
-                                BubbleMenuItem { text: qsTr("Gapless Playback"); onTriggered: root.showUnsupportedFeedback(qsTr("Gapless Playback")) }
-                                BubbleMenuItem { text: qsTr("ReplayGain"); onTriggered: root.showUnsupportedFeedback(qsTr("ReplayGain")) }
+                                BubbleMenuItem { text: qsTr("淡入淡出"); onTriggered: root.showUnsupportedFeedback(qsTr("淡入淡出")) }
+                                BubbleMenuItem { text: qsTr("无缝播放"); onTriggered: root.showUnsupportedFeedback(qsTr("无缝播放")) }
+                                BubbleMenuItem { text: qsTr("回放增益"); onTriggered: root.showUnsupportedFeedback(qsTr("回放增益")) }
                             }
                         }
                     }
-                    BubbleMenuItem { text: qsTr("Equalizer"); onTriggered: root.showUnsupportedFeedback(qsTr("Equalizer")) }
-                    BubbleMenuItem { text: qsTr("About Seriona"); onTriggered: root.showUnsupportedFeedback(qsTr("About Seriona")) }
-                    BubbleMenuItem { text: qsTr("Exit"); onTriggered: { mainMenu.close(); root.exitRequested(); } }
+                    BubbleMenuItem { text: qsTr("均衡器"); onTriggered: root.showUnsupportedFeedback(qsTr("均衡器")) }
+                    BubbleMenuItem { text: qsTr("关于 Seriona"); onTriggered: root.showUnsupportedFeedback(qsTr("关于 Seriona")) }
+                    BubbleMenuItem { text: qsTr("退出"); onTriggered: { mainMenu.close(); root.exitRequested(); } }
                 }
             }
         }

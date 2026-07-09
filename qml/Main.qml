@@ -19,6 +19,7 @@ Window {
     readonly property int sidebarWidth: 350
     readonly property int playerMinWidth: 450
     readonly property bool isDockCapable: width >= (sidebarWidth + playerMinWidth)
+    property string smokeScenario: ""
     property bool layoutAnimEnabled: true
 
     readonly property AppFacade appFacade: AppFacade {}
@@ -86,7 +87,7 @@ Window {
 
     function smokeVisualStateJson() {
         var state = {
-            "scenario": Qt.application.property("seriona.smokeScenario") || "",
+            "scenario": window.smokeScenario,
             "window": {
                 "width": window.width,
                 "height": window.height,
@@ -113,7 +114,7 @@ Window {
         return JSON.stringify(state, null, 2);
     }
 
-    Component.onCompleted: applySmokeScenario(Qt.application.property("seriona.smokeScenario") || "")
+    Component.onCompleted: applySmokeScenario(window.smokeScenario)
 
     onClosing: function (closeEvent) {
         shutdownRequested = true;

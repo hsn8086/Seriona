@@ -86,6 +86,8 @@ QString notificationKindName(seriona::control::ControlDomainNotificationKind kin
         return QStringLiteral("OutputModeFallback");
     case seriona::control::ControlDomainNotificationKind::CommandRejected:
         return QStringLiteral("CommandRejected");
+    case seriona::control::ControlDomainNotificationKind::FolderSortRulesApplied:
+        return QStringLiteral("FolderSortRulesApplied");
     }
 
     return QStringLiteral("UnknownNotification");
@@ -181,6 +183,12 @@ NotificationViewState mapDomainNotification(const seriona::control::ControlDomai
         severity = QStringLiteral("warning");
         if (message.isEmpty()) {
             message = notificationText("音频输出模式已回退");
+        }
+        break;
+    case seriona::control::ControlDomainNotificationKind::FolderSortRulesApplied:
+        title = notificationText("排序规则已保存");
+        if (message.isEmpty()) {
+            message = notificationText("文件夹排序规则已保存");
         }
         break;
     }

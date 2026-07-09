@@ -48,6 +48,11 @@ Item {
         root.closeMenus();
     }
 
+    function sortRulesForDialog() {
+        var currentRules = libraryController.currentSortRules.slice();
+        return currentRules.length > 0 ? currentRules : [{field: "filename", order: "asc"}];
+    }
+
     function activateNode(nodeId, isFolder) {
         if (nodeId.length === 0)
             return;
@@ -207,23 +212,23 @@ Item {
                                     id: sidebarMenu
                                     targetItem: sidebarMoreBtn
 
+                                BubbleMenuItem {
+                                     text: qsTr("排序")
+                                     onTriggered: {
+                                         sidebarMenu.close();
+                                         sortDialog.sortRules = root.sortRulesForDialog();
+                                         sortDialog.show();
+                                     }
+                                 }
                                     BubbleMenuItem {
-                                        text: qsTr("Sort by Name")
-                                        onTriggered: root.showUnsupportedFeedback(qsTr("Sort by Name"))
-                                    }
-                                    BubbleMenuItem {
-                                        text: qsTr("Sort by Date")
-                                        onTriggered: root.showUnsupportedFeedback(qsTr("Sort by Date"))
-                                    }
-                                    BubbleMenuItem {
-                                        text: qsTr("Refresh")
+                                        text: qsTr("刷新")
                                         onTriggered: {
                                             libraryController.refresh();
                                             sidebarMenu.close();
                                         }
                                     }
                                     BubbleMenuItem {
-                                        text: qsTr("Add Folder")
+                                        text: qsTr("添加文件夹")
                                         onTriggered: {
                                             sidebarMenu.close();
                                             sidebarFolderDialog.open();
@@ -680,6 +685,18 @@ Item {
                 samples: 17
                 color: "#80000000"
             }
+        }
+    }
+
+    SortDialog {
+        id: sortDialog
+        x: (root.width - width) / 2
+        y: 100
+        
+        sortRules: []
+        
+        onAccepted: {
+            libraryController.applySortRules(sortRules);
         }
     }
 

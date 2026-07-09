@@ -1,22 +1,30 @@
 #include "backend_bridge.h"
 
 #include "seriona/audio/audio_contracts.h"
+#include "seriona/control/folder_sort_settings_store.h"
 #include "seriona/metadata/metadata_contracts.h"
 #include "seriona/scanner/scanner_contracts.h"
 
 #include <QCoreApplication>
 #include <QEventLoop>
+#include <QFileInfo>
 #include <QObject>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QThread>
+#include <QVariantList>
+#include <QVariantMap>
 #include <QtTest/QTest>
 
 #include <chrono>
+#include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -117,6 +125,42 @@ private:
     int m_eventSinkClearCalls = 0;
 };
 
+class RecordingFolderSortSettingsStore final : public seriona::control::FolderSortSettingsStore
+{
+public:
+    void upsert(seriona::control::FolderSortSetting setting) override
+    {
+        ++m_upsertCalls;
+        m_lastSetting = std::move(setting);
+    }
+
+    std::optional<seriona::control::FolderSortSetting> load(const std::filesystem::path &, const std::string &) const override
+    {
+        return std::nullopt;
+    }
+
+    void remove(const std::filesystem::path &, const std::string &) override { }
+
+    std::vector<seriona::control::FolderSortSetting> list(const std::filesystem::path &) const override
+    {
+        return {};
+    }
+
+    int upsertCalls() const
+    {
+        return m_upsertCalls;
+    }
+
+    const std::optional<seriona::control::FolderSortSetting> &lastSetting() const
+    {
+        return m_lastSetting;
+    }
+
+private:
+    int m_upsertCalls = 0;
+    std::optional<seriona::control::FolderSortSetting> m_lastSetting;
+};
+
 struct FakeMetadataState {
     bool throwOnStart = false;
     int startCalls = 0;
@@ -191,6 +235,7 @@ struct ControllerHarness {
     std::shared_ptr<FakeAudioPlaybackService> audio = std::make_shared<FakeAudioPlaybackService>();
     std::shared_ptr<FakeFileScannerService> scanner = std::make_shared<FakeFileScannerService>();
     std::shared_ptr<FakeMetadataState> metadata = std::make_shared<FakeMetadataState>();
+    std::shared_ptr<RecordingFolderSortSettingsStore> folderSortStore = std::make_shared<RecordingFolderSortSettingsStore>();
 
     Seriona::App::BackendBridge::ControllerFactory factory(bool runInlineForTests)
     {
@@ -203,6 +248,7 @@ struct ControllerHarness {
         state->dependencies.audio = audio;
         state->dependencies.scanner = scanner;
         state->dependencies.metadata = std::make_unique<FakeMetadataSharingService>(metadata);
+        state->dependencies.folderSortSettingsStore = folderSortStore;
         state->options.runInlineForTests = runInlineForTests;
 
         return [state] {
@@ -232,6 +278,23 @@ void waitForInitialPlayerSnapshot(Seriona::App::BackendBridge &bridge)
     QTRY_VERIFY(playerSpy.count() > 0);
 }
 
+QVariantMap sortRule(const QString &field, const QString &order)
+{
+    QVariantMap rule;
+    rule.insert(QStringLiteral("field"), field);
+    rule.insert(QStringLiteral("order"), order);
+    return rule;
+}
+
+QVariantList sortRules(std::initializer_list<QVariantMap> rules)
+{
+    QVariantList result;
+    for (const QVariantMap &rule : rules) {
+        result.append(rule);
+    }
+    return result;
+}
+
 }
 
 class BackendBridgeTest : public QObject
@@ -244,6 +307,10 @@ private slots:
     void shutdownStopSent();
     void shutdownSequence();
     void shutdownStartFailed();
+    void applyFolderSortRulesBuildsTypedBackendCommand();
+    void applyFolderSortRulesAllowsEmptyRules();
+    void applyFolderSortRulesRejectsInvalidPayloadWithoutDispatch();
+    void applyFolderSortRulesRejectsMissingContextWithoutDispatch();
 };
 
 void BackendBridgeTest::threading()
@@ -359,6 +426,134 @@ void BackendBridgeTest::shutdownStartFailed()
     bridge.shutdown();
     QCOMPARE(harness.audio->stopCalls(), 0);
     QCOMPARE(harness.metadata->stopCalls, 1);
+}
+
+void BackendBridgeTest::applyFolderSortRulesBuildsTypedBackendCommand()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+    const QString rootPath = QFileInfo(musicDir.path()).absoluteFilePath();
+
+    ControllerHarness harness;
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    waitForInitialPlayerSnapshot(bridge);
+
+    const seriona::control::MediaControllerCommandResult result = bridge.applyFolderSortRules(
+        rootPath + QStringLiteral("/../") + QFileInfo(musicDir.path()).fileName(),
+        QStringLiteral("  folder-jazz  "),
+        sortRules({sortRule(QStringLiteral("title"), QStringLiteral("desc")),
+                   sortRule(QStringLiteral("createdDate"), QStringLiteral("asc"))}));
+
+    QVERIFY(result.accepted);
+    QCOMPARE(result.code, seriona::control::MediaControllerErrorCode::None);
+    QCOMPARE(harness.folderSortStore->upsertCalls(), 1);
+    QVERIFY(harness.folderSortStore->lastSetting().has_value());
+    const seriona::control::FolderSortSetting &setting = *harness.folderSortStore->lastSetting();
+    QCOMPARE(QString::fromStdString(setting.rootPath.generic_string()), rootPath);
+    QCOMPARE(QString::fromStdString(setting.folderNodeId), QStringLiteral("folder-jazz"));
+    QCOMPARE(setting.rules.size(), std::size_t{2});
+    QCOMPARE(setting.rules.at(0).field, seriona::control::FolderSortField::Title);
+    QCOMPARE(setting.rules.at(0).direction, seriona::control::FolderSortDirection::Descending);
+    QCOMPARE(setting.rules.at(0).missingValuePolicy, seriona::control::FolderSortMissingValuePolicy::Last);
+    QCOMPARE(setting.rules.at(1).field, seriona::control::FolderSortField::CreatedDate);
+    QCOMPARE(setting.rules.at(1).direction, seriona::control::FolderSortDirection::Ascending);
+    QCOMPARE(setting.rules.at(1).missingValuePolicy, seriona::control::FolderSortMissingValuePolicy::Last);
+
+    bridge.shutdown();
+}
+
+void BackendBridgeTest::applyFolderSortRulesAllowsEmptyRules()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+    const QString rootPath = QFileInfo(musicDir.path()).absoluteFilePath();
+
+    ControllerHarness harness;
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    waitForInitialPlayerSnapshot(bridge);
+
+    const seriona::control::MediaControllerCommandResult result = bridge.applyFolderSortRules(
+        rootPath,
+        QStringLiteral("folder-jazz"),
+        QVariantList{});
+
+    QCOMPARE(result.accepted, false);
+    QCOMPARE(result.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
+    QVERIFY(QString::fromStdString(result.message).contains(QStringLiteral("sort rule"), Qt::CaseInsensitive));
+    QCOMPARE(harness.folderSortStore->upsertCalls(), 0);
+    QVERIFY(!harness.folderSortStore->lastSetting().has_value());
+
+    bridge.shutdown();
+}
+
+void BackendBridgeTest::applyFolderSortRulesRejectsInvalidPayloadWithoutDispatch()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+    const QString rootPath = QFileInfo(musicDir.path()).absoluteFilePath();
+
+    ControllerHarness harness;
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    waitForInitialPlayerSnapshot(bridge);
+
+    const seriona::control::MediaControllerCommandResult invalidField = bridge.applyFolderSortRules(
+        rootPath,
+        QStringLiteral("folder-jazz"),
+        sortRules({sortRule(QStringLiteral("unknownField"), QStringLiteral("asc"))}));
+    QCOMPARE(invalidField.accepted, false);
+    QCOMPARE(invalidField.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
+    QVERIFY(QString::fromStdString(invalidField.message).contains(QStringLiteral("field"), Qt::CaseInsensitive));
+
+    const seriona::control::MediaControllerCommandResult invalidDirection = bridge.applyFolderSortRules(
+        rootPath,
+        QStringLiteral("folder-jazz"),
+        sortRules({sortRule(QStringLiteral("title"), QStringLiteral("sideways"))}));
+    QCOMPARE(invalidDirection.accepted, false);
+    QCOMPARE(invalidDirection.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
+    QVERIFY(QString::fromStdString(invalidDirection.message).contains(QStringLiteral("direction"), Qt::CaseInsensitive));
+
+    QVariantList malformed;
+    malformed.append(QStringLiteral("not-a-map"));
+    const seriona::control::MediaControllerCommandResult malformedPayload = bridge.applyFolderSortRules(
+        rootPath,
+        QStringLiteral("folder-jazz"),
+        malformed);
+    QCOMPARE(malformedPayload.accepted, false);
+    QCOMPARE(malformedPayload.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
+    QVERIFY(QString::fromStdString(malformedPayload.message).contains(QStringLiteral("payload"), Qt::CaseInsensitive));
+    QCOMPARE(harness.folderSortStore->upsertCalls(), 0);
+
+    bridge.shutdown();
+}
+
+void BackendBridgeTest::applyFolderSortRulesRejectsMissingContextWithoutDispatch()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+    const QString rootPath = QFileInfo(musicDir.path()).absoluteFilePath();
+
+    ControllerHarness harness;
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    waitForInitialPlayerSnapshot(bridge);
+
+    const seriona::control::MediaControllerCommandResult missingRoot = bridge.applyFolderSortRules(
+        QString(),
+        QStringLiteral("folder-jazz"),
+        sortRules({sortRule(QStringLiteral("title"), QStringLiteral("asc"))}));
+    QCOMPARE(missingRoot.accepted, false);
+    QCOMPARE(missingRoot.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
+    QVERIFY(QString::fromStdString(missingRoot.message).contains(QStringLiteral("root"), Qt::CaseInsensitive));
+
+    const seriona::control::MediaControllerCommandResult missingFolder = bridge.applyFolderSortRules(
+        rootPath,
+        QStringLiteral("   "),
+        sortRules({sortRule(QStringLiteral("title"), QStringLiteral("asc"))}));
+    QCOMPARE(missingFolder.accepted, false);
+    QCOMPARE(missingFolder.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
+    QVERIFY(QString::fromStdString(missingFolder.message).contains(QStringLiteral("folder"), Qt::CaseInsensitive));
+    QCOMPARE(harness.folderSortStore->upsertCalls(), 0);
+
+    bridge.shutdown();
 }
 
 QTEST_GUILESS_MAIN(BackendBridgeTest)

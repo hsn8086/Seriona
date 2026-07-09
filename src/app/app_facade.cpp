@@ -73,6 +73,9 @@ AppFacade::AppFacade(QObject *parent)
     m_library.setCommandExecutor([this](const seriona::control::MediaControlCommand &command) {
         return m_backendBridge->submitCommand(command);
     });
+    m_library.setFolderSortExecutor([this](const QString &rootPath, const QString &folderNodeId, const QVariantList &rules) {
+        return m_backendBridge->applyFolderSortRules(rootPath, folderNodeId, rules);
+    });
     m_library.setScanExecutor([this](const QString &rootPath) {
         return m_backendBridge->scanLibrary(rootPath);
     });
@@ -97,7 +100,12 @@ AppFacade::AppFacade(QObject *parent)
         if (notifications.empty()) {
             return;
         }
-        m_notifications.enqueueDomainNotification(notifications.back());
+        const seriona::control::ControlDomainNotification &notification = notifications.back();
+        if (notification.kind == seriona::control::ControlDomainNotificationKind::FolderSortRulesApplied
+            && notification.folderSortSetting.has_value()) {
+            m_library.applyFolderSortSetting(*notification.folderSortSetting);
+        }
+        m_notifications.enqueueDomainNotification(notification);
     });
 #endif
 

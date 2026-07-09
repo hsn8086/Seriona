@@ -5,13 +5,19 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QMetaObject>
 #include <QPointer>
+#include <QVariantMap>
 
 #include "seriona/app/runtime_paths.h"
 
 #include <exception>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 #endif
 
 namespace Seriona::App {
@@ -20,6 +26,123 @@ namespace {
 
 #if SERIONA_HAS_BACKEND
 constexpr qsizetype kMaxQueuedNotifications = 64;
+
+std::string toBackendString(const QString &value)
+{
+    const QByteArray utf8 = value.toUtf8();
+    return std::string(utf8.constData(), static_cast<std::size_t>(utf8.size()));
+}
+
+std::filesystem::path toBackendPath(const QString &path)
+{
+    return std::filesystem::path(toBackendString(path));
+}
+
+QString normalizedRootPath(const QString &rootPath)
+{
+    const QString trimmed = rootPath.trimmed();
+    if (trimmed.isEmpty()) {
+        return QString();
+    }
+    return QDir::cleanPath(QFileInfo(trimmed).absoluteFilePath());
+}
+
+seriona::control::MediaControllerCommandResult invalidCommandResult(std::string message)
+{
+    seriona::control::MediaControllerCommandResult result;
+    result.accepted = false;
+    result.code = seriona::control::MediaControllerErrorCode::InvalidCommand;
+    result.message = std::move(message);
+    return result;
+}
+
+std::optional<seriona::control::FolderSortField> sortFieldFromPayload(const QString &field)
+{
+    const QString trimmed = field.trimmed();
+    if (trimmed.compare(QStringLiteral("title"), Qt::CaseInsensitive) == 0) {
+        return seriona::control::FolderSortField::Title;
+    }
+    if (trimmed.compare(QStringLiteral("artist"), Qt::CaseInsensitive) == 0) {
+        return seriona::control::FolderSortField::Artist;
+    }
+    if (trimmed.compare(QStringLiteral("album"), Qt::CaseInsensitive) == 0) {
+        return seriona::control::FolderSortField::Album;
+    }
+    if (trimmed.compare(QStringLiteral("filename"), Qt::CaseInsensitive) == 0) {
+        return seriona::control::FolderSortField::Filename;
+    }
+    if (trimmed.compare(QStringLiteral("year"), Qt::CaseInsensitive) == 0) {
+        return seriona::control::FolderSortField::Year;
+    }
+    if (trimmed.compare(QStringLiteral("duration"), Qt::CaseInsensitive) == 0) {
+        return seriona::control::FolderSortField::Duration;
+    }
+    if (trimmed.compare(QStringLiteral("createdDate"), Qt::CaseInsensitive) == 0) {
+        return seriona::control::FolderSortField::CreatedDate;
+    }
+    if (trimmed.compare(QStringLiteral("discNumber"), Qt::CaseInsensitive) == 0) {
+        return seriona::control::FolderSortField::DiscNumber;
+    }
+    if (trimmed.compare(QStringLiteral("trackNumber"), Qt::CaseInsensitive) == 0) {
+        return seriona::control::FolderSortField::TrackNumber;
+    }
+    return std::nullopt;
+}
+
+std::optional<seriona::control::FolderSortDirection> sortDirectionFromPayload(const QString &order)
+{
+    const QString trimmed = order.trimmed();
+    if (trimmed.compare(QStringLiteral("asc"), Qt::CaseInsensitive) == 0) {
+        return seriona::control::FolderSortDirection::Ascending;
+    }
+    if (trimmed.compare(QStringLiteral("desc"), Qt::CaseInsensitive) == 0) {
+        return seriona::control::FolderSortDirection::Descending;
+    }
+    return std::nullopt;
+}
+
+std::optional<seriona::control::FolderSortRule> sortRuleFromPayload(const QVariant &ruleVar, std::string &error)
+{
+    if (!ruleVar.canConvert<QVariantMap>()) {
+        error = "Malformed sort rule payload";
+        return std::nullopt;
+    }
+
+    const QVariantMap ruleMap = ruleVar.toMap();
+    const std::optional<seriona::control::FolderSortField> field = sortFieldFromPayload(
+        ruleMap.value(QStringLiteral("field")).toString());
+    if (!field.has_value()) {
+        error = "Invalid sort field";
+        return std::nullopt;
+    }
+
+    const std::optional<seriona::control::FolderSortDirection> direction = sortDirectionFromPayload(
+        ruleMap.value(QStringLiteral("order")).toString());
+    if (!direction.has_value()) {
+        error = "Invalid sort direction";
+        return std::nullopt;
+    }
+
+    seriona::control::FolderSortRule rule;
+    rule.field = *field;
+    rule.direction = *direction;
+    rule.missingValuePolicy = seriona::control::FolderSortMissingValuePolicy::Last;
+    return rule;
+}
+
+std::optional<std::vector<seriona::control::FolderSortRule>> sortRulesFromPayload(const QVariantList &rules, std::string &error)
+{
+    std::vector<seriona::control::FolderSortRule> parsedRules;
+    parsedRules.reserve(static_cast<std::size_t>(rules.size()));
+    for (const QVariant &ruleVar : rules) {
+        std::optional<seriona::control::FolderSortRule> parsedRule = sortRuleFromPayload(ruleVar, error);
+        if (!parsedRule.has_value()) {
+            return std::nullopt;
+        }
+        parsedRules.push_back(*parsedRule);
+    }
+    return parsedRules;
+}
 #endif
 
 }
@@ -156,6 +279,44 @@ seriona::control::MediaControllerCommandResult BackendBridge::scanLibrary(const 
     seriona::control::MediaControllerCommandResult result = m_controller->scanLibrary({std::move(root)}, seriona::scanner::ScanMode::Full);
     enqueueCommandFailureNotification(result);
     return result;
+}
+
+seriona::control::MediaControllerCommandResult BackendBridge::applyFolderSortRules(
+    const QString &rootPath,
+    const QString &folderNodeId,
+    const QVariantList &rules)
+{
+    const QString normalizedRoot = normalizedRootPath(rootPath);
+    if (normalizedRoot.isEmpty()) {
+        seriona::control::MediaControllerCommandResult result = invalidCommandResult("Folder sort command requires a root path");
+        enqueueCommandFailureNotification(result);
+        return result;
+    }
+
+    const QString normalizedFolderNodeId = folderNodeId.trimmed();
+    if (normalizedFolderNodeId.isEmpty()) {
+        seriona::control::MediaControllerCommandResult result = invalidCommandResult("Folder sort command requires a folder node id");
+        enqueueCommandFailureNotification(result);
+        return result;
+    }
+
+    std::string error;
+    std::optional<std::vector<seriona::control::FolderSortRule>> parsedRules = sortRulesFromPayload(rules, error);
+    if (!parsedRules.has_value()) {
+        seriona::control::MediaControllerCommandResult result = invalidCommandResult(std::move(error));
+        enqueueCommandFailureNotification(result);
+        return result;
+    }
+
+    seriona::control::FolderSortSetting setting;
+    setting.rootPath = toBackendPath(normalizedRoot);
+    setting.folderNodeId = toBackendString(normalizedFolderNodeId);
+    setting.rules = std::move(*parsedRules);
+
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::ApplyFolderSortRules;
+    command.folderSortSetting = std::move(setting);
+    return submitCommand(command);
 }
 
 const seriona::control::PlayerStateSnapshot &BackendBridge::playerSnapshot() const

@@ -6,9 +6,14 @@
 #include <QHash>
 #include <QQmlEngine>
 #include <QString>
+#include <QVariantList>
 #include <QVector>
 
+#include <chrono>
 #include <cstdint>
+#include <filesystem>
+#include <optional>
+#include <vector>
 
 #ifndef SERIONA_HAS_BACKEND
 #define SERIONA_HAS_BACKEND 0
@@ -58,6 +63,7 @@ public:
         QString title;
         QString artist;
         QString album;
+        QString fileName;
         QString parentName;
         int songCount = 0;
         QString duration;
@@ -71,6 +77,16 @@ public:
         bool isFocused = false;
         QString parentNodeId;
         QString artworkSource;
+        std::optional<std::chrono::milliseconds> durationValue;
+        std::optional<std::uint32_t> year;
+        std::optional<std::uint32_t> discNumber;
+        std::optional<std::uint32_t> trackNumber;
+        std::optional<std::filesystem::file_time_type> createdDate;
+    };
+
+    struct SortRule {
+        QString field;
+        QString order;
     };
 
     explicit LibraryModel(QObject *parent = nullptr);
@@ -91,7 +107,11 @@ public:
     std::uint64_t version() const;
     bool setFocusedNodeId(const QString &nodeId);
     bool setPlayingTrackId(const QString &trackId);
-    void applyBrowsingState(const QString &focusedNodeId, const QString &playingTrackId, const QString &searchQuery, const QString &browserRootNodeId = QString());
+    void applyBrowsingState(const QString &focusedNodeId,
+                            const QString &playingTrackId,
+                            const QString &searchQuery,
+                            const QString &browserRootNodeId = QString(),
+                            const QVector<SortRule> &sortRules = {});
     int visibleNodeCount() const;
     QString firstVisibleNodeId() const;
     QString firstVisibleMatchingNodeId() const;
@@ -106,6 +126,7 @@ private:
     void rebuildEntryIndexes();
     void rebuildProjectionIndexes();
     void setProjectionNodeIds(const QVector<QString> &nodeIds);
+    QVector<QString> sortedProjectionNodeIds(QVector<QString> nodeIds, const QVector<SortRule> &sortRules) const;
     QVector<QString> searchProjectionNodeIds(const QString &searchQuery) const;
 
     LibraryTreeStore m_treeStore;
@@ -143,11 +164,13 @@ class LibraryController : public QObject
     Q_PROPERTY(bool libraryEmpty READ libraryEmpty NOTIFY libraryEmptyChanged)
     Q_PROPERTY(bool backendAvailable READ backendAvailable NOTIFY backendAvailableChanged)
     Q_PROPERTY(QString libraryState READ libraryState NOTIFY libraryStateChanged)
+    Q_PROPERTY(QVariantList currentSortRules READ currentSortRules NOTIFY currentSortRulesChanged)
     QML_ELEMENT
 
 public:
 #if SERIONA_HAS_BACKEND
     using CommandExecutor = std::function<seriona::control::MediaControllerCommandResult(const seriona::control::MediaControlCommand &)>;
+    using FolderSortExecutor = std::function<seriona::control::MediaControllerCommandResult(const QString &, const QString &, const QVariantList &)>;
     using ScanExecutor = std::function<seriona::control::MediaControllerCommandResult(const QString &)>;
 #endif
 
@@ -175,13 +198,16 @@ public:
     bool libraryEmpty() const;
     bool backendAvailable() const;
     QString libraryState() const;
+    QVariantList currentSortRules() const;
     void clearSavedRootPath(const QString &message);
 #if SERIONA_HAS_BACKEND
     void setCommandExecutor(CommandExecutor executor);
+    void setFolderSortExecutor(FolderSortExecutor executor);
     void setScanExecutor(ScanExecutor executor);
     void setPlaylistTreeSnapshot(const seriona::scanner::PlaylistTreeSnapshot &snapshot);
     void applyPlayerStateSnapshot(const seriona::control::PlayerStateSnapshot &snapshot, bool forceReapply);
     void applyLibraryStateSnapshot(const seriona::control::LibraryStateSnapshot &snapshot);
+    void applyFolderSortSetting(const seriona::control::FolderSortSetting &setting);
 #endif
 
     Q_INVOKABLE void enterFolder(int index);
@@ -196,6 +222,7 @@ public:
     Q_INVOKABLE void submitSearch();
     Q_INVOKABLE void selectBrowserNode(const QString &nodeId);
     Q_INVOKABLE int rowForNodeId(const QString &nodeId) const;
+    Q_INVOKABLE void applySortRules(const QVariantList &rules);
 
 signals:
     void currentFolderNameChanged();
@@ -214,6 +241,7 @@ signals:
     void libraryEmptyChanged();
     void backendAvailableChanged();
     void libraryStateChanged();
+    void currentSortRulesChanged();
 
 private:
     bool requestScanForRoot(const QString &rootPath);
@@ -224,14 +252,25 @@ private:
     void setBackendAvailable(bool available);
     void emitLibraryStateChanges(bool previousLibraryEmpty, const QString &previousLibraryState);
     void applyBrowsingState();
+    QVector<LibraryModel::SortRule> sortRulesForCurrentProjection() const;
+    QString folderSortKey(const QString &rootPath, const QString &folderNodeId) const;
+    QString currentFolderSortKey() const;
+    void restoreSortRulesForCurrentFolder();
+    void rememberFolderSortRules(const QString &rootPath, const QString &folderNodeId, const QVector<LibraryModel::SortRule> &rules);
     bool showNodeInBrowserProjection(const QString &nodeId);
     void updateVisibleNodeCount();
     void reconcileBrowsingState(const QVector<QString> &focusedFallbackChain, const QVector<QString> &selectedFallbackChain);
     QString firstExistingNode(const QVector<QString> &nodeIds) const;
+    std::optional<LibraryModel::SortRule> sortRuleFromVariant(const QVariant &ruleVar) const;
+    std::optional<QVector<LibraryModel::SortRule>> sortRulesFromVariants(const QVariantList &rules) const;
     void activateTrack(const LibraryModel::Entry *entry);
     void requestScrollToNode(const QString &nodeId);
+    bool persistCurrentFolderSortRules(const QVector<LibraryModel::SortRule> &rules);
 #if SERIONA_HAS_BACKEND
-    void submitCommand(const seriona::control::MediaControlCommand &command);
+    std::optional<std::vector<seriona::control::FolderSortRule>> backendSortRulesFromModelRules(const QVector<LibraryModel::SortRule> &rules) const;
+    QVariantList sortRuleVariantsFromModelRules(const QVector<LibraryModel::SortRule> &rules) const;
+    std::optional<QVector<LibraryModel::SortRule>> modelSortRulesFromBackendRules(const std::vector<seriona::control::FolderSortRule> &rules) const;
+    seriona::control::MediaControllerCommandResult submitCommand(const seriona::control::MediaControlCommand &command);
 #endif
 
     LibraryModel m_model;
@@ -249,8 +288,14 @@ private:
     bool m_followCurrentlyPlaying = false;
     int m_visibleNodeCount = 0;
     bool m_backendAvailable = false;
+    QVector<LibraryModel::SortRule> m_sortRules;
+    QVector<LibraryModel::SortRule> m_searchSortRules;
+    bool m_hasSearchSortRules = false;
+    QHash<QString, QVector<LibraryModel::SortRule>> m_savedFolderSortRules;
+    QString m_activeFolderSortKey;
 #if SERIONA_HAS_BACKEND
     CommandExecutor m_commandExecutor;
+    FolderSortExecutor m_folderSortExecutor;
     ScanExecutor m_scanExecutor;
 #endif
 };

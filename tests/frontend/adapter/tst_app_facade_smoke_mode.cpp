@@ -3,9 +3,11 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QIODevice>
 #include <QObject>
 #include <QStringList>
+#include <QTemporaryDir>
 #include <QVariant>
 #include <QtTest/QTest>
 
@@ -146,7 +148,21 @@ void AppFacadeSmokeModeTest::libraryControllerSubmitsTrackActivationThroughBridg
 #if SERIONA_HAS_BACKEND
     QCoreApplication::instance()->setProperty("seriona.backendBridgeAutostartEnabled", false);
 
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+    const QString canonicalRoot = QFileInfo(musicDir.path()).absoluteFilePath();
+
     Seriona::App::AppFacade facade;
+    std::vector<QString> scannedRoots;
+    facade.library()->setScanExecutor([&scannedRoots](const QString &rootPath) {
+        scannedRoots.push_back(rootPath);
+        seriona::control::MediaControllerCommandResult result;
+        result.accepted = true;
+        result.code = seriona::control::MediaControllerErrorCode::None;
+        return result;
+    });
+    QVERIFY(facade.scanLibrary(QUrl::fromLocalFile(musicDir.path())));
+    QCOMPARE(scannedRoots, std::vector<QString>{canonicalRoot});
     facade.library()->setPlaylistTreeSnapshot(makeSnapshot());
 
     QCOMPARE(facade.backendNotificationCountForTests(), std::size_t{0});

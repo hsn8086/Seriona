@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QVariantList>
 
 #ifndef SERIONA_HAS_BACKEND
 #define SERIONA_HAS_BACKEND 0
@@ -39,6 +40,10 @@ public:
 #if SERIONA_HAS_BACKEND
     seriona::control::MediaControllerCommandResult submitCommand(const seriona::control::MediaControlCommand &command);
     seriona::control::MediaControllerCommandResult scanLibrary(const QString &rootPath);
+    seriona::control::MediaControllerCommandResult applyFolderSortRules(
+        const QString &rootPath,
+        const QString &folderNodeId,
+        const QVariantList &rules);
     const seriona::control::PlayerStateSnapshot &playerSnapshot() const;
     const seriona::control::LibraryStateSnapshot &librarySnapshot() const;
     const std::deque<seriona::control::ControlDomainNotification> &notifications() const;

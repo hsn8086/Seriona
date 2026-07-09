@@ -7,12 +7,14 @@
 #include <QFileInfo>
 #include <QSet>
 #include <QUrl>
+#include <QVariantMap>
+
+#include <algorithm>
+#include <utility>
 
 #if SERIONA_HAS_BACKEND
-#include <algorithm>
 #include <chrono>
 #include <functional>
-#include <utility>
 #endif
 
 namespace Seriona::App {
@@ -35,6 +37,88 @@ seriona::control::TrackIdentity trackIdentityForEntry(const LibraryModel::Entry 
     seriona::control::TrackIdentity identity;
     identity.trackId = toStdString(entry.trackId);
     return identity;
+}
+
+QString fromBackendPath(const std::filesystem::path &path)
+{
+    return QString::fromStdString(path.generic_string());
+}
+
+std::filesystem::path toBackendPath(const QString &path)
+{
+    const QByteArray utf8 = path.toUtf8();
+    return std::filesystem::path(std::string(utf8.constData(), static_cast<std::size_t>(utf8.size())));
+}
+
+std::optional<seriona::control::FolderSortField> backendSortField(const QString &field)
+{
+    if (field == QStringLiteral("title")) {
+        return seriona::control::FolderSortField::Title;
+    }
+    if (field == QStringLiteral("artist")) {
+        return seriona::control::FolderSortField::Artist;
+    }
+    if (field == QStringLiteral("album")) {
+        return seriona::control::FolderSortField::Album;
+    }
+    if (field == QStringLiteral("filename")) {
+        return seriona::control::FolderSortField::Filename;
+    }
+    if (field == QStringLiteral("year")) {
+        return seriona::control::FolderSortField::Year;
+    }
+    if (field == QStringLiteral("duration")) {
+        return seriona::control::FolderSortField::Duration;
+    }
+    if (field == QStringLiteral("createdDate")) {
+        return seriona::control::FolderSortField::CreatedDate;
+    }
+    if (field == QStringLiteral("discNumber")) {
+        return seriona::control::FolderSortField::DiscNumber;
+    }
+    if (field == QStringLiteral("trackNumber")) {
+        return seriona::control::FolderSortField::TrackNumber;
+    }
+    return std::nullopt;
+}
+
+QString modelSortField(seriona::control::FolderSortField field)
+{
+    switch (field) {
+    case seriona::control::FolderSortField::Title:
+        return QStringLiteral("title");
+    case seriona::control::FolderSortField::Artist:
+        return QStringLiteral("artist");
+    case seriona::control::FolderSortField::Album:
+        return QStringLiteral("album");
+    case seriona::control::FolderSortField::Filename:
+        return QStringLiteral("filename");
+    case seriona::control::FolderSortField::Year:
+        return QStringLiteral("year");
+    case seriona::control::FolderSortField::Duration:
+        return QStringLiteral("duration");
+    case seriona::control::FolderSortField::CreatedDate:
+        return QStringLiteral("createdDate");
+    case seriona::control::FolderSortField::DiscNumber:
+        return QStringLiteral("discNumber");
+    case seriona::control::FolderSortField::TrackNumber:
+        return QStringLiteral("trackNumber");
+    }
+    return QString();
+}
+
+seriona::control::FolderSortDirection backendSortDirection(const QString &order)
+{
+    return order == QStringLiteral("desc")
+        ? seriona::control::FolderSortDirection::Descending
+        : seriona::control::FolderSortDirection::Ascending;
+}
+
+QString modelSortOrder(seriona::control::FolderSortDirection direction)
+{
+    return direction == seriona::control::FolderSortDirection::Descending
+        ? QStringLiteral("desc")
+        : QStringLiteral("asc");
 }
 
 QString typeForNode(const LibraryTreeStore::Node &node)
@@ -66,6 +150,15 @@ QString formatFromNode(const LibraryTreeStore::Node &node)
     return extension.toUpper();
 }
 
+QString fileNameFromNode(const LibraryTreeStore::Node &node)
+{
+    const std::filesystem::path &path = !node.sourceFilePath.empty() ? node.sourceFilePath : node.filePath;
+    if (path.empty()) {
+        return node.displayName;
+    }
+    return QString::fromStdString(path.filename().string());
+}
+
 LibraryModel::Entry entryFromNode(const LibraryTreeStore::Node &node, const QString &parentName)
 {
     LibraryModel::Entry entry;
@@ -74,6 +167,7 @@ LibraryModel::Entry entryFromNode(const LibraryTreeStore::Node &node, const QStr
     entry.parentName = parentName;
     entry.songCount = node.isFolder ? node.descendantTrackCount : 0;
     entry.isFolder = node.isFolder;
+    entry.fileName = fileNameFromNode(node);
 
     if (entry.isFolder) {
         entry.name = node.displayName;
@@ -88,6 +182,11 @@ LibraryModel::Entry entryFromNode(const LibraryTreeStore::Node &node, const QStr
     entry.sampleRate = node.sampleRate;
     entry.bitDepth = node.bitDepth;
     entry.duration = node.duration.has_value() ? formatDuration(*node.duration) : QString();
+    entry.durationValue = node.duration;
+    entry.year = node.year;
+    entry.discNumber = node.discNumber;
+    entry.trackNumber = node.trackNumber;
+    entry.createdDate = node.fileMtime;
 
     const std::filesystem::path &artworkPath = !node.thumbnailPath.empty() ? node.thumbnailPath : node.artworkPath;
     if (!artworkPath.empty()) {
@@ -115,6 +214,144 @@ QString localDirectoryPath(const QUrl &rootUrl)
     }
 
     return rootInfo.absoluteFilePath();
+}
+
+std::optional<QString> canonicalSortField(const QString &field)
+{
+    const QString trimmed = field.trimmed();
+    if (trimmed.compare(QStringLiteral("title"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("title");
+    }
+    if (trimmed.compare(QStringLiteral("artist"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("artist");
+    }
+    if (trimmed.compare(QStringLiteral("album"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("album");
+    }
+    if (trimmed.compare(QStringLiteral("filename"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("filename");
+    }
+    if (trimmed.compare(QStringLiteral("year"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("year");
+    }
+    if (trimmed.compare(QStringLiteral("duration"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("duration");
+    }
+    if (trimmed.compare(QStringLiteral("createdDate"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("createdDate");
+    }
+    if (trimmed.compare(QStringLiteral("discNumber"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("discNumber");
+    }
+    if (trimmed.compare(QStringLiteral("trackNumber"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("trackNumber");
+    }
+    return std::nullopt;
+}
+
+std::optional<QString> canonicalSortOrder(const QString &order)
+{
+    const QString trimmed = order.trimmed();
+    if (trimmed.compare(QStringLiteral("asc"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("asc");
+    }
+    if (trimmed.compare(QStringLiteral("desc"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("desc");
+    }
+    return std::nullopt;
+}
+
+struct ProjectionSortValue {
+    bool hasValue = false;
+    QString text;
+    std::optional<qint64> number;
+};
+
+ProjectionSortValue textSortValue(QString value)
+{
+    value = value.trimmed();
+    if (value.isEmpty()) {
+        return {};
+    }
+    ProjectionSortValue result;
+    result.hasValue = true;
+    result.text = value;
+    return result;
+}
+
+ProjectionSortValue numberSortValue(std::optional<qint64> value)
+{
+    if (!value.has_value()) {
+        return {};
+    }
+    ProjectionSortValue result;
+    result.hasValue = true;
+    result.number = *value;
+    return result;
+}
+
+ProjectionSortValue sortValueForEntry(const LibraryModel::Entry &entry, const QString &field)
+{
+    if (field == QStringLiteral("title")) {
+        return textSortValue(entry.title.isEmpty() ? entry.name : entry.title);
+    }
+    if (field == QStringLiteral("artist")) {
+        return textSortValue(entry.artist);
+    }
+    if (field == QStringLiteral("album")) {
+        return textSortValue(entry.album);
+    }
+    if (field == QStringLiteral("filename")) {
+        return textSortValue(entry.fileName.isEmpty() ? entry.name : entry.fileName);
+    }
+    if (field == QStringLiteral("year")) {
+        return numberSortValue(entry.year.has_value() ? std::optional<qint64>{static_cast<qint64>(*entry.year)} : std::nullopt);
+    }
+    if (field == QStringLiteral("duration")) {
+        return numberSortValue(entry.durationValue.has_value() ? std::optional<qint64>{static_cast<qint64>(entry.durationValue->count())} : std::nullopt);
+    }
+    if (field == QStringLiteral("createdDate")) {
+        return numberSortValue(entry.createdDate.has_value() ? std::optional<qint64>{static_cast<qint64>(entry.createdDate->time_since_epoch().count())} : std::nullopt);
+    }
+    if (field == QStringLiteral("discNumber")) {
+        return numberSortValue(entry.discNumber.has_value() ? std::optional<qint64>{static_cast<qint64>(*entry.discNumber)} : std::nullopt);
+    }
+    if (field == QStringLiteral("trackNumber")) {
+        return numberSortValue(entry.trackNumber.has_value() ? std::optional<qint64>{static_cast<qint64>(*entry.trackNumber)} : std::nullopt);
+    }
+    return {};
+}
+
+int compareProjectionSortValues(const ProjectionSortValue &left, const ProjectionSortValue &right)
+{
+    if (left.hasValue != right.hasValue) {
+        return left.hasValue ? -1 : 1;
+    }
+    if (!left.hasValue) {
+        return 0;
+    }
+    if (left.number.has_value() || right.number.has_value()) {
+        if (!left.number.has_value() || !right.number.has_value()) {
+            return left.number.has_value() ? -1 : 1;
+        }
+        if (*left.number < *right.number) {
+            return -1;
+        }
+        if (*right.number < *left.number) {
+            return 1;
+        }
+        return 0;
+    }
+
+    const int caseInsensitive = QString::compare(left.text, right.text, Qt::CaseInsensitive);
+    if (caseInsensitive != 0) {
+        return caseInsensitive < 0 ? -1 : 1;
+    }
+    const int caseSensitive = QString::compare(left.text, right.text, Qt::CaseSensitive);
+    if (caseSensitive != 0) {
+        return caseSensitive < 0 ? -1 : 1;
+    }
+    return 0;
 }
 
 }
@@ -337,7 +574,11 @@ bool LibraryModel::setPlayingTrackId(const QString &trackId)
     return changed;
 }
 
-void LibraryModel::applyBrowsingState(const QString &focusedNodeId, const QString &playingTrackId, const QString &searchQuery, const QString &browserRootNodeId)
+void LibraryModel::applyBrowsingState(const QString &focusedNodeId,
+                                      const QString &playingTrackId,
+                                      const QString &searchQuery,
+                                      const QString &browserRootNodeId,
+                                      const QVector<SortRule> &sortRules)
 {
     m_focusedNodeId = containsNodeId(focusedNodeId) ? focusedNodeId : QString();
     m_playingTrackId = playingTrackId;
@@ -352,6 +593,7 @@ void LibraryModel::applyBrowsingState(const QString &focusedNodeId, const QStrin
         projectionNodeIds = m_rootProjectionNodeIds;
     }
 
+    projectionNodeIds = sortedProjectionNodeIds(std::move(projectionNodeIds), sortRules);
     setProjectionNodeIds(projectionNodeIds);
 }
 
@@ -504,6 +746,43 @@ void LibraryModel::setProjectionNodeIds(const QVector<QString> &nodeIds)
     m_entries = projectedEntries;
     rebuildProjectionIndexes();
     endResetModel();
+}
+
+QVector<QString> LibraryModel::sortedProjectionNodeIds(QVector<QString> nodeIds, const QVector<SortRule> &sortRules) const
+{
+    if (sortRules.isEmpty() || nodeIds.size() < 2) {
+        return nodeIds;
+    }
+
+    std::stable_sort(nodeIds.begin(), nodeIds.end(), [this, &sortRules](const QString &leftNodeId, const QString &rightNodeId) {
+        const auto leftIt = m_nodeById.constFind(leftNodeId);
+        const auto rightIt = m_nodeById.constFind(rightNodeId);
+        if (leftIt == m_nodeById.cend() || rightIt == m_nodeById.cend()) {
+            return false;
+        }
+
+        for (const SortRule &rule : sortRules) {
+            const ProjectionSortValue leftValue = sortValueForEntry(leftIt.value(), rule.field);
+            const ProjectionSortValue rightValue = sortValueForEntry(rightIt.value(), rule.field);
+            if (leftValue.hasValue != rightValue.hasValue) {
+                return leftValue.hasValue;
+            }
+
+            int comparison = compareProjectionSortValues(leftValue, rightValue);
+            if (rule.order == QStringLiteral("desc")) {
+                comparison = -comparison;
+            }
+            if (comparison < 0) {
+                return true;
+            }
+            if (comparison > 0) {
+                return false;
+            }
+        }
+
+        return false;
+    });
+    return nodeIds;
 }
 
 QVector<QString> LibraryModel::searchProjectionNodeIds(const QString &searchQuery) const
@@ -788,10 +1067,20 @@ QString LibraryController::libraryState() const
     return QStringLiteral("ready");
 }
 
+QVariantList LibraryController::currentSortRules() const
+{
+    return sortRuleVariantsFromModelRules(sortRulesForCurrentProjection());
+}
+
 #if SERIONA_HAS_BACKEND
 void LibraryController::setCommandExecutor(CommandExecutor executor)
 {
     m_commandExecutor = std::move(executor);
+}
+
+void LibraryController::setFolderSortExecutor(FolderSortExecutor executor)
+{
+    m_folderSortExecutor = std::move(executor);
 }
 
 void LibraryController::setScanExecutor(ScanExecutor executor)
@@ -837,6 +1126,23 @@ void LibraryController::applyLibraryStateSnapshot(const seriona::control::Librar
         setPlaylistTreeSnapshot(*snapshot.libraryTree);
     }
 }
+
+void LibraryController::applyFolderSortSetting(const seriona::control::FolderSortSetting &setting)
+{
+    const QString rootPath = fromBackendPath(setting.rootPath);
+    const QString folderNodeId = toQString(setting.folderNodeId);
+    const std::optional<QVector<LibraryModel::SortRule>> rules = modelSortRulesFromBackendRules(setting.rules);
+    if (rootPath.isEmpty() || folderNodeId.isEmpty() || !rules.has_value()) {
+        return;
+    }
+
+    rememberFolderSortRules(rootPath, folderNodeId, *rules);
+    if (m_searchQuery.trimmed().isEmpty() && rootPath == m_savedRootPath && folderNodeId == m_currentFolderNodeId) {
+        m_sortRules = *rules;
+        applyBrowsingState();
+        emit currentSortRulesChanged();
+    }
+}
 #endif
 
 void LibraryController::setSearchQuery(const QString &query)
@@ -874,6 +1180,7 @@ void LibraryController::enterFolder(const QString &nodeId)
     m_currentFolderNodeId = nodeId;
     m_currentFolderName = entry->name;
     setSelectedBrowserNodeId(nodeId);
+    restoreSortRulesForCurrentFolder();
     applyBrowsingState();
 
     if (nameChanged) {
@@ -901,6 +1208,8 @@ void LibraryController::goBack()
         } else {
             m_currentFolderNodeId.clear();
             m_currentFolderName = QStringLiteral("My Music");
+            m_sortRules.clear();
+            m_activeFolderSortKey.clear();
             if (!previousFolderNodeId.isEmpty()) {
                 setSelectedBrowserNodeId(previousFolderNodeId);
                 requestScrollToNode(previousFolderNodeId);
@@ -976,6 +1285,7 @@ bool LibraryController::requestScanForRoot(const QString &rootPath)
 #endif
 
     setSavedRootPath(rootPath);
+    restoreSortRulesForCurrentFolder();
     applyBrowsingState();
     return true;
 }
@@ -1073,23 +1383,64 @@ void LibraryController::activateTrack(const LibraryModel::Entry *entry)
     if (entry == nullptr || entry->isFolder || entry->trackId.isEmpty()) {
         return;
     }
+    if (m_model.rowForNodeId(entry->nodeId) < 0) {
+        return;
+    }
 
 #if SERIONA_HAS_BACKEND
+    if (m_savedRootPath.isEmpty()) {
+        setLastError(tr("尚未选择曲库文件夹，无法启动上下文播放"));
+        return;
+    }
+
+    const seriona::control::TrackIdentity identity = trackIdentityForEntry(*entry);
+    std::optional<std::vector<seriona::control::FolderSortRule>> sortRules = backendSortRulesFromModelRules(sortRulesForCurrentProjection());
+    if (!sortRules.has_value()) {
+        setLastError(tr("排序规则格式无效"));
+        return;
+    }
+
+    const QString rootNodeId = m_model.firstNodeId();
+    QString contextFolderNodeId = m_searchQuery.trimmed().isEmpty() ? m_currentFolderNodeId : QString();
+    if (!m_searchQuery.trimmed().isEmpty()) {
+        const QString parentNodeId = entry->parentNodeId;
+        if (!parentNodeId.isEmpty() && parentNodeId != rootNodeId) {
+            const LibraryModel::Entry *parentEntry = m_model.entryByNodeId(parentNodeId);
+            if (parentEntry != nullptr && parentEntry->isFolder) {
+                contextFolderNodeId = parentNodeId;
+            }
+        }
+    }
+
+    seriona::control::PlaybackContextDescriptor context;
+    context.scope = contextFolderNodeId.isEmpty()
+        ? seriona::control::PlaybackContextScope::Root
+        : seriona::control::PlaybackContextScope::Folder;
+    context.rootPath = toBackendPath(m_savedRootPath);
+    context.folderNodeId = toStdString(contextFolderNodeId);
+    context.anchorTrack = identity;
+    context.sortRules = std::move(*sortRules);
+
     seriona::control::MediaControlCommand command;
-    command.kind = seriona::control::MediaControlCommandKind::SelectTrack;
-    command.track = trackIdentityForEntry(*entry);
+    command.kind = seriona::control::MediaControlCommandKind::StartPlaybackFromContext;
+    command.track = identity;
+    command.playbackContext = std::move(context);
     submitCommand(command);
 #endif
 }
 
 #if SERIONA_HAS_BACKEND
-void LibraryController::submitCommand(const seriona::control::MediaControlCommand &command)
+seriona::control::MediaControllerCommandResult LibraryController::submitCommand(const seriona::control::MediaControlCommand &command)
 {
     if (!m_commandExecutor) {
-        return;
+        seriona::control::MediaControllerCommandResult result;
+        result.accepted = false;
+        result.code = seriona::control::MediaControllerErrorCode::ControllerStopped;
+        result.message = "Frontend command executor is unavailable";
+        return result;
     }
 
-    static_cast<void>(m_commandExecutor(command));
+    return m_commandExecutor(command);
 }
 #endif
 
@@ -1100,6 +1451,11 @@ void LibraryController::clearSearch()
     }
 
     m_searchQuery.clear();
+    m_hasSearchSortRules = false;
+    m_searchSortRules.clear();
+    if (!m_currentFolderNodeId.isEmpty()) {
+        restoreSortRulesForCurrentFolder();
+    }
     applyBrowsingState();
     emit searchQueryChanged();
 }
@@ -1141,11 +1497,192 @@ int LibraryController::rowForNodeId(const QString &nodeId) const
     return m_model.rowForNodeId(nodeId);
 }
 
+void LibraryController::applySortRules(const QVariantList &rules)
+{
+    const std::optional<QVector<LibraryModel::SortRule>> parsedRules = sortRulesFromVariants(rules);
+    if (!parsedRules.has_value()) {
+        return;
+    }
+
+    if (!m_searchQuery.trimmed().isEmpty()) {
+        m_searchSortRules = *parsedRules;
+        m_hasSearchSortRules = true;
+        applyBrowsingState();
+        emit currentSortRulesChanged();
+        return;
+    }
+
+    m_sortRules = *parsedRules;
+    emit currentSortRulesChanged();
+
+    if (m_currentFolderNodeId.isEmpty()) {
+        setLastError(tr("请先进入文件夹后再保存排序规则"));
+        applyBrowsingState();
+        return;
+    }
+    if (m_savedRootPath.isEmpty()) {
+        setLastError(tr("尚未选择曲库文件夹，无法保存排序规则"));
+        applyBrowsingState();
+        return;
+    }
+
+    if (persistCurrentFolderSortRules(m_sortRules)) {
+        rememberFolderSortRules(m_savedRootPath, m_currentFolderNodeId, m_sortRules);
+    }
+    applyBrowsingState();
+}
+
 void LibraryController::applyBrowsingState()
 {
-    m_model.applyBrowsingState(m_focusedNodeId, m_playingTrackId, m_searchQuery, m_currentFolderNodeId);
+    m_model.applyBrowsingState(m_focusedNodeId, m_playingTrackId, m_searchQuery, m_currentFolderNodeId, sortRulesForCurrentProjection());
     updateVisibleNodeCount();
 }
+
+QVector<LibraryModel::SortRule> LibraryController::sortRulesForCurrentProjection() const
+{
+    if (!m_searchQuery.trimmed().isEmpty()) {
+        return m_hasSearchSortRules ? m_searchSortRules : m_sortRules;
+    }
+    return m_sortRules;
+}
+
+QString LibraryController::folderSortKey(const QString &rootPath, const QString &folderNodeId) const
+{
+    if (rootPath.isEmpty() || folderNodeId.isEmpty()) {
+        return QString();
+    }
+    return rootPath + QLatin1Char('\n') + folderNodeId;
+}
+
+QString LibraryController::currentFolderSortKey() const
+{
+    return folderSortKey(m_savedRootPath, m_currentFolderNodeId);
+}
+
+void LibraryController::restoreSortRulesForCurrentFolder()
+{
+    const QString key = currentFolderSortKey();
+    m_activeFolderSortKey = key;
+    if (key.isEmpty()) {
+        if (!m_currentFolderNodeId.isEmpty() && m_savedRootPath.isEmpty()) {
+            return;
+        }
+        m_sortRules.clear();
+        emit currentSortRulesChanged();
+        return;
+    }
+
+    const auto rulesIt = m_savedFolderSortRules.constFind(key);
+    m_sortRules = rulesIt == m_savedFolderSortRules.cend() ? QVector<LibraryModel::SortRule>{} : rulesIt.value();
+    emit currentSortRulesChanged();
+}
+
+void LibraryController::rememberFolderSortRules(const QString &rootPath, const QString &folderNodeId, const QVector<LibraryModel::SortRule> &rules)
+{
+    const QString key = folderSortKey(rootPath, folderNodeId);
+    if (key.isEmpty()) {
+        return;
+    }
+
+    m_savedFolderSortRules.insert(key, rules);
+    if (rootPath == m_savedRootPath && folderNodeId == m_currentFolderNodeId) {
+        m_activeFolderSortKey = key;
+    }
+}
+
+bool LibraryController::persistCurrentFolderSortRules(const QVector<LibraryModel::SortRule> &rules)
+{
+#if SERIONA_HAS_BACKEND
+    if (m_folderSortExecutor) {
+        const seriona::control::MediaControllerCommandResult result = m_folderSortExecutor(
+            m_savedRootPath,
+            m_currentFolderNodeId,
+            sortRuleVariantsFromModelRules(rules));
+        if (!result.accepted) {
+            setLastError(result.message.empty() ? tr("后端拒绝保存排序规则") : toQString(result.message));
+            return false;
+        }
+
+        setLastError(QString());
+        return true;
+    }
+
+    const std::optional<std::vector<seriona::control::FolderSortRule>> backendRules = backendSortRulesFromModelRules(rules);
+    if (!backendRules.has_value()) {
+        setLastError(tr("排序规则格式无效"));
+        return false;
+    }
+
+    seriona::control::FolderSortSetting setting;
+    setting.rootPath = toBackendPath(m_savedRootPath);
+    setting.folderNodeId = toStdString(m_currentFolderNodeId);
+    setting.rules = *backendRules;
+
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::ApplyFolderSortRules;
+    command.folderSortSetting = std::move(setting);
+
+    const seriona::control::MediaControllerCommandResult result = submitCommand(command);
+    if (!result.accepted) {
+        setLastError(result.message.empty() ? tr("后端拒绝保存排序规则") : toQString(result.message));
+        return false;
+    }
+
+    setLastError(QString());
+    return true;
+#else
+    static_cast<void>(rules);
+    setLastError(tr("后端排序设置服务不可用"));
+    return false;
+#endif
+}
+
+#if SERIONA_HAS_BACKEND
+QVariantList LibraryController::sortRuleVariantsFromModelRules(const QVector<LibraryModel::SortRule> &rules) const
+{
+    QVariantList variants;
+    variants.reserve(rules.size());
+    for (const LibraryModel::SortRule &rule : rules) {
+        QVariantMap ruleMap;
+        ruleMap.insert(QStringLiteral("field"), rule.field);
+        ruleMap.insert(QStringLiteral("order"), rule.order);
+        variants.append(ruleMap);
+    }
+    return variants;
+}
+
+std::optional<std::vector<seriona::control::FolderSortRule>> LibraryController::backendSortRulesFromModelRules(const QVector<LibraryModel::SortRule> &rules) const
+{
+    std::vector<seriona::control::FolderSortRule> backendRules;
+    backendRules.reserve(static_cast<std::size_t>(rules.size()));
+    for (const LibraryModel::SortRule &rule : rules) {
+        const std::optional<seriona::control::FolderSortField> field = backendSortField(rule.field);
+        if (!field.has_value()) {
+            return std::nullopt;
+        }
+        seriona::control::FolderSortRule backendRule;
+        backendRule.field = *field;
+        backendRule.direction = backendSortDirection(rule.order);
+        backendRule.missingValuePolicy = seriona::control::FolderSortMissingValuePolicy::Last;
+        backendRules.push_back(backendRule);
+    }
+    return backendRules;
+}
+
+std::optional<QVector<LibraryModel::SortRule>> LibraryController::modelSortRulesFromBackendRules(const std::vector<seriona::control::FolderSortRule> &rules) const
+{
+    QVector<LibraryModel::SortRule> modelRules;
+    modelRules.reserve(static_cast<qsizetype>(rules.size()));
+    for (const seriona::control::FolderSortRule &rule : rules) {
+        const QString field = modelSortField(rule.field);
+        if (field.isEmpty()) {
+            return std::nullopt;
+        }
+        modelRules.append(LibraryModel::SortRule{field, modelSortOrder(rule.direction)});
+    }
+    return modelRules;
+}
+#endif
 
 bool LibraryController::showNodeInBrowserProjection(const QString &nodeId)
 {
@@ -1180,7 +1717,10 @@ bool LibraryController::showNodeInBrowserProjection(const QString &nodeId)
     m_currentFolderName = folderName;
     if (searchChanged) {
         m_searchQuery.clear();
+        m_hasSearchSortRules = false;
+        m_searchSortRules.clear();
     }
+    restoreSortRulesForCurrentFolder();
 
     applyBrowsingState();
 
@@ -1213,27 +1753,52 @@ void LibraryController::reconcileBrowsingState(const QVector<QString> &focusedFa
     const QString previousFocusedNodeId = m_focusedNodeId;
     const QString previousSelectedNodeId = m_selectedBrowserNodeId;
     const bool previousCanGoBack = canGoBack();
+    bool focusedNeedsVisibleFallback = false;
+    bool selectedNeedsVisibleFallback = false;
+    bool folderWasCleared = false;
 
     if (!m_focusedNodeId.isEmpty() && !m_model.containsNodeId(m_focusedNodeId)) {
         m_focusedNodeId = firstExistingNode(focusedFallbackChain);
+        focusedNeedsVisibleFallback = true;
     }
     if (m_focusedNodeId.isEmpty()) {
         m_focusedNodeId = m_model.firstNodeId();
+        focusedNeedsVisibleFallback = true;
     }
 
     if (!m_selectedBrowserNodeId.isEmpty() && !m_model.containsNodeId(m_selectedBrowserNodeId)) {
         m_selectedBrowserNodeId = firstExistingNode(selectedFallbackChain);
+        selectedNeedsVisibleFallback = true;
     }
     if (!m_currentFolderNodeId.isEmpty() && !m_model.containsNodeId(m_currentFolderNodeId)) {
         m_currentFolderNodeId.clear();
         m_currentFolderName = QStringLiteral("My Music");
+        m_sortRules.clear();
+        m_activeFolderSortKey.clear();
+        folderWasCleared = true;
         emit currentFolderNameChanged();
+    }
+    if (!folderWasCleared && !m_currentFolderNodeId.isEmpty()) {
+        restoreSortRulesForCurrentFolder();
     }
     if (m_selectedBrowserNodeId.isEmpty()) {
         m_selectedBrowserNodeId = m_focusedNodeId;
+        selectedNeedsVisibleFallback = focusedNeedsVisibleFallback;
     }
 
     applyBrowsingState();
+
+	const QString firstVisibleNodeId = m_model.firstVisibleNodeId();
+	const QString rootNodeId = m_model.firstNodeId();
+	if (!firstVisibleNodeId.isEmpty()) {
+		if (focusedNeedsVisibleFallback && (folderWasCleared || m_focusedNodeId != rootNodeId) && m_model.rowForNodeId(m_focusedNodeId) < 0) {
+			m_focusedNodeId = firstVisibleNodeId;
+			m_model.setFocusedNodeId(m_focusedNodeId);
+		}
+		if (selectedNeedsVisibleFallback && (folderWasCleared || m_selectedBrowserNodeId != rootNodeId) && m_model.rowForNodeId(m_selectedBrowserNodeId) < 0) {
+			m_selectedBrowserNodeId = firstVisibleNodeId;
+		}
+	}
 
     if (previousFocusedNodeId != m_focusedNodeId) {
         emit focusedNodeIdChanged();
@@ -1254,6 +1819,36 @@ QString LibraryController::firstExistingNode(const QVector<QString> &nodeIds) co
         }
     }
     return m_model.firstNodeId();
+}
+
+std::optional<LibraryModel::SortRule> LibraryController::sortRuleFromVariant(const QVariant &ruleVar) const
+{
+    if (!ruleVar.canConvert<QVariantMap>()) {
+        return std::nullopt;
+    }
+
+    const QVariantMap ruleMap = ruleVar.toMap();
+    const std::optional<QString> field = canonicalSortField(ruleMap.value(QStringLiteral("field")).toString());
+    const std::optional<QString> order = canonicalSortOrder(ruleMap.value(QStringLiteral("order")).toString());
+    if (!field.has_value() || !order.has_value()) {
+        return std::nullopt;
+    }
+
+    return LibraryModel::SortRule{*field, *order};
+}
+
+std::optional<QVector<LibraryModel::SortRule>> LibraryController::sortRulesFromVariants(const QVariantList &rules) const
+{
+    QVector<LibraryModel::SortRule> parsedRules;
+    parsedRules.reserve(rules.size());
+    for (const QVariant &ruleVar : rules) {
+        const std::optional<LibraryModel::SortRule> parsedRule = sortRuleFromVariant(ruleVar);
+        if (!parsedRule.has_value()) {
+            return std::nullopt;
+        }
+        parsedRules.append(*parsedRule);
+    }
+    return parsedRules;
 }
 
 }

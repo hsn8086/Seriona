@@ -113,6 +113,7 @@ class UiOnlyHandlerPolicyTest : public QObject
 
 private slots:
     void uiOnlyHandlersDoNotUseBackendCommands();
+    void qmlStartupDoesNotCallQtApplicationPropertyFunction();
     void qmlLayoutSourceContractsStayStable();
 };
 
@@ -139,25 +140,39 @@ void UiOnlyHandlerPolicyTest::uiOnlyHandlersDoNotUseBackendCommands()
     expectAbsent(windowControlsQml, QStringLiteral("libraryController"));
     expectAbsent(windowControlsQml, QStringLiteral("notifications"));
 
-    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("Crossfade"));
-    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("Gapless Playback"));
-    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("ReplayGain"));
-    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("Equalizer"));
-    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("About Seriona"));
-    expectContains(mainContentQml, QStringLiteral("BubbleMenuItem { text: qsTr(\"Exit\"); onTriggered: { mainMenu.close(); root.exitRequested(); } }"));
-    expectAbsent(mainContentQml, QStringLiteral("showUnsupportedFeedback(qsTr(\"Exit\"))"));
+    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("淡入淡出"));
+    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("无缝播放"));
+    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("回放增益"));
+    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("均衡器"));
+    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("关于 Seriona"));
+    expectContains(mainContentQml, QStringLiteral("BubbleMenuItem { text: qsTr(\"退出\"); onTriggered: { mainMenu.close(); root.exitRequested(); } }"));
+    expectAbsent(mainContentQml, QStringLiteral("showUnsupportedFeedback(qsTr(\"退出\"))"));
     expectAbsent(mainContentQml, QStringLiteral("submitCommand"));
 
     expectContains(sidebarQml, QStringLiteral("function showUnsupportedFeedback(actionName)"));
     expectContains(sidebarQml, QStringLiteral("root.appFacade.notifications.showUnsupportedAction(actionName);"));
-    expectContains(sidebarQml, QStringLiteral("onTriggered: root.showUnsupportedFeedback(qsTr(\"Sort by Name\"))"));
-    expectContains(sidebarQml, QStringLiteral("onTriggered: root.showUnsupportedFeedback(qsTr(\"Sort by Date\"))"));
-    expectUnsupportedOnlySortAction(sidebarQml, QStringLiteral("Sort by Name"), QStringLiteral("Sort by Date"));
-    expectUnsupportedOnlySortAction(sidebarQml, QStringLiteral("Sort by Date"), QStringLiteral("Refresh"));
+    expectContains(sidebarQml, QStringLiteral("function sortRulesForDialog()"));
+    expectContains(sidebarQml, QStringLiteral("return currentRules.length > 0 ? currentRules : [{field: \"filename\", order: \"asc\"}];"));
+    expectContains(sidebarQml, QStringLiteral("sortDialog.sortRules = root.sortRulesForDialog();"));
+    expectContains(sidebarQml, QStringLiteral("libraryController.applySortRules(sortRules);"));
+    expectContains(sidebarQml, QStringLiteral("libraryController.refresh();"));
+    expectContains(sidebarQml, QStringLiteral("onAccepted: root.appFacade.scanLibrary(folder)"));
     expectAbsent(sidebarQml, QStringLiteral("sortBy"));
     expectAbsent(sidebarQml, QStringLiteral("setSort"));
     expectAbsent(sidebarQml, QStringLiteral("sortOrder"));
     expectAbsent(sidebarQml, QStringLiteral("submitCommand"));
+
+    const QString startupViewQml = sourceFile(QStringLiteral("qml/views/StartupView.qml"));
+    expectContains(startupViewQml, QStringLiteral("onClicked: root.appFacade.restorePlaylistFromStartup()"));
+    expectContains(startupViewQml, QStringLiteral("if (root.appFacade.scanLibrary(folder))"));
+}
+
+void UiOnlyHandlerPolicyTest::qmlStartupDoesNotCallQtApplicationPropertyFunction()
+{
+    const QString mainQml = sourceFile(QStringLiteral("qml/Main.qml"));
+
+    expectAbsent(mainQml, QStringLiteral("Qt.application.property("));
+    expectContains(mainQml, QStringLiteral("property string smokeScenario"));
 }
 
 void UiOnlyHandlerPolicyTest::qmlLayoutSourceContractsStayStable()
@@ -166,6 +181,8 @@ void UiOnlyHandlerPolicyTest::qmlLayoutSourceContractsStayStable()
     const QString mainQml = sourceFile(QStringLiteral("qml/Main.qml"));
     const QString mainContentQml = sourceFile(QStringLiteral("qml/views/MainContent.qml"));
     const QString sidebarQml = sourceFile(QStringLiteral("qml/components/Sidebar.qml"));
+    const QString sortDialogQml = sourceFile(QStringLiteral("qml/components/SortDialog.qml"));
+    const QString sortRuleRowQml = sourceFile(QStringLiteral("qml/components/SortRuleRow.qml"));
     const QString startupViewQml = sourceFile(QStringLiteral("qml/views/StartupView.qml"));
 
     expectContains(themeQml, QStringLiteral("readonly property int sidebarWidth: 350"));
@@ -257,6 +274,35 @@ void UiOnlyHandlerPolicyTest::qmlLayoutSourceContractsStayStable()
         "ItemDelegate {",
         "id: sidebarFolderDialog",
         "id: fab"
+    });
+
+    expectContainsAll(sortRuleRowQml, {
+        "id: fieldCombo",
+        "readonly property real fullListHeight: contentItem.implicitHeight + topPadding + bottomPadding",
+        "readonly property real comboTopInWindow: fieldCombo.mapToItem(null, 0, 0).y",
+        "readonly property real preferredY: fieldCombo.height",
+        "readonly property real windowTopLimit: margins",
+        "readonly property real windowBottomLimit: fieldCombo.Window.window ? fieldCombo.Window.window.height - margins : comboTopInWindow + preferredY + fullListHeight",
+        "readonly property real minY: windowTopLimit - comboTopInWindow",
+        "readonly property real maxY: windowBottomLimit - comboTopInWindow - fullListHeight",
+        "height: fullListHeight",
+        "margins: 8",
+        "padding: 4",
+        "y: Math.max(minY, Math.min(preferredY, maxY))"
+    });
+
+    expectContainsAll(sortDialogQml, {
+        "readonly property int maxSortRules: 5",
+        "readonly property int ruleRowHeight: 44",
+        "readonly property int ruleSpacing: 12",
+        "readonly property int dialogChromeHeight: 148",
+        "readonly property int rulesAreaHeight: maxSortRules * ruleRowHeight + (maxSortRules - 1) * ruleSpacing",
+        "readonly property int addRuleButtonY: (maxSortRules - 1) * (ruleRowHeight + ruleSpacing)",
+        "height: rulesAreaHeight + dialogChromeHeight",
+        "height: root.rulesAreaHeight",
+        "y: index * (root.ruleRowHeight + root.ruleSpacing)",
+        "y: root.addRuleButtonY",
+        "visible: root.sortRules.length < root.maxSortRules"
     });
 
     expectContainsAll(startupViewQml, {

@@ -4,6 +4,7 @@
 #include <QQmlApplicationEngine>
 #include <QStringList>
 #include <QTimer>
+#include <QVariantMap>
 
 #if SERIONA_HAS_BACKEND
 #include "seriona/app/application_logging.h"
@@ -130,7 +131,6 @@ int main(int argc, char *argv[])
             return 2;
         }
 
-        app.setProperty("seriona.smokeScenario", smokeOptions.scenario);
         app.setProperty("seriona.backendBridgeAutostartEnabled", false);
 
         if (!writeSmokeLog(smokeOptions, &smokeError)) {
@@ -142,6 +142,9 @@ int main(int argc, char *argv[])
     }
 
     QQmlApplicationEngine engine;
+    QVariantMap initialProperties;
+    initialProperties.insert(QStringLiteral("smokeScenario"), smokeOptions.enabled ? smokeOptions.scenario : QString{});
+    engine.setInitialProperties(initialProperties);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, []()
                      { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
     engine.loadFromModule("Seriona", "Main");

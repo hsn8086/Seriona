@@ -179,6 +179,8 @@ set(SERIONA_QML_MODULE_FILES
     qml/components/WindowControls.qml
     qml/components/WaveformProgressBar.qml
     qml/components/MarqueeText.qml
+    qml/components/SortDialog.qml
+    qml/components/SortRuleRow.qml
     qml/views/MainContent.qml
     qml/views/StartupView.qml
 )
@@ -325,6 +327,41 @@ if(BUILD_TESTING)
         add_test(NAME seriona_frontend_library_tree_model COMMAND seriona_frontend_library_tree_model_tests)
         add_test(NAME seriona_frontend_library_tree_invalid_child COMMAND seriona_frontend_library_tree_model_tests invalidChildNodeIdsAreSkipped)
 
+        add_executable(seriona_frontend_library_sort_tests
+            tests/frontend/adapter/tst_library_sort.cpp
+            src/app/library_model.cpp
+            src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
+        )
+        target_include_directories(seriona_frontend_library_sort_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_library_sort_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_library_sort_tests
+            PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
+        )
+        add_test(NAME seriona_frontend_library_sort_no_rules COMMAND seriona_frontend_library_sort_tests noRulesPreserveScannerOrderForRootFolderAndSearch)
+        add_test(NAME seriona_frontend_library_sort_empty_rules COMMAND seriona_frontend_library_sort_tests emptyRulesRestoreScannerOrderAfterSorting)
+        add_test(NAME seriona_frontend_library_sort_title COMMAND seriona_frontend_library_sort_tests titleAscendingAndDescendingSortCurrentFolderProjection)
+        add_test(NAME seriona_frontend_library_sort_fields COMMAND seriona_frontend_library_sort_tests supportedSortDialogFieldsSortCurrentProjection)
+        add_test(NAME seriona_frontend_library_sort_reapply COMMAND seriona_frontend_library_sort_tests currentRulesReapplyAcrossEnterFolderSearchSubmitAndClear)
+        add_test(NAME seriona_frontend_library_sort_snapshot COMMAND seriona_frontend_library_sort_tests snapshotUpdateReappliesRulesWithoutMutatingScannerOrder)
+        add_test(NAME seriona_frontend_library_sort_snapshot_reconcile_markers COMMAND seriona_frontend_library_sort_tests snapshotReconcileKeepsRootSearchSortAndPlaybackMarkers)
+        add_test(NAME seriona_frontend_library_sort_snapshot_reconcile_fallback COMMAND seriona_frontend_library_sort_tests snapshotReconcileFallsBackToVisibleRowsWhenFolderDisappears)
+        add_test(NAME seriona_frontend_library_sort_invalid COMMAND seriona_frontend_library_sort_tests invalidSortPayloadLeavesProjectionUnchanged)
+        add_test(NAME seriona_frontend_library_sort_persist_command COMMAND seriona_frontend_library_sort_tests folderSortSendsApplyCommandWithRootAndFolderKey)
+        add_test(NAME seriona_frontend_library_sort_root_isolation COMMAND seriona_frontend_library_sort_tests sameFolderNodeIdUnderDifferentRootsDoesNotReuseSavedRules)
+        add_test(NAME seriona_frontend_library_sort_restore COMMAND seriona_frontend_library_sort_tests reenterFolderAndBackendStateReloadRestoreSavedRules)
+        add_test(NAME seriona_frontend_library_sort_backend_notification COMMAND seriona_frontend_library_sort_tests backendFolderSortNotificationUpdatesActiveCurrentRules)
+        add_test(NAME seriona_frontend_qml_sort_dialog_current_rules COMMAND seriona_frontend_library_sort_tests currentSortRulesExposeFolderRulesForQmlAndFallbacks)
+        add_test(NAME seriona_frontend_library_sort_search_not_persisted COMMAND seriona_frontend_library_sort_tests searchProjectionSortDoesNotPersistOrOverwriteSavedFolderRules)
+        add_test(NAME seriona_frontend_library_sort_invalid_context COMMAND seriona_frontend_library_sort_tests missingContextAndMalformedSortPayloadDoNotPersist)
+
         add_executable(seriona_frontend_library_dual_cursor_tests
             tests/frontend/adapter/tst_library_dual_cursor.cpp
             src/app/library_model.cpp
@@ -382,6 +419,7 @@ if(BUILD_TESTING)
             PRIVATE Qt6::Test
         )
         add_test(NAME seriona_frontend_ui_only_no_backend_command COMMAND seriona_frontend_ui_only_handler_policy_tests uiOnlyHandlersDoNotUseBackendCommands)
+        add_test(NAME seriona_frontend_qml_startup_property_contract COMMAND seriona_frontend_ui_only_handler_policy_tests qmlStartupDoesNotCallQtApplicationPropertyFunction)
         add_test(NAME seriona_frontend_qml_layout COMMAND seriona_frontend_ui_only_handler_policy_tests qmlLayoutSourceContractsStayStable)
 
         add_executable(seriona_frontend_library_select_track_tests
@@ -402,8 +440,11 @@ if(BUILD_TESTING)
         target_link_libraries(seriona_frontend_library_select_track_tests
             PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
         )
-        add_test(NAME seriona_frontend_library_select_track COMMAND seriona_frontend_library_select_track_tests explicitTrackNodeActivationSubmitsSelectTrack)
-        add_test(NAME seriona_frontend_library_select_track_by_index COMMAND seriona_frontend_library_select_track_tests indexedTrackActivationSubmitsSelectTrack)
+add_test(NAME seriona_frontend_library_context_playback_folder COMMAND seriona_frontend_library_select_track_tests explicitTrackNodeActivationSubmitsStartPlaybackFromFolderContext)
+add_test(NAME seriona_frontend_library_context_playback_root COMMAND seriona_frontend_library_select_track_tests indexedTrackActivationSubmitsStartPlaybackFromRootContext)
+add_test(NAME seriona_frontend_library_context_playback_search_folder COMMAND seriona_frontend_library_select_track_tests searchTrackActivationUsesContainingFolderContext)
+add_test(NAME seriona_frontend_library_context_playback_search_root COMMAND seriona_frontend_library_select_track_tests searchRootTrackActivationFallsBackToRootContext)
+add_test(NAME seriona_frontend_library_context_playback_hidden_no_command COMMAND seriona_frontend_library_select_track_tests hiddenTrackActivationDoesNotUseStaleFolderContext)
         add_test(NAME seriona_frontend_library_select_locate_projection COMMAND seriona_frontend_library_select_track_tests locateCurrentSongMovesToContainingProjection)
         add_test(NAME seriona_frontend_library_select_locate_missing COMMAND seriona_frontend_library_select_track_tests locateMissingCurrentSongPreservesBrowserState)
         add_test(NAME seriona_frontend_library_select_browse_no_command COMMAND seriona_frontend_library_select_track_tests browsingAndLocateCurrentSongDoNotSubmitCommands)
@@ -734,6 +775,10 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_test(NAME seriona_frontend_backend_bridge_shutdown_stop_sent COMMAND seriona_frontend_backend_bridge_tests shutdownStopSent)
         add_test(NAME seriona_frontend_shutdown_sequence COMMAND seriona_frontend_backend_bridge_tests shutdownSequence)
         add_test(NAME seriona_frontend_shutdown_start_failed COMMAND seriona_frontend_backend_bridge_tests shutdownStartFailed)
+        add_test(NAME seriona_frontend_backend_bridge_sort_command_conversion COMMAND seriona_frontend_backend_bridge_tests applyFolderSortRulesBuildsTypedBackendCommand)
+        add_test(NAME seriona_frontend_backend_bridge_sort_empty_rules COMMAND seriona_frontend_backend_bridge_tests applyFolderSortRulesAllowsEmptyRules)
+        add_test(NAME seriona_frontend_backend_bridge_sort_invalid_payload COMMAND seriona_frontend_backend_bridge_tests applyFolderSortRulesRejectsInvalidPayloadWithoutDispatch)
+        add_test(NAME seriona_frontend_backend_bridge_sort_missing_context COMMAND seriona_frontend_backend_bridge_tests applyFolderSortRulesRejectsMissingContextWithoutDispatch)
     endif()
 endif()
 

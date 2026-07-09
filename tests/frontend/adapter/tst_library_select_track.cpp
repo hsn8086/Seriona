@@ -2,9 +2,15 @@
 
 #include "seriona/control/control_contracts.h"
 
+#include <QFileInfo>
+#include <QTemporaryDir>
+#include <QUrl>
+#include <QVariantList>
+#include <QVariantMap>
 #include <QtTest/QTest>
 
 #include <chrono>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <utility>
@@ -13,10 +19,15 @@
 namespace {
 using Seriona::App::LibraryController;
 using Seriona::App::LibraryModel;
+using seriona::control::FolderSortDirection;
+using seriona::control::FolderSortField;
+using seriona::control::FolderSortMissingValuePolicy;
+using seriona::control::FolderSortRule;
 using seriona::control::MediaControlCommand;
 using seriona::control::MediaControlCommandKind;
 using seriona::control::MediaControllerCommandResult;
 using seriona::control::MediaControllerErrorCode;
+using seriona::control::PlaybackContextScope;
 using seriona::scanner::PlaylistNode;
 using seriona::scanner::PlaylistNodeKind;
 using seriona::scanner::PlaylistTreeSnapshot;
@@ -42,6 +53,16 @@ struct CommandRecorder {
     void clear()
     {
         commands.clear();
+    }
+};
+
+struct ScanRecorder {
+    std::vector<QString> roots;
+
+    MediaControllerCommandResult record(const QString &rootPath)
+    {
+        roots.push_back(rootPath);
+        return acceptedResult();
     }
 };
 
@@ -100,14 +121,76 @@ PlaylistTreeSnapshot makeSnapshot()
     return snapshot;
 }
 
-void expectSelectTrack(const CommandRecorder &recorder, const std::string &trackId)
+QString scanTemporaryRoot(LibraryController &controller, QTemporaryDir &musicDir)
+{
+    Q_ASSERT(musicDir.isValid());
+    ScanRecorder recorder;
+    controller.setScanExecutor([&recorder](const QString &rootPath) {
+        return recorder.record(rootPath);
+    });
+
+    const QString canonicalRoot = QFileInfo(musicDir.path()).absoluteFilePath();
+    if (!controller.scanLibrary(QUrl::fromLocalFile(musicDir.path()))) {
+        qFatal("scanTemporaryRoot expected scanLibrary to accept a temporary root");
+    }
+    if (recorder.roots != std::vector<QString>{canonicalRoot}) {
+        qFatal("scanTemporaryRoot expected scan executor to receive the canonical root");
+    }
+    return canonicalRoot;
+}
+
+void installCommandRecorder(LibraryController &controller, CommandRecorder &recorder)
+{
+    controller.setCommandExecutor([&recorder](const MediaControlCommand &command) {
+        return recorder.record(command);
+    });
+}
+
+QVariantList sortRules(std::initializer_list<std::pair<QString, QString>> rules)
+{
+    QVariantList result;
+    for (const auto &[field, order] : rules) {
+        QVariantMap rule;
+        rule.insert(QStringLiteral("field"), field);
+        rule.insert(QStringLiteral("order"), order);
+        result.append(rule);
+    }
+    return result;
+}
+
+void expectStartPlaybackFromContext(const CommandRecorder &recorder,
+                                    const std::string &trackId,
+                                    const QString &rootPath,
+                                    PlaybackContextScope scope,
+                                    const QString &folderNodeId,
+                                    std::optional<FolderSortField> field = std::nullopt,
+                                    std::optional<FolderSortDirection> direction = std::nullopt)
 {
     QCOMPARE(recorder.commands.size(), std::size_t{1});
     const MediaControlCommand &command = recorder.commands.front();
-    QCOMPARE(static_cast<int>(command.kind), static_cast<int>(MediaControlCommandKind::SelectTrack));
+    QCOMPARE(static_cast<int>(command.kind), static_cast<int>(MediaControlCommandKind::StartPlaybackFromContext));
     QVERIFY(command.track.has_value());
     QCOMPARE(command.track->trackId, trackId);
     QVERIFY(command.track->filePath.empty());
+    QVERIFY(command.playbackContext.has_value());
+    const auto &context = *command.playbackContext;
+    QCOMPARE(static_cast<int>(context.scope), static_cast<int>(scope));
+    QCOMPARE(QString::fromStdString(context.rootPath.generic_string()), rootPath);
+    QCOMPARE(QString::fromStdString(context.folderNodeId), folderNodeId);
+    QVERIFY(context.anchorTrack.has_value());
+    QCOMPARE(context.anchorTrack->trackId, trackId);
+    QVERIFY(context.anchorTrack->filePath.empty());
+    if (field.has_value() || direction.has_value()) {
+        QVERIFY(field.has_value());
+        QVERIFY(direction.has_value());
+        QCOMPARE(context.sortRules.size(), std::size_t{1});
+        const FolderSortRule &rule = context.sortRules.front();
+        QCOMPARE(static_cast<int>(rule.field), static_cast<int>(*field));
+        QCOMPARE(static_cast<int>(rule.direction), static_cast<int>(*direction));
+        QCOMPARE(static_cast<int>(rule.missingValuePolicy), static_cast<int>(FolderSortMissingValuePolicy::Last));
+    } else {
+        QCOMPARE(context.sortRules.size(), std::size_t{0});
+    }
 }
 
 QString nodeIdAt(const LibraryModel *model, int row)
@@ -130,41 +213,125 @@ class LibrarySelectTrackTest : public QObject
     Q_OBJECT
 
 private slots:
-    void explicitTrackNodeActivationSubmitsSelectTrack();
-    void indexedTrackActivationSubmitsSelectTrack();
+    void explicitTrackNodeActivationSubmitsStartPlaybackFromFolderContext();
+    void indexedTrackActivationSubmitsStartPlaybackFromRootContext();
+    void searchTrackActivationUsesContainingFolderContext();
+    void searchRootTrackActivationFallsBackToRootContext();
+    void hiddenTrackActivationDoesNotUseStaleFolderContext();
     void browsingAndLocateCurrentSongDoNotSubmitCommands();
     void locateCurrentSongMovesToContainingProjection();
     void locateMissingCurrentSongPreservesBrowserState();
 };
 
-void LibrarySelectTrackTest::explicitTrackNodeActivationSubmitsSelectTrack()
+void LibrarySelectTrackTest::explicitTrackNodeActivationSubmitsStartPlaybackFromFolderContext()
 {
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
     LibraryController controller;
+    const QString rootPath = scanTemporaryRoot(controller, musicDir);
     controller.setPlaylistTreeSnapshot(makeSnapshot());
-    CommandRecorder recorder;
-    controller.setCommandExecutor([&recorder](const MediaControlCommand &command) {
-        return recorder.record(command);
+    controller.setFolderSortExecutor([](const QString &, const QString &, const QVariantList &) {
+        return acceptedResult();
     });
 
-    controller.selectBrowserNode(QStringLiteral("album-a"));
+    controller.enterFolder(QStringLiteral("album-a"));
+    controller.applySortRules(sortRules({{QStringLiteral("title"), QStringLiteral("desc")}}));
+
+    CommandRecorder recorder;
+    installCommandRecorder(controller, recorder);
     controller.playItem(QStringLiteral("track-b"));
 
-    expectSelectTrack(recorder, "track-b-id");
-    QCOMPARE(controller.focusedNodeId(), QStringLiteral("album-a"));
+    expectStartPlaybackFromContext(recorder,
+                                   "track-b-id",
+                                   rootPath,
+                                   PlaybackContextScope::Folder,
+                                   QStringLiteral("album-a"),
+                                   FolderSortField::Title,
+                                   FolderSortDirection::Descending);
+    QCOMPARE(controller.currentFolderName(), QStringLiteral("Album A"));
 }
 
-void LibrarySelectTrackTest::indexedTrackActivationSubmitsSelectTrack()
+void LibrarySelectTrackTest::indexedTrackActivationSubmitsStartPlaybackFromRootContext()
 {
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
     LibraryController controller;
+    const QString rootPath = scanTemporaryRoot(controller, musicDir);
     controller.setPlaylistTreeSnapshot(makeSnapshot());
     CommandRecorder recorder;
-    controller.setCommandExecutor([&recorder](const MediaControlCommand &command) {
-        return recorder.record(command);
-    });
+    installCommandRecorder(controller, recorder);
 
     controller.playItem(controller.model()->rowForNodeId(QStringLiteral("track-c")));
 
-    expectSelectTrack(recorder, "track-c-id");
+    expectStartPlaybackFromContext(recorder,
+                                   "track-c-id",
+                                   rootPath,
+                                   PlaybackContextScope::Root,
+                                   QString());
+}
+
+void LibrarySelectTrackTest::searchTrackActivationUsesContainingFolderContext()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+    LibraryController controller;
+    const QString rootPath = scanTemporaryRoot(controller, musicDir);
+    controller.setPlaylistTreeSnapshot(makeSnapshot());
+    controller.setSearchQuery(QStringLiteral("Song B"));
+    controller.applySortRules(sortRules({{QStringLiteral("title"), QStringLiteral("desc")}}));
+
+    CommandRecorder recorder;
+    installCommandRecorder(controller, recorder);
+
+    controller.playItem(QStringLiteral("track-b"));
+
+    expectStartPlaybackFromContext(recorder,
+                                   "track-b-id",
+                                   rootPath,
+                                   PlaybackContextScope::Folder,
+                                   QStringLiteral("album-a"),
+                                   FolderSortField::Title,
+                                   FolderSortDirection::Descending);
+    QCOMPARE(controller.currentFolderName(), QStringLiteral("My Music"));
+    QCOMPARE(controller.searchQuery(), QStringLiteral("Song B"));
+}
+
+void LibrarySelectTrackTest::searchRootTrackActivationFallsBackToRootContext()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+    LibraryController controller;
+    const QString rootPath = scanTemporaryRoot(controller, musicDir);
+    controller.setPlaylistTreeSnapshot(makeSnapshot());
+    controller.setSearchQuery(QStringLiteral("Song C"));
+
+    CommandRecorder recorder;
+    installCommandRecorder(controller, recorder);
+
+    controller.playItem(QStringLiteral("track-c"));
+
+    expectStartPlaybackFromContext(recorder,
+                                   "track-c-id",
+                                   rootPath,
+                                   PlaybackContextScope::Root,
+                                   QString());
+}
+
+void LibrarySelectTrackTest::hiddenTrackActivationDoesNotUseStaleFolderContext()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+    LibraryController controller;
+    scanTemporaryRoot(controller, musicDir);
+    controller.setPlaylistTreeSnapshot(makeSnapshot());
+    controller.enterFolder(QStringLiteral("album-a"));
+    CommandRecorder recorder;
+    installCommandRecorder(controller, recorder);
+
+    controller.playItem(QStringLiteral("track-c"));
+
+    QCOMPARE(recorder.commands.size(), std::size_t{0});
+    QCOMPARE(controller.currentFolderName(), QStringLiteral("Album A"));
 }
 
 void LibrarySelectTrackTest::browsingAndLocateCurrentSongDoNotSubmitCommands()

@@ -38,6 +38,10 @@ public:
         std::filesystem::path artworkPath;
         std::filesystem::path thumbnailPath;
         std::optional<std::chrono::milliseconds> duration;
+        std::optional<std::uint32_t> year;
+        std::optional<std::uint32_t> discNumber;
+        std::optional<std::uint32_t> trackNumber;
+        std::optional<std::filesystem::file_time_type> fileMtime;
         int sampleRate = 0;
         int bitDepth = 0;
         int descendantTrackCount = 0;

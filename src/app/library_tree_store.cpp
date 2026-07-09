@@ -44,6 +44,10 @@ void copySongMetadata(const seriona::scanner::SongMetadata &song, LibraryTreeSto
         node.thumbnailPath = *song.thumbnailPath;
     }
     node.duration = song.duration;
+    node.year = song.year;
+    node.discNumber = song.discNumber;
+    node.trackNumber = song.trackNumber;
+    node.fileMtime = song.fileMtime;
     node.sampleRate = song.sampleRate.has_value() ? static_cast<int>(*song.sampleRate) : 0;
     node.bitDepth = song.bitDepth.has_value() ? static_cast<int>(*song.bitDepth) : 0;
 }
