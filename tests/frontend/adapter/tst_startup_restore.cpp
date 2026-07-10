@@ -42,11 +42,13 @@ MediaControllerCommandResult rejectedResult(const std::string &message)
 
 struct ScanRecorder {
     std::vector<QString> roots;
+    std::vector<seriona::scanner::ScanMode> modes;
     MediaControllerCommandResult result = acceptedResult();
 
-    MediaControllerCommandResult record(const QString &rootPath)
+    MediaControllerCommandResult record(const QString &rootPath, seriona::scanner::ScanMode mode)
     {
         roots.push_back(rootPath);
+        modes.push_back(mode);
         return result;
     }
 };
@@ -107,13 +109,14 @@ void StartupRestoreTest::scanLibraryPersistsRootForStartupRestore()
 
     AppFacade facade;
     ScanRecorder recorder;
-    facade.library()->setScanExecutor([&recorder](const QString &rootPath) {
-        return recorder.record(rootPath);
+    facade.library()->setScanExecutor([&recorder](const QString &rootPath, seriona::scanner::ScanMode mode) {
+        return recorder.record(rootPath, mode);
     });
 
     QVERIFY(facade.scanLibrary(QUrl::fromLocalFile(musicDir.path())));
 
     QCOMPARE(recorder.roots, std::vector<QString>{canonicalRoot});
+    QCOMPARE(recorder.modes, std::vector<seriona::scanner::ScanMode>{seriona::scanner::ScanMode::Full});
     QCOMPARE(facade.library()->savedRootPath(), canonicalRoot);
     QCOMPARE(savedRoot(), canonicalRoot);
     QVERIFY(facade.navigation()->startupScreenVisible());
@@ -128,13 +131,14 @@ void StartupRestoreTest::restoreSavedRootScansAndEntersMainShell()
 
     AppFacade facade;
     ScanRecorder recorder;
-    facade.library()->setScanExecutor([&recorder](const QString &rootPath) {
-        return recorder.record(rootPath);
+    facade.library()->setScanExecutor([&recorder](const QString &rootPath, seriona::scanner::ScanMode mode) {
+        return recorder.record(rootPath, mode);
     });
 
     QVERIFY(facade.restorePlaylistFromStartup());
 
     QCOMPARE(recorder.roots, std::vector<QString>{canonicalRoot});
+    QCOMPARE(recorder.modes, std::vector<seriona::scanner::ScanMode>{seriona::scanner::ScanMode::Incremental});
     QCOMPARE(facade.library()->savedRootPath(), canonicalRoot);
     QCOMPARE(savedRoot(), canonicalRoot);
     QCOMPARE(facade.navigation()->startupScreenVisible(), false);
@@ -148,8 +152,8 @@ void StartupRestoreTest::restoreSavedRootScansAndEntersMainShell()
     AppFacade rejectedFacade;
     ScanRecorder rejectedRecorder;
     rejectedRecorder.result = rejectedResult("startup restore scan rejected");
-    rejectedFacade.library()->setScanExecutor([&rejectedRecorder](const QString &rootPath) {
-        return rejectedRecorder.record(rootPath);
+    rejectedFacade.library()->setScanExecutor([&rejectedRecorder](const QString &rootPath, seriona::scanner::ScanMode mode) {
+        return rejectedRecorder.record(rootPath, mode);
     });
     rejectedFacade.navigation()->showLyricsView();
     rejectedFacade.navigation()->syncSidebarForDockCapability(true);
@@ -157,6 +161,7 @@ void StartupRestoreTest::restoreSavedRootScansAndEntersMainShell()
     QCOMPARE(rejectedFacade.restorePlaylistFromStartup(), false);
 
     QCOMPARE(rejectedRecorder.roots, std::vector<QString>{rejectedRoot});
+    QCOMPARE(rejectedRecorder.modes, std::vector<seriona::scanner::ScanMode>{seriona::scanner::ScanMode::Incremental});
     QCOMPARE(rejectedFacade.navigation()->startupScreenVisible(), true);
     QCOMPARE(rejectedFacade.navigation()->currentView(), QStringLiteral("lyrics"));
     QCOMPARE(rejectedFacade.navigation()->sidebarOpen(), true);
@@ -194,8 +199,8 @@ void StartupRestoreTest::missingSavedRoot()
 
     AppFacade facade;
     ScanRecorder recorder;
-    facade.library()->setScanExecutor([&recorder](const QString &rootPath) {
-        return recorder.record(rootPath);
+    facade.library()->setScanExecutor([&recorder](const QString &rootPath, seriona::scanner::ScanMode mode) {
+        return recorder.record(rootPath, mode);
     });
     facade.navigation()->showLyricsView();
     facade.navigation()->syncSidebarForDockCapability(true);

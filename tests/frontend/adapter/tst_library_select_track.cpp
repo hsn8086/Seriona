@@ -59,7 +59,7 @@ struct CommandRecorder {
 struct ScanRecorder {
     std::vector<QString> roots;
 
-    MediaControllerCommandResult record(const QString &rootPath)
+    MediaControllerCommandResult record(const QString &rootPath, seriona::scanner::ScanMode)
     {
         roots.push_back(rootPath);
         return acceptedResult();
@@ -125,8 +125,8 @@ QString scanTemporaryRoot(LibraryController &controller, QTemporaryDir &musicDir
 {
     Q_ASSERT(musicDir.isValid());
     ScanRecorder recorder;
-    controller.setScanExecutor([&recorder](const QString &rootPath) {
-        return recorder.record(rootPath);
+    controller.setScanExecutor([&recorder](const QString &rootPath, seriona::scanner::ScanMode mode) {
+        return recorder.record(rootPath, mode);
     });
 
     const QString canonicalRoot = QFileInfo(musicDir.path()).absoluteFilePath();

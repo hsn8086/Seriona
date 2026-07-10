@@ -1249,7 +1249,11 @@ bool LibraryController::refresh()
         return false;
     }
 
+#if SERIONA_HAS_BACKEND
+    return requestScanForRoot(m_savedRootPath, seriona::scanner::ScanMode::Full);
+#else
     return requestScanForRoot(m_savedRootPath);
+#endif
 }
 
 void LibraryController::clearSavedRootPath(const QString &message)
@@ -1270,10 +1274,31 @@ bool LibraryController::scanLibrary(const QUrl &rootUrl)
         return false;
     }
 
+#if SERIONA_HAS_BACKEND
+    return requestScanForRoot(rootPath, seriona::scanner::ScanMode::Full);
+#else
     return requestScanForRoot(rootPath);
+#endif
 }
 
+#if SERIONA_HAS_BACKEND
+bool LibraryController::scanLibrary(const QUrl &rootUrl, seriona::scanner::ScanMode mode)
+{
+    const QString rootPath = localDirectoryPath(rootUrl);
+    if (rootPath.isEmpty()) {
+        setScanStatus(QStringLiteral("error"));
+        setScanProgress(0);
+        setLastError(tr("请选择有效的曲库文件夹"));
+        return false;
+    }
+
+    return requestScanForRoot(rootPath, mode);
+}
+
+bool LibraryController::requestScanForRoot(const QString &rootPath, seriona::scanner::ScanMode mode)
+#else
 bool LibraryController::requestScanForRoot(const QString &rootPath)
+#endif
 {
     setScanStatus(QStringLiteral("running"));
     setScanProgress(0);
@@ -1287,7 +1312,7 @@ bool LibraryController::requestScanForRoot(const QString &rootPath)
         return false;
     }
 
-    const seriona::control::MediaControllerCommandResult result = m_scanExecutor(rootPath);
+    const seriona::control::MediaControllerCommandResult result = m_scanExecutor(rootPath, mode);
     if (!result.accepted) {
         setScanStatus(QStringLiteral("error"));
         setLastError(result.message.empty() ? tr("后端拒绝扫描请求") : toQString(result.message));

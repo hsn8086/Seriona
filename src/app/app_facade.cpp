@@ -76,8 +76,8 @@ AppFacade::AppFacade(QObject *parent)
     m_library.setFolderSortExecutor([this](const QString &rootPath, const QString &folderNodeId, const QVariantList &rules) {
         return m_backendBridge->applyFolderSortRules(rootPath, folderNodeId, rules);
     });
-    m_library.setScanExecutor([this](const QString &rootPath) {
-        return m_backendBridge->scanLibrary(rootPath);
+    m_library.setScanExecutor([this](const QString &rootPath, seriona::scanner::ScanMode mode) {
+        return m_backendBridge->scanLibrary(rootPath, mode);
     });
     connect(m_waveformProvider.get(), &WaveformProvider::waveformReady, this, [this](const WaveformResult &result) {
         if (m_shuttingDown) {
@@ -180,7 +180,11 @@ bool AppFacade::scanLibrary(const QUrl &rootUrl)
 bool AppFacade::restorePlaylistFromStartup()
 {
     return m_navigation.restorePlaylistFromStartup(m_library, [this](const QUrl &rootUrl) {
+#if SERIONA_HAS_BACKEND
+        return m_library.scanLibrary(rootUrl, seriona::scanner::ScanMode::Incremental);
+#else
         return scanLibrary(rootUrl);
+#endif
     });
 }
 

@@ -264,7 +264,7 @@ seriona::control::MediaControllerCommandResult BackendBridge::submitCommand(cons
     return result;
 }
 
-seriona::control::MediaControllerCommandResult BackendBridge::scanLibrary(const QString &rootPath)
+seriona::control::MediaControllerCommandResult BackendBridge::scanLibrary(const QString &rootPath, seriona::scanner::ScanMode mode)
 {
     if (m_shuttingDown || !m_controller) {
         seriona::control::MediaControllerCommandResult result = controllerStoppedResult();
@@ -276,7 +276,7 @@ seriona::control::MediaControllerCommandResult BackendBridge::scanLibrary(const 
     seriona::scanner::ScannerRoot root;
     root.path = std::filesystem::path(std::string(utf8Path.constData(), static_cast<std::size_t>(utf8Path.size())));
     root.recursive = true;
-    seriona::control::MediaControllerCommandResult result = m_controller->scanLibrary({std::move(root)}, seriona::scanner::ScanMode::Full);
+    seriona::control::MediaControllerCommandResult result = m_controller->scanLibrary({std::move(root)}, mode);
     enqueueCommandFailureNotification(result);
     return result;
 }

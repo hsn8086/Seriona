@@ -171,7 +171,7 @@ public:
 #if SERIONA_HAS_BACKEND
     using CommandExecutor = std::function<seriona::control::MediaControllerCommandResult(const seriona::control::MediaControlCommand &)>;
     using FolderSortExecutor = std::function<seriona::control::MediaControllerCommandResult(const QString &, const QString &, const QVariantList &)>;
-    using ScanExecutor = std::function<seriona::control::MediaControllerCommandResult(const QString &)>;
+    using ScanExecutor = std::function<seriona::control::MediaControllerCommandResult(const QString &, seriona::scanner::ScanMode)>;
 #endif
 
     explicit LibraryController(QObject *parent = nullptr);
@@ -215,6 +215,9 @@ public:
     Q_INVOKABLE void goBack();
     Q_INVOKABLE bool refresh();
     Q_INVOKABLE bool scanLibrary(const QUrl &rootUrl);
+#if SERIONA_HAS_BACKEND
+    bool scanLibrary(const QUrl &rootUrl, seriona::scanner::ScanMode mode);
+#endif
     Q_INVOKABLE void playItem(int index);
     Q_INVOKABLE void playItem(const QString &nodeId);
     Q_INVOKABLE void locateCurrentSong();
@@ -244,7 +247,11 @@ signals:
     void currentSortRulesChanged();
 
 private:
+#if SERIONA_HAS_BACKEND
+    bool requestScanForRoot(const QString &rootPath, seriona::scanner::ScanMode mode);
+#else
     bool requestScanForRoot(const QString &rootPath);
+#endif
     void setScanStatus(const QString &status);
     void setScanProgress(int progress);
     void setLastError(const QString &error);

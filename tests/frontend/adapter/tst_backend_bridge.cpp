@@ -105,7 +105,11 @@ public:
         m_eventSink = std::move(sink);
     }
     void configure(const seriona::scanner::ScannerConfig &) override { }
-    void scan(const std::vector<seriona::scanner::ScannerRoot> &, seriona::scanner::ScanMode) override { }
+    void scan(const std::vector<seriona::scanner::ScannerRoot> &, seriona::scanner::ScanMode mode) override
+    {
+        m_lastScanMode = mode;
+        ++m_scanCalls;
+    }
     void startWatching(const std::vector<seriona::scanner::ScannerRoot> &) override { }
     void stopWatching() override { }
     void stop() override { }
@@ -120,9 +124,21 @@ public:
         return m_eventSinkClearCalls;
     }
 
+    int scanCalls() const
+    {
+        return m_scanCalls;
+    }
+
+    std::optional<seriona::scanner::ScanMode> lastScanMode() const
+    {
+        return m_lastScanMode;
+    }
+
 private:
     seriona::scanner::ScannerEventSink m_eventSink;
     int m_eventSinkClearCalls = 0;
+    int m_scanCalls = 0;
+    std::optional<seriona::scanner::ScanMode> m_lastScanMode;
 };
 
 class RecordingFolderSortSettingsStore final : public seriona::control::FolderSortSettingsStore
@@ -307,6 +323,8 @@ private slots:
     void shutdownStopSent();
     void shutdownSequence();
     void shutdownStartFailed();
+    void scanLibraryDefaultsToFullMode();
+    void scanLibraryForwardsIncrementalMode();
     void applyFolderSortRulesBuildsTypedBackendCommand();
     void applyFolderSortRulesAllowsEmptyRules();
     void applyFolderSortRulesRejectsInvalidPayloadWithoutDispatch();
@@ -426,6 +444,46 @@ void BackendBridgeTest::shutdownStartFailed()
     bridge.shutdown();
     QCOMPARE(harness.audio->stopCalls(), 0);
     QCOMPARE(harness.metadata->stopCalls, 1);
+}
+
+void BackendBridgeTest::scanLibraryDefaultsToFullMode()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+
+    ControllerHarness harness;
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    waitForInitialPlayerSnapshot(bridge);
+
+    const seriona::control::MediaControllerCommandResult result = bridge.scanLibrary(musicDir.path());
+
+    QVERIFY(result.accepted);
+    QCOMPARE(harness.scanner->scanCalls(), 1);
+    QVERIFY(harness.scanner->lastScanMode().has_value());
+    QCOMPARE(*harness.scanner->lastScanMode(), seriona::scanner::ScanMode::Full);
+
+    bridge.shutdown();
+}
+
+void BackendBridgeTest::scanLibraryForwardsIncrementalMode()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+
+    ControllerHarness harness;
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    waitForInitialPlayerSnapshot(bridge);
+
+    const seriona::control::MediaControllerCommandResult result = bridge.scanLibrary(
+        musicDir.path(),
+        seriona::scanner::ScanMode::Incremental);
+
+    QVERIFY(result.accepted);
+    QCOMPARE(harness.scanner->scanCalls(), 1);
+    QVERIFY(harness.scanner->lastScanMode().has_value());
+    QCOMPARE(*harness.scanner->lastScanMode(), seriona::scanner::ScanMode::Incremental);
+
+    bridge.shutdown();
 }
 
 void BackendBridgeTest::applyFolderSortRulesBuildsTypedBackendCommand()

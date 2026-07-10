@@ -46,17 +46,20 @@ MediaControllerCommandResult rejectedResult(const std::string &message)
 
 struct ScanRecorder {
     std::vector<QString> roots;
+    std::vector<seriona::scanner::ScanMode> modes;
     MediaControllerCommandResult result = acceptedResult();
 
-    MediaControllerCommandResult record(const QString &rootPath)
+    MediaControllerCommandResult record(const QString &rootPath, seriona::scanner::ScanMode mode)
     {
         roots.push_back(rootPath);
+        modes.push_back(mode);
         return result;
     }
 
     void clear()
     {
         roots.clear();
+        modes.clear();
     }
 };
 
@@ -139,7 +142,7 @@ private slots:
 void LibraryScanFlowTest::emptySnapshotExposesEmptyLibraryState()
 {
     LibraryController controller;
-    controller.setScanExecutor([](const QString &) {
+    controller.setScanExecutor([](const QString &, seriona::scanner::ScanMode) {
         return acceptedResult();
     });
 
@@ -183,13 +186,14 @@ void LibraryScanFlowTest::scanLibraryRequestSubmitsBackendScanAndUpdatesTree()
 
     LibraryController controller;
     ScanRecorder recorder;
-    controller.setScanExecutor([&recorder](const QString &rootPath) {
-        return recorder.record(rootPath);
+    controller.setScanExecutor([&recorder](const QString &rootPath, seriona::scanner::ScanMode mode) {
+        return recorder.record(rootPath, mode);
     });
 
     QVERIFY(controller.scanLibrary(QUrl::fromLocalFile(musicDir.path())));
 
     QCOMPARE(recorder.roots, std::vector<QString>{canonicalRoot});
+    QCOMPARE(recorder.modes, std::vector<seriona::scanner::ScanMode>{seriona::scanner::ScanMode::Full});
     QCOMPARE(controller.savedRootPath(), canonicalRoot);
     QCOMPARE(controller.scanStatus(), QStringLiteral("running"));
     QCOMPARE(controller.scanProgress(), 0);
@@ -198,6 +202,7 @@ void LibraryScanFlowTest::scanLibraryRequestSubmitsBackendScanAndUpdatesTree()
     recorder.clear();
     QVERIFY(controller.refresh());
     QCOMPARE(recorder.roots, std::vector<QString>{canonicalRoot});
+    QCOMPARE(recorder.modes, std::vector<seriona::scanner::ScanMode>{seriona::scanner::ScanMode::Full});
 
     LibraryStateSnapshot completed;
     completed.scanStatus = LibraryScanStatus::Completed;
@@ -239,8 +244,8 @@ void LibraryScanFlowTest::cancelAndInvalidSelectionDoNotScanOrSaveRoot()
 
     LibraryController controller;
     ScanRecorder recorder;
-    controller.setScanExecutor([&recorder](const QString &rootPath) {
-        return recorder.record(rootPath);
+    controller.setScanExecutor([&recorder](const QString &rootPath, seriona::scanner::ScanMode mode) {
+        return recorder.record(rootPath, mode);
     });
 
     QCOMPARE(controller.scanLibrary(QUrl()), false);

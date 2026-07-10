@@ -39,7 +39,9 @@ public:
 
 #if SERIONA_HAS_BACKEND
     seriona::control::MediaControllerCommandResult submitCommand(const seriona::control::MediaControlCommand &command);
-    seriona::control::MediaControllerCommandResult scanLibrary(const QString &rootPath);
+    seriona::control::MediaControllerCommandResult scanLibrary(
+        const QString &rootPath,
+        seriona::scanner::ScanMode mode = seriona::scanner::ScanMode::Full);
     seriona::control::MediaControllerCommandResult applyFolderSortRules(
         const QString &rootPath,
         const QString &folderNodeId,

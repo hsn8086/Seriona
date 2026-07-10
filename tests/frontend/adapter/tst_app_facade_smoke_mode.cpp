@@ -154,7 +154,7 @@ void AppFacadeSmokeModeTest::libraryControllerSubmitsTrackActivationThroughBridg
 
     Seriona::App::AppFacade facade;
     std::vector<QString> scannedRoots;
-    facade.library()->setScanExecutor([&scannedRoots](const QString &rootPath) {
+    facade.library()->setScanExecutor([&scannedRoots](const QString &rootPath, seriona::scanner::ScanMode) {
         scannedRoots.push_back(rootPath);
         seriona::control::MediaControllerCommandResult result;
         result.accepted = true;
