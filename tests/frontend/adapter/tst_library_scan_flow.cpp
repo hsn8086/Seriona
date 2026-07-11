@@ -268,15 +268,16 @@ void LibraryScanFlowTest::scanSnapshotsMapUiStates()
     QCOMPARE(controller.scanStatus(), QStringLiteral("pending"));
     QCOMPARE(controller.scanProgress(), 0);
 
-    LibraryStateSnapshot running;
-    running.scanStatus = LibraryScanStatus::Scanning;
-    ScanProgress progress;
-    progress.filesDiscovered = 10;
-    progress.filesScanned = 4;
-    running.scanProgress = progress;
-    controller.applyLibraryStateSnapshot(running);
-    QCOMPARE(controller.scanStatus(), QStringLiteral("running"));
-    QCOMPARE(controller.scanProgress(), 40);
+	LibraryStateSnapshot running;
+	running.scanStatus = LibraryScanStatus::Scanning;
+	ScanProgress progress;
+	progress.filesDiscovered = 10;
+	progress.filesScanned = 0;
+	progress.filesSkipped = 10;
+	running.scanProgress = progress;
+	controller.applyLibraryStateSnapshot(running);
+	QCOMPARE(controller.scanStatus(), QStringLiteral("running"));
+	QCOMPARE(controller.scanProgress(), 100);
 
     LibraryStateSnapshot completed;
     completed.scanStatus = LibraryScanStatus::Completed;

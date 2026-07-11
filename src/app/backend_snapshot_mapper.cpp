@@ -301,8 +301,11 @@ int uiScanProgress(const seriona::control::LibraryStateSnapshot &snapshot)
         return 0;
     }
 
-    const std::uint64_t scanned = std::min(snapshot.scanProgress->filesScanned, snapshot.scanProgress->filesDiscovered);
-    return static_cast<int>((scanned * 100U) / snapshot.scanProgress->filesDiscovered);
+	const std::uint64_t discovered = snapshot.scanProgress->filesDiscovered;
+	const std::uint64_t scanned = std::min(snapshot.scanProgress->filesScanned, discovered);
+	const std::uint64_t skipped = std::min(snapshot.scanProgress->filesSkipped, discovered - scanned);
+	const std::uint64_t processed = scanned + skipped;
+	return static_cast<int>((processed * 100U) / discovered);
 }
 
 QString scannerErrorMessage(const seriona::scanner::ScannerError &error)

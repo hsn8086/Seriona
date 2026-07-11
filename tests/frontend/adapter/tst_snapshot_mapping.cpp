@@ -156,9 +156,9 @@ void SnapshotMappingTest::mapsPartialPlayerSnapshotToSafeDefaults()
 
 void SnapshotMappingTest::mapsLibraryScanStatusAndProgress()
 {
-    LibraryStateSnapshot scanning;
-    scanning.scanStatus = LibraryScanStatus::Scanning;
-    scanning.scanProgress = seriona::scanner::ScanProgress{.filesDiscovered = 10, .filesScanned = 3};
+	LibraryStateSnapshot scanning;
+	scanning.scanStatus = LibraryScanStatus::Scanning;
+	scanning.scanProgress = seriona::scanner::ScanProgress{.filesDiscovered = 10, .filesScanned = 3, .filesSkipped = 4};
 
     LibraryStateSnapshot completed;
     completed.scanStatus = LibraryScanStatus::Completed;
@@ -170,8 +170,8 @@ void SnapshotMappingTest::mapsLibraryScanStatusAndProgress()
     const Seriona::App::LibrarySnapshotViewState completedMapped = Seriona::App::mapLibrarySnapshot(completed);
     const Seriona::App::LibrarySnapshotViewState stoppedMapped = Seriona::App::mapLibrarySnapshot(stopped);
 
-    QCOMPARE(scanningMapped.scanStatus, QStringLiteral("running"));
-    QCOMPARE(scanningMapped.scanProgress, 30);
+	QCOMPARE(scanningMapped.scanStatus, QStringLiteral("running"));
+	QCOMPARE(scanningMapped.scanProgress, 70);
     QCOMPARE(completedMapped.scanStatus, QStringLiteral("completed"));
     QCOMPARE(completedMapped.scanProgress, 100);
     QCOMPARE(stoppedMapped.scanStatus, QStringLiteral("pending"));
