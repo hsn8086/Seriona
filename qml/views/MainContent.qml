@@ -234,11 +234,26 @@ Item {
                 font.pixelSize: 72
                 color: Theme.textColor
                 opacity: 0.6
-                visible: coverArtwork.status !== Image.Ready
+                visible: preferredCover.status !== Image.Ready && fallbackCover.status !== Image.Ready
             }
 
+            // 缩略图回退层：preferred 未 Ready 且与缩略图不同源时显示，曲目切换由绑定自然重置
             Image {
-                id: coverArtwork
+                id: fallbackCover
+                anchors.fill: parent
+                source: root.playbackController.coverThumbnailSource
+                sourceSize.width: 240
+                sourceSize.height: 240
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                visible: preferredCover.status !== Image.Ready
+                         && status === Image.Ready
+                         && root.playbackController.coverArtworkSource !== root.playbackController.coverThumbnailSource
+            }
+
+            // 首选封面层（全图，或缩略图优先阶段的同源缩略图）
+            Image {
+                id: preferredCover
                 anchors.fill: parent
                 source: root.playbackController.coverArtworkSource
                 sourceSize.width: 240

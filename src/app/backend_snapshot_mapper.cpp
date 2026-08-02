@@ -145,6 +145,22 @@ QString artworkPathFromStateSource(
     return {};
 }
 
+QString preferredArtworkPathFromStateSource(const seriona::control::PlayerStateSnapshot &snapshot)
+{
+    if (snapshot.artwork && snapshot.artwork->localPath && !snapshot.artwork->localPath->empty()) {
+        return fromBackendPath(*snapshot.artwork->localPath);
+    }
+    return {};
+}
+
+QString fallbackThumbnailPathFromStateSource(const seriona::control::PlayerStateSnapshot &snapshot)
+{
+    if (snapshot.artwork && snapshot.artwork->thumbnailPath && !snapshot.artwork->thumbnailPath->empty()) {
+        return fromBackendPath(*snapshot.artwork->thumbnailPath);
+    }
+    return {};
+}
+
 std::optional<std::chrono::milliseconds> durationFromStateSource(
     const seriona::control::PlayerStateSnapshot &snapshot,
     const seriona::scanner::SongMetadata *song)
@@ -193,6 +209,8 @@ CurrentTrackViewState mapCurrentTrackViewState(
     state.artist = artistFromStateSource(snapshot, song);
     state.album = albumFromStateSource(snapshot, song);
     state.artworkPath = artworkPathFromStateSource(snapshot, song);
+    state.preferredArtworkPath = preferredArtworkPathFromStateSource(snapshot);
+    state.fallbackThumbnailPath = fallbackThumbnailPathFromStateSource(snapshot);
 
     const std::optional<std::chrono::milliseconds> duration = durationFromStateSource(snapshot, song);
     state.durationSeconds = duration ? secondsFromMilliseconds(*duration) : 0.0;

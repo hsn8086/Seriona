@@ -21,6 +21,9 @@ private slots:
     void mapsPartialPlayerSnapshotToSafeDefaults();
     void mapsLibraryScanStatusAndProgress();
     void mapsLibraryErrorFallbacks();
+    void mapsArtworkRefPathsRawIntoViewState();
+    void mapsEmptyArtworkRefToEmptyArtFields();
+    void mapsThumbnailThenFullUpgrade();
 #else
     void mapperUnavailableWithoutBackend();
 #endif
@@ -194,6 +197,88 @@ void SnapshotMappingTest::mapsLibraryErrorFallbacks()
     QCOMPARE(detailMapped.lastError, QStringLiteral("metadata parser failed"));
     QCOMPARE(missingMapped.scanStatus, QStringLiteral("error"));
     QCOMPARE(missingMapped.lastError, QStringLiteral("扫描失败"));
+}
+
+void SnapshotMappingTest::mapsArtworkRefPathsRawIntoViewState()
+{
+    LibraryStateSnapshot library = libraryWithTrack();
+    PlayerStateSnapshot player;
+    player.currentTrack = seriona::control::TrackIdentity{
+        .trackId = "track-1",
+        .filePath = std::filesystem::path{"/fallback/fallback.mp3"},
+        .sourceId = {},
+        .libraryId = {},
+    };
+    player.display = seriona::control::DisplayMetadata{
+        .title = "Raw Paths",
+        .artist = "Space Artist",
+        .album = "非 ASCII 专辑",
+        .albumArtist = {},
+        .genre = {},
+    };
+    player.artwork = seriona::control::ArtworkRef{
+        .localPath = std::filesystem::path{"/music/My Tracks/重低音 神曲.png"},
+        .thumbnailPath = std::filesystem::path{"/thumbs/缩 略 图/track cover.png"},
+    };
+
+    const Seriona::App::PlayerSnapshotViewState mapped = Seriona::App::mapPlayerSnapshot(player, &library);
+
+    QCOMPARE(mapped.currentTrack.preferredArtworkPath, QStringLiteral("/music/My Tracks/重低音 神曲.png"));
+    QCOMPARE(mapped.currentTrack.fallbackThumbnailPath, QStringLiteral("/thumbs/缩 略 图/track cover.png"));
+    QCOMPARE(mapped.currentTrack.artworkPath, QStringLiteral("/music/My Tracks/重低音 神曲.png"));
+    QCOMPARE(mapped.currentTrack.title, QStringLiteral("Raw Paths"));
+    QCOMPARE(mapped.currentTrack.artist, QStringLiteral("Space Artist"));
+    QCOMPARE(mapped.currentTrack.album, QStringLiteral("非 ASCII 专辑"));
+    QCOMPARE(mapped.currentTrack.durationSeconds, 185.0);
+    QCOMPARE(mapped.currentTrack.audioFormat, QStringLiteral("WAV"));
+    QCOMPARE(mapped.currentTrack.audioSampleRate, 96000);
+    QCOMPARE(mapped.currentTrack.audioBitDepth, 24);
+    QCOMPARE(mapped.currentTrack.audioChannels, 2);
+}
+
+void SnapshotMappingTest::mapsEmptyArtworkRefToEmptyArtFields()
+{
+    PlayerStateSnapshot player;
+    player.currentTrack = seriona::control::TrackIdentity{
+        .trackId = "track-2",
+        .filePath = std::filesystem::path{"/music/empty.mp3"},
+        .sourceId = {},
+        .libraryId = {},
+    };
+    player.artwork = seriona::control::ArtworkRef{};
+
+    const Seriona::App::PlayerSnapshotViewState mapped = Seriona::App::mapPlayerSnapshot(player, nullptr);
+
+    QCOMPARE(mapped.currentTrack.preferredArtworkPath, QString());
+    QCOMPARE(mapped.currentTrack.fallbackThumbnailPath, QString());
+    QCOMPARE(mapped.currentTrack.artworkPath, QString());
+    QCOMPARE(mapped.currentTrack.trackId, QStringLiteral("track-2"));
+}
+
+void SnapshotMappingTest::mapsThumbnailThenFullUpgrade()
+{
+    PlayerStateSnapshot player;
+    player.currentTrack = seriona::control::TrackIdentity{
+        .trackId = "track-3",
+        .filePath = std::filesystem::path{"/music/upgrade.mp3"},
+        .sourceId = {},
+        .libraryId = {},
+    };
+    player.artwork = seriona::control::ArtworkRef{
+        .localPath = std::filesystem::path{"/thumbs/track.png"},
+        .thumbnailPath = std::filesystem::path{"/thumbs/track.png"},
+    };
+
+    const Seriona::App::PlayerSnapshotViewState thumbnailOnly = Seriona::App::mapPlayerSnapshot(player, nullptr);
+    QCOMPARE(thumbnailOnly.currentTrack.preferredArtworkPath, QStringLiteral("/thumbs/track.png"));
+    QCOMPARE(thumbnailOnly.currentTrack.fallbackThumbnailPath, QStringLiteral("/thumbs/track.png"));
+
+    player.artwork->localPath = std::filesystem::path{"/covers/full.png"};
+
+    const Seriona::App::PlayerSnapshotViewState upgraded = Seriona::App::mapPlayerSnapshot(player, nullptr);
+    QCOMPARE(upgraded.currentTrack.preferredArtworkPath, QStringLiteral("/covers/full.png"));
+    QCOMPARE(upgraded.currentTrack.fallbackThumbnailPath, QStringLiteral("/thumbs/track.png"));
+    QCOMPARE(upgraded.currentTrack.artworkPath, QStringLiteral("/covers/full.png"));
 }
 #else
 void SnapshotMappingTest::mapperUnavailableWithoutBackend()

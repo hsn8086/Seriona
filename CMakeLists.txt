@@ -147,6 +147,8 @@ set(SERIONA_APP_LAYER_SOURCES
     src/app/app_facade.h
     src/app/playback_controller.cpp
     src/app/playback_controller.h
+    src/app/artwork_palette_worker.cpp
+    src/app/artwork_palette_worker.h
     src/app/navigation_controller.cpp
     src/app/navigation_controller.h
     src/app/backend_snapshot_mapper.cpp
@@ -481,6 +483,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/app_facade.h
             src/app/playback_controller.cpp
             src/app/playback_controller.h
+            src/app/artwork_palette_worker.cpp
+            src/app/artwork_palette_worker.h
             src/app/navigation_controller.cpp
             src/app/navigation_controller.h
             src/app/backend_snapshot_mapper.cpp
@@ -523,6 +527,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/app_facade.h
             src/app/playback_controller.cpp
             src/app/playback_controller.h
+            src/app/artwork_palette_worker.cpp
+            src/app/artwork_palette_worker.h
             src/app/navigation_controller.cpp
             src/app/navigation_controller.h
             src/app/backend_snapshot_mapper.cpp
@@ -562,6 +568,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/app_facade.h
             src/app/playback_controller.cpp
             src/app/playback_controller.h
+            src/app/artwork_palette_worker.cpp
+            src/app/artwork_palette_worker.h
             src/app/navigation_controller.cpp
             src/app/navigation_controller.h
             src/app/backend_snapshot_mapper.cpp
@@ -588,7 +596,7 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             PRIVATE SERIONA_HAS_BACKEND=1
         )
         target_link_libraries(seriona_frontend_playback_snapshot_tests
-            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET}
+            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET} ${SERIONA_BACKEND_APP_TARGET}
         )
 
         add_test(NAME seriona_frontend_playback_snapshot_mapping COMMAND seriona_frontend_playback_snapshot_tests snapshotMapping)
@@ -602,6 +610,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/app_facade.h
             src/app/playback_controller.cpp
             src/app/playback_controller.h
+            src/app/artwork_palette_worker.cpp
+            src/app/artwork_palette_worker.h
             src/app/navigation_controller.cpp
             src/app/navigation_controller.h
             src/app/backend_snapshot_mapper.cpp
@@ -665,6 +675,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/app_facade.h
             src/app/playback_controller.cpp
             src/app/playback_controller.h
+            src/app/artwork_palette_worker.cpp
+            src/app/artwork_palette_worker.h
             src/app/navigation_controller.cpp
             src/app/navigation_controller.h
             src/app/backend_snapshot_mapper.cpp
@@ -691,7 +703,7 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             PRIVATE SERIONA_HAS_BACKEND=1
         )
         target_link_libraries(seriona_frontend_waveform_worker_tests
-            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET}
+            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET} ${SERIONA_BACKEND_APP_TARGET}
         )
 
         add_test(NAME seriona_frontend_waveform_worker COMMAND seriona_frontend_waveform_worker_tests)
@@ -703,6 +715,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/app_facade.h
             src/app/playback_controller.cpp
             src/app/playback_controller.h
+            src/app/artwork_palette_worker.cpp
+            src/app/artwork_palette_worker.h
             src/app/navigation_controller.cpp
             src/app/navigation_controller.h
             src/app/backend_snapshot_mapper.cpp
@@ -729,11 +743,40 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             PRIVATE SERIONA_HAS_BACKEND=1
         )
         target_link_libraries(seriona_frontend_current_track_lookup_tests
-            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET}
+            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET} ${SERIONA_BACKEND_APP_TARGET}
         )
 
         add_test(NAME seriona_frontend_current_track_lookup COMMAND seriona_frontend_current_track_lookup_tests currentTrackLookup)
         add_test(NAME seriona_frontend_current_track_cue_path COMMAND seriona_frontend_current_track_lookup_tests cuePathDoesNotDriveHighlight)
+
+        add_executable(seriona_frontend_artwork_transition_tests
+            tests/frontend/adapter/tst_artwork_transition.cpp
+            src/app/playback_controller.cpp
+            src/app/playback_controller.h
+            src/app/artwork_palette_worker.cpp
+            src/app/artwork_palette_worker.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
+            src/app/backend_command_adapter.cpp
+            src/app/backend_command_adapter.h
+            src/app/notification_controller.cpp
+            src/app/notification_controller.h
+            src/app/lyrics_model.cpp
+            src/app/lyrics_model.h
+        )
+        target_include_directories(seriona_frontend_artwork_transition_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_artwork_transition_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_artwork_transition_tests
+            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET} ${SERIONA_BACKEND_APP_TARGET}
+        )
+
+        add_test(NAME seriona_frontend_artwork_transition COMMAND seriona_frontend_artwork_transition_tests artwork_transition)
+        add_test(NAME seriona_frontend_artwork_fallback COMMAND seriona_frontend_artwork_transition_tests artwork_fallback)
+        add_test(NAME seriona_frontend_artwork_palette_nonblocking COMMAND seriona_frontend_artwork_transition_tests artwork_palette_nonblocking)
 
         add_executable(seriona_frontend_lyrics_model_tests
             tests/frontend/adapter/tst_lyrics_model.cpp

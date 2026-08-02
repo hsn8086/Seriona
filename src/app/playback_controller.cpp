@@ -4,17 +4,13 @@
 #include "seriona/control/control_contracts.h"
 #endif
 
-#include <QColor>
-#include <QImage>
 #include <QUrl>
 #include <QtMath>
 
-#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <optional>
 #include <utility>
-#include <vector>
 
 namespace Seriona::App {
 
@@ -28,155 +24,13 @@ bool sameCurrentTrackViewState(const CurrentTrackViewState &left, const CurrentT
         && left.artist == right.artist
         && left.album == right.album
         && left.artworkPath == right.artworkPath
+        && left.preferredArtworkPath == right.preferredArtworkPath
+        && left.fallbackThumbnailPath == right.fallbackThumbnailPath
         && qAbs(left.durationSeconds - right.durationSeconds) < 0.001
         && left.audioFormat == right.audioFormat
         && left.audioSampleRate == right.audioSampleRate
         && left.audioBitDepth == right.audioBitDepth
         && left.audioChannels == right.audioChannels;
-}
-
-// ---------------------------------------------------------------------------
-// 封面主色调提取（在旧项目 UIController::updateGradientColors 基础上优化）
-//
-// 旧实现：缩放到 20x20、按 (饱和度*2 + 居中亮度) 打分、用 CIE 近似色距
-// 去重取 3 色、最后统一压到 s<=0.4 / l<=0.5。
-//
-// 本版改进：
-//   1. 采样密度提升到 32x32，边缘裁掉 2px 以弱化专辑封面常见的黑边/白框；
-//   2. 打分引入「面积权重」——相近颜色累加权重，避免一小撮高饱和噪点
-//      压过整体主色；
-//   3. 去重阈值随已选数量递减，保证第 2、3 色和主色拉开层次；
-//   4. 收敛时按亮度递减排布 color0→color2，渲染出更自然的上亮下暗光晕；
-//   5. 空封面回退到 Theme 默认深色三连，杜绝突兀跳色。
-// ---------------------------------------------------------------------------
-struct ScoredColor {
-    QColor color;
-    double weight = 0.0;
-};
-
-// CIE 近似加权色距（低成本感知距离，来自 old UIController::colorDistance）
-double perceptualColorDistance(const QColor &a, const QColor &b)
-{
-    const long rmean = (static_cast<long>(a.red()) + static_cast<long>(b.red())) / 2;
-    const long r = static_cast<long>(a.red()) - static_cast<long>(b.red());
-    const long g = static_cast<long>(a.green()) - static_cast<long>(b.green());
-    const long bl = static_cast<long>(a.blue()) - static_cast<long>(b.blue());
-    return std::sqrt(
-        static_cast<double>(((512 + rmean) * r * r) >> 8)
-        + 4.0 * static_cast<double>(g * g)
-        + static_cast<double>(((767 - rmean) * bl * bl) >> 8));
-}
-
-// 把颜色收敛到适合作为深色背景的亮度/饱和度区间，保证前景文字对比度
-QColor toBackgroundTone(const QColor &input, qreal targetLightness)
-{
-    float h = 0.0F;
-    float s = 0.0F;
-    float l = 0.0F;
-    input.getHslF(&h, &s, &l);
-
-    // 饱和度上限 0.5：保留丰富色相，增强视觉冲击
-    s = std::min(s, 0.50F);
-    // 亮度提升：从 0.08~0.42 提升到 0.12~0.50，使背景更明亮
-    l = static_cast<float>(qBound(0.12, targetLightness, 0.50));
-
-    if (h < 0.0F)
-        h = 0.0F;
-    return QColor::fromHslF(h, s, l);
-}
-
-// 从封面图提取三个用于渐变背景的主色调（含默认回退）
-std::array<QString, 3> extractGradientPalette(const QString &imagePath)
-{
-    // 默认深色三连（与 Theme.gradientColor* 保持一致的暗色基调）
-    std::array<QString, 3> fallback = {
-        QStringLiteral("#4a2c2a"),
-        QStringLiteral("#2b1a1a"),
-        QStringLiteral("#1a1212"),
-    };
-
-    if (imagePath.isEmpty())
-        return fallback;
-
-    QImage image(imagePath);
-    if (image.isNull())
-        return fallback;
-
-    // 缩放到 32x32 平滑采样：兼顾细节与性能；裁边 2px 去掉封面黑边/白框
-    constexpr int kSampleSize = 32;
-    constexpr int kMargin = 2;
-    const QImage small = image.scaled(kSampleSize, kSampleSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-
-    std::vector<ScoredColor> buckets;
-    buckets.reserve(64);
-
-    for (int y = kMargin; y < small.height() - kMargin; ++y) {
-        for (int x = kMargin; x < small.width() - kMargin; ++x) {
-            const QColor pixel = small.pixelColor(x, y);
-            // 丢弃接近纯黑/纯白的像素，它们无法提供有效色相
-            if (pixel.lightness() < 24 || pixel.lightness() > 236)
-                continue;
-
-            // 单像素权重：高饱和 + 居中亮度更可能是封面主色
-            const double pixelWeight = (pixel.saturationF() * 2.0)
-                + (1.0 - std::abs(pixel.lightnessF() - 0.5));
-
-            // 面积聚合：相近颜色累加权重，抑制孤立噪点
-            bool merged = false;
-            for (auto &bucket : buckets) {
-                if (perceptualColorDistance(pixel, bucket.color) < 40.0) {
-                    bucket.weight += pixelWeight;
-                    merged = true;
-                    break;
-                }
-            }
-            if (!merged)
-                buckets.push_back({pixel, pixelWeight});
-        }
-    }
-
-    if (buckets.empty())
-        return fallback;
-
-    // 按累计权重降序：权重最高者为整幅封面的视觉主色
-    std::sort(buckets.begin(), buckets.end(), [](const ScoredColor &a, const ScoredColor &b) {
-        return a.weight > b.weight;
-    });
-
-    // 去重挑选最多 3 个彼此区分度足够的主色；阈值随进度递减，
-    // 让后续颜色更宽松，避免单色封面凑不满三色而重复
-    std::vector<QColor> chosen;
-    const double distanceThresholds[3] = {0.0, 90.0, 60.0};
-    for (const auto &bucket : buckets) {
-        bool distinct = true;
-        for (std::size_t i = 0; i < chosen.size(); ++i) {
-            if (perceptualColorDistance(bucket.color, chosen[i]) < distanceThresholds[chosen.size()]) {
-                distinct = false;
-                break;
-            }
-        }
-        if (distinct) {
-            chosen.push_back(bucket.color);
-            if (chosen.size() >= 3)
-                break;
-        }
-    }
-
-    // 不足 3 色时用主色的渐暗变体补齐，保持同色系过渡
-    while (chosen.size() < 3) {
-        if (!chosen.empty())
-            chosen.push_back(chosen.back().darker(118));
-        else
-            return fallback;
-    }
-
-    // color0 最亮、color2 最暗：配合三层渐变自上而下的光晕层次
-    const qreal targetLightness[3] = {0.46, 0.36, 0.26};
-    std::array<QString, 3> palette;
-    for (int i = 0; i < 3; ++i)
-        palette[i] = toBackgroundTone(chosen[static_cast<std::size_t>(i)], targetLightness[i]).name();
-
-    return palette;
 }
 
 #if SERIONA_HAS_BACKEND
@@ -238,8 +92,15 @@ std::chrono::milliseconds elapsedSince(std::chrono::steady_clock::time_point sam
 }
 
 PlaybackController::PlaybackController(QObject *parent)
-    : QObject(parent)
+    : PlaybackController(decodeGradientPalette, parent)
 {
+}
+
+PlaybackController::PlaybackController(ArtworkPaletteWorker::Decoder decoder, QObject *parent)
+    : QObject(parent)
+    , m_paletteWorker(std::move(decoder))
+{
+    connect(&m_paletteWorker, &ArtworkPaletteWorker::paletteReady, this, &PlaybackController::applyPaletteResult);
 #if SERIONA_HAS_BACKEND
     m_timelineTimer.setInterval(kTimelineSmoothingIntervalMs);
     m_timelineTimer.setTimerType(Qt::PreciseTimer);
@@ -247,6 +108,11 @@ PlaybackController::PlaybackController(QObject *parent)
         static_cast<void>(updateSmoothedTimelinePosition());
     });
 #endif
+}
+
+PlaybackController::~PlaybackController()
+{
+    m_paletteWorker.shutdown();
 }
 
 bool PlaybackController::ready() const
@@ -451,9 +317,16 @@ QString PlaybackController::coverArtworkPath() const
 
 QString PlaybackController::coverArtworkSource() const
 {
-    return m_currentTrack.artworkPath.isEmpty()
+    return m_currentTrack.preferredArtworkPath.isEmpty()
         ? QString()
-        : QUrl::fromLocalFile(m_currentTrack.artworkPath).toString();
+        : QUrl::fromLocalFile(m_currentTrack.preferredArtworkPath).toString();
+}
+
+QString PlaybackController::coverThumbnailSource() const
+{
+    return m_currentTrack.fallbackThumbnailPath.isEmpty()
+        ? QString()
+        : QUrl::fromLocalFile(m_currentTrack.fallbackThumbnailPath).toString();
 }
 
 QString PlaybackController::coverPlaceholderText() const
@@ -713,8 +586,16 @@ void PlaybackController::setCurrentTrackViewState(const CurrentTrackViewState &s
         return;
     }
 
+    const bool thumbnailChanged = m_currentTrack.fallbackThumbnailPath != state.fallbackThumbnailPath;
     m_currentTrack = state;
-    updateGradientColors(m_currentTrack.artworkPath);
+    if (thumbnailChanged) {
+        if (m_currentTrack.fallbackThumbnailPath.isEmpty()) {
+            ++m_lastPaletteRequestGeneration;
+            applyGradientPalette(defaultGradientPalette());
+        } else {
+            m_lastPaletteRequestGeneration = m_paletteWorker.requestPalette(m_currentTrack.fallbackThumbnailPath);
+        }
+    }
     emit currentSongChanged();
 }
 
@@ -728,10 +609,8 @@ void PlaybackController::setCapability(const QString &capability)
     emit capabilityChanged();
 }
 
-void PlaybackController::updateGradientColors(const QString &imagePath)
+void PlaybackController::applyGradientPalette(const GradientPalette &palette)
 {
-    const std::array<QString, 3> palette = extractGradientPalette(imagePath);
-
     if (m_gradientColor0 == palette[0] && m_gradientColor1 == palette[1] && m_gradientColor2 == palette[2]) {
         return;
     }
@@ -740,6 +619,14 @@ void PlaybackController::updateGradientColors(const QString &imagePath)
     m_gradientColor1 = palette[1];
     m_gradientColor2 = palette[2];
     emit gradientColorsChanged();
+}
+
+void PlaybackController::applyPaletteResult(quint64 generation, const QString &color0, const QString &color1, const QString &color2)
+{
+    if (generation != m_lastPaletteRequestGeneration) {
+        return;
+    }
+    applyGradientPalette(GradientPalette{color0, color1, color2});
 }
 
 QString PlaybackController::gradientColor0() const

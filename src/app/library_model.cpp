@@ -1680,7 +1680,6 @@ bool LibraryController::persistCurrentFolderSortRules(const QVector<LibraryModel
 #endif
 }
 
-#if SERIONA_HAS_BACKEND
 QVariantList LibraryController::sortRuleVariantsFromModelRules(const QVector<LibraryModel::SortRule> &rules) const
 {
     QVariantList variants;
@@ -1694,6 +1693,7 @@ QVariantList LibraryController::sortRuleVariantsFromModelRules(const QVector<Lib
     return variants;
 }
 
+#if SERIONA_HAS_BACKEND
 std::optional<std::vector<seriona::control::FolderSortRule>> LibraryController::backendSortRulesFromModelRules(const QVector<LibraryModel::SortRule> &rules) const
 {
     std::vector<seriona::control::FolderSortRule> backendRules;

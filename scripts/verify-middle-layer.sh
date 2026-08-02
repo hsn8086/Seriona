@@ -4,6 +4,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 : "${SERIONA_BACKEND_SOURCE_DIR:=../Seriona_Backend}"
+# 构建目录可覆盖；未设置时等价于历史硬编码的 build
+: "${SERIONA_BUILD_DIR:=build}"
+# 离线配置可选参数：新构建目录缺网时通过环境变量注入 FetchContent 源码目录，
+# 未设置时这些参数完全不出现在 configure 命令行上（与改动前字节等价）
+: "${SERIONA_FETCHCONTENT_CATCH2_DIR:=}"
+: "${SERIONA_FETCHCONTENT_THREAD_POOL_DIR:=}"
 
 log() {
     printf '\n==> %s\n' "$1"
@@ -131,6 +137,7 @@ required_qml_resources=(
 
 required_frontend_test_sources=(
     tests/frontend/adapter/tst_app_facade_smoke_mode.cpp
+    tests/frontend/adapter/tst_artwork_transition.cpp
     tests/frontend/adapter/tst_backend_bridge.cpp
     tests/frontend/adapter/tst_command_result_mapping.cpp
     tests/frontend/adapter/tst_current_track_lookup.cpp
@@ -152,6 +159,7 @@ required_frontend_test_sources=(
 
 required_frontend_test_targets=(
     seriona_frontend_app_facade_smoke_mode
+    seriona_frontend_artwork_transition_tests
     seriona_frontend_backend_bridge_tests
     seriona_frontend_command_result_mapping
     seriona_frontend_current_track_lookup_tests
@@ -172,10 +180,20 @@ required_frontend_test_targets=(
 )
 
 log "Configure"
-cmake -B build -DSERIONA_BACKEND_SOURCE_DIR="$SERIONA_BACKEND_SOURCE_DIR"
+configure_args=(
+    -B "$SERIONA_BUILD_DIR"
+    -DSERIONA_BACKEND_SOURCE_DIR="$SERIONA_BACKEND_SOURCE_DIR"
+)
+if [[ -n "$SERIONA_FETCHCONTENT_CATCH2_DIR" ]]; then
+    configure_args+=(-DFETCHCONTENT_SOURCE_DIR_CATCH2="$SERIONA_FETCHCONTENT_CATCH2_DIR")
+fi
+if [[ -n "$SERIONA_FETCHCONTENT_THREAD_POOL_DIR" ]]; then
+    configure_args+=(-DFETCHCONTENT_SOURCE_DIR_THREAD_POOL="$SERIONA_FETCHCONTENT_THREAD_POOL_DIR")
+fi
+cmake "${configure_args[@]}"
 
 log "Build"
-cmake --build build
+cmake --build "$SERIONA_BUILD_DIR"
 
 assert_match \
     "QML module URI remains Seriona" \
@@ -223,7 +241,7 @@ assert_no_match \
 
 assert_no_match \
     "No backend/network/database/filesystem/persistence implementation" \
-    'QDir|QFileSystem|QNetwork|QSql|QTcp|QUdp|HTTP|database|SQLite|filesystem scan|persistence|persistent' \
+    'QDir::entryList|QDir::mkdir|QDir::mkpath|QDir::rmdir|QDir::removeRecursively|QDir::setCurrent|QFileSystem|QNetwork|QSql|QTcp|QUdp|HTTP|database|SQLite|filesystem scan|persistence|persistent' \
     src qml
 
 assert_match \
@@ -240,7 +258,7 @@ fi
 
 log "Offscreen startup smoke"
 set +e
-QT_QPA_PLATFORM=offscreen timeout 5s ./build/appSeriona
+QT_QPA_PLATFORM=offscreen timeout 5s "./$SERIONA_BUILD_DIR/appSeriona"
 smoke_status=$?
 set -e
 

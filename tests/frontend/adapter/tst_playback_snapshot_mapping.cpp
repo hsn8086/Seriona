@@ -1,13 +1,20 @@
 #include "playback_controller.h"
+#include "artwork_palette_worker.h"
 
 #include "seriona/control/control_contracts.h"
 
+#include <QElapsedTimer>
 #include <QObject>
+#include <QSemaphore>
+#include <QSignalSpy>
 #include <QString>
 #include <QtTest/QTest>
+#include <QUrl>
 
+#include <atomic>
 #include <chrono>
 #include <optional>
+#include <thread>
 
 namespace {
 
@@ -96,6 +103,14 @@ private slots:
     void emptySnapshot();
     void timelineSmoothing();
     void timelineStoppedAndErrorSnapToBackend();
+    void coverArtworkSourcesUrlEncodeRawPaths();
+    void emptyArtExposesEmptySources();
+    void thumbnailThenFullUpgradeSkipsSecondPaletteDecode();
+    void slowPaletteDecoderDoesNotDelaySnapshotApplication();
+    void rapidThumbnailUpdatesDeliverOnlyLatestPalette();
+    void latePaletteResultDroppedAfterTrackSwitch();
+    void stalePriorTrackFullArtworkDoesNotLeak();
+    void shutdownWithBlockedDecoder();
 };
 
 void PlaybackSnapshotMappingTest::snapshotMapping()
@@ -219,6 +234,260 @@ void PlaybackSnapshotMappingTest::timelineStoppedAndErrorSnapToBackend()
     expectPinnedSnapshotPosition(controller, seriona::control::PlaybackStatus::Stopped, 9.0);
     expectPinnedSnapshotPosition(controller, seriona::control::PlaybackStatus::Loading, 11.0);
     expectPinnedSnapshotPosition(controller, seriona::control::PlaybackStatus::Error, 13.0);
+}
+
+void PlaybackSnapshotMappingTest::coverArtworkSourcesUrlEncodeRawPaths()
+{
+    Seriona::App::PlaybackController controller([](const QString &) {
+        return Seriona::App::GradientPalette{
+            QStringLiteral("#000000"), QStringLiteral("#111111"), QStringLiteral("#222222")};
+    });
+
+    seriona::control::PlayerStateSnapshot snapshot = makeFilledSnapshot(seriona::control::PlaybackStatus::Playing);
+    const QString rawArtwork = QStringLiteral("/music/My Tracks/重低音 神曲.png");
+    const QString rawThumbnail = QStringLiteral("/thumbs/缩 略 图/track cover.png");
+    snapshot.artwork = seriona::control::ArtworkRef{
+        .localPath = std::filesystem::path{rawArtwork.toStdString()},
+        .thumbnailPath = std::filesystem::path{rawThumbnail.toStdString()},
+    };
+
+    controller.applyPlayerStateSnapshot(snapshot);
+
+    QCOMPARE(controller.coverArtworkPath(), rawArtwork);
+    QCOMPARE(controller.coverArtworkSource(), QUrl::fromLocalFile(rawArtwork).toString());
+    QCOMPARE(controller.coverThumbnailSource(), QUrl::fromLocalFile(rawThumbnail).toString());
+}
+
+void PlaybackSnapshotMappingTest::emptyArtExposesEmptySources()
+{
+    Seriona::App::PlaybackController controller([](const QString &) {
+        return Seriona::App::GradientPalette{
+            QStringLiteral("#000000"), QStringLiteral("#111111"), QStringLiteral("#222222")};
+    });
+
+    seriona::control::PlayerStateSnapshot snapshot = makeFilledSnapshot(seriona::control::PlaybackStatus::Playing);
+    controller.applyPlayerStateSnapshot(snapshot);
+
+    QCOMPARE(controller.coverArtworkPath(), QString());
+    QCOMPARE(controller.coverArtworkSource(), QString());
+    QCOMPARE(controller.coverThumbnailSource(), QString());
+    QCOMPARE(controller.songTitle(), QStringLiteral("Seriona Echo"));
+}
+
+void PlaybackSnapshotMappingTest::thumbnailThenFullUpgradeSkipsSecondPaletteDecode()
+{
+    int decodeCalls = 0;
+    QString decodedPath;
+    Seriona::App::PlaybackController controller(
+        [&decodeCalls, &decodedPath](const QString &path) {
+            ++decodeCalls;
+            decodedPath = path;
+            return Seriona::App::GradientPalette{
+                QStringLiteral("#112233"), QStringLiteral("#223344"), QStringLiteral("#334455")};
+        });
+
+    seriona::control::PlayerStateSnapshot snapshot = makeFilledSnapshot(seriona::control::PlaybackStatus::Playing);
+    const QString thumbnailPath = QStringLiteral("/thumbs/folder/track.png");
+    snapshot.artwork = seriona::control::ArtworkRef{
+        .localPath = std::filesystem::path{thumbnailPath.toStdString()},
+        .thumbnailPath = std::filesystem::path{thumbnailPath.toStdString()},
+    };
+
+    controller.applyPlayerStateSnapshot(snapshot);
+
+    QCOMPARE(controller.coverThumbnailSource(), QUrl::fromLocalFile(thumbnailPath).toString());
+    QTRY_COMPARE_WITH_TIMEOUT(controller.gradientColor0(), QStringLiteral("#112233"), 2000);
+    QCOMPARE(decodeCalls, 1);
+    QCOMPARE(decodedPath, thumbnailPath);
+
+    snapshot.artwork->localPath = std::filesystem::path{"/covers/full.png"};
+    controller.applyPlayerStateSnapshot(snapshot);
+
+    QCOMPARE(controller.coverArtworkSource(), QUrl::fromLocalFile(QStringLiteral("/covers/full.png")).toString());
+    QCOMPARE(controller.coverThumbnailSource(), QUrl::fromLocalFile(thumbnailPath).toString());
+    QCOMPARE(controller.coverArtworkPath(), QStringLiteral("/covers/full.png"));
+    QCOMPARE(decodeCalls, 1);
+    QCOMPARE(controller.songTitle(), QStringLiteral("Seriona Echo"));
+    QCOMPARE(controller.artistName(), QStringLiteral("Adapter Fixture"));
+    QCOMPARE(controller.albumName(), QStringLiteral("Contract Smoke"));
+    QCOMPARE(controller.currentPosition(), 42.0);
+    QCOMPARE(controller.totalDuration(), 185.0);
+}
+
+void PlaybackSnapshotMappingTest::slowPaletteDecoderDoesNotDelaySnapshotApplication()
+{
+    std::atomic<bool> releaseDecoder{false};
+    Seriona::App::PlaybackController controller([&releaseDecoder](const QString &) {
+        while (!releaseDecoder.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return Seriona::App::GradientPalette{
+            QStringLiteral("#aabbcc"), QStringLiteral("#bbccdd"), QStringLiteral("#ccddee")};
+    });
+
+    seriona::control::PlayerStateSnapshot snapshot = makeFilledSnapshot(seriona::control::PlaybackStatus::Playing);
+    snapshot.artwork = seriona::control::ArtworkRef{
+        .localPath = std::filesystem::path{"/thumbs/slow.png"},
+        .thumbnailPath = std::filesystem::path{"/thumbs/slow.png"},
+    };
+
+    QSignalSpy songSpy(&controller, &Seriona::App::PlaybackController::currentSongChanged);
+    QElapsedTimer timer;
+    timer.start();
+    controller.applyPlayerStateSnapshot(snapshot);
+    const qint64 applyElapsedMs = timer.nsecsElapsed() / 1000000;
+
+    QVERIFY2(applyElapsedMs <= 50,
+        qPrintable(QStringLiteral("snapshot application blocked %1 ms behind a 500 ms-class decoder").arg(applyElapsedMs)));
+    QCOMPARE(songSpy.count(), 1);
+    QCOMPARE(controller.coverArtworkSource(), QUrl::fromLocalFile(QStringLiteral("/thumbs/slow.png")).toString());
+
+    releaseDecoder.store(true);
+    QTRY_COMPARE_WITH_TIMEOUT(controller.gradientColor0(), QStringLiteral("#aabbcc"), 2000);
+}
+
+void PlaybackSnapshotMappingTest::rapidThumbnailUpdatesDeliverOnlyLatestPalette()
+{
+    QSemaphore firstDecodeEntered;
+    QSemaphore releaseFirstDecode;
+    Seriona::App::PlaybackController controller(
+        [&firstDecodeEntered, &releaseFirstDecode](const QString &path) {
+            if (path == QStringLiteral("/thumbs/a.png")) {
+                firstDecodeEntered.release();
+                releaseFirstDecode.acquire();
+                return Seriona::App::GradientPalette{
+                    QStringLiteral("#aa0000"), QStringLiteral("#bb0000"), QStringLiteral("#cc0000")};
+            }
+            return Seriona::App::GradientPalette{
+                QStringLiteral("#00bb00"), QStringLiteral("#00cc00"), QStringLiteral("#00dd00")};
+        });
+
+    QSignalSpy gradientSpy(&controller, &Seriona::App::PlaybackController::gradientColorsChanged);
+
+    seriona::control::PlayerStateSnapshot trackA = makeFilledSnapshot(seriona::control::PlaybackStatus::Playing);
+    trackA.artwork = seriona::control::ArtworkRef{
+        .localPath = std::filesystem::path{"/thumbs/a.png"},
+        .thumbnailPath = std::filesystem::path{"/thumbs/a.png"},
+    };
+    controller.applyPlayerStateSnapshot(trackA);
+    QVERIFY(firstDecodeEntered.tryAcquire(1, 2000));
+
+    seriona::control::PlayerStateSnapshot trackB = makeFilledSnapshot(seriona::control::PlaybackStatus::Playing);
+    trackB.currentTrack->trackId = "track-echo-2";
+    trackB.artwork = seriona::control::ArtworkRef{
+        .localPath = std::filesystem::path{"/thumbs/b.png"},
+        .thumbnailPath = std::filesystem::path{"/thumbs/b.png"},
+    };
+    controller.applyPlayerStateSnapshot(trackB);
+
+    releaseFirstDecode.release();
+    QTRY_COMPARE_WITH_TIMEOUT(controller.gradientColor0(), QStringLiteral("#00bb00"), 2000);
+    QCOMPARE(gradientSpy.count(), 1);
+}
+
+void PlaybackSnapshotMappingTest::latePaletteResultDroppedAfterTrackSwitch()
+{
+    QSemaphore firstDecodeEntered;
+    QSemaphore releaseFirstDecode;
+    Seriona::App::PlaybackController controller(
+        [&firstDecodeEntered, &releaseFirstDecode](const QString &path) {
+            if (path == QStringLiteral("/thumbs/a.png")) {
+                firstDecodeEntered.release();
+                releaseFirstDecode.acquire();
+                return Seriona::App::GradientPalette{
+                    QStringLiteral("#aa0000"), QStringLiteral("#bb0000"), QStringLiteral("#cc0000")};
+            }
+            return Seriona::App::GradientPalette{
+                QStringLiteral("#00bb00"), QStringLiteral("#00cc00"), QStringLiteral("#00dd00")};
+        });
+
+    QSignalSpy gradientSpy(&controller, &Seriona::App::PlaybackController::gradientColorsChanged);
+
+    seriona::control::PlayerStateSnapshot trackA = makeFilledSnapshot(seriona::control::PlaybackStatus::Playing);
+    trackA.artwork = seriona::control::ArtworkRef{
+        .localPath = std::filesystem::path{"/thumbs/a.png"},
+        .thumbnailPath = std::filesystem::path{"/thumbs/a.png"},
+    };
+    controller.applyPlayerStateSnapshot(trackA);
+    QVERIFY(firstDecodeEntered.tryAcquire(1, 2000));
+
+    // Switch to a track without artwork: no worker request is made, but the
+    // expected generation advances so A's in-flight result becomes stale.
+    seriona::control::PlayerStateSnapshot trackB = makeFilledSnapshot(seriona::control::PlaybackStatus::Playing);
+    trackB.currentTrack->trackId = "track-echo-2";
+    controller.applyPlayerStateSnapshot(trackB);
+    QCOMPARE(controller.coverThumbnailSource(), QString());
+
+    // A's decode completes while the worker still considers it the latest
+    // generation, so paletteReady(1) is emitted; it must be dropped by the
+    // controller because the expected generation already moved past it.
+    releaseFirstDecode.release();
+    QTRY_COMPARE_WITH_TIMEOUT(controller.gradientColor0(), QStringLiteral("#4a2c2a"), 2000);
+    QCOMPARE(gradientSpy.count(), 1);
+
+    seriona::control::PlayerStateSnapshot trackC = makeFilledSnapshot(seriona::control::PlaybackStatus::Playing);
+    trackC.currentTrack->trackId = "track-echo-3";
+    trackC.artwork = seriona::control::ArtworkRef{
+        .localPath = std::filesystem::path{"/thumbs/c.png"},
+        .thumbnailPath = std::filesystem::path{"/thumbs/c.png"},
+    };
+    controller.applyPlayerStateSnapshot(trackC);
+    QTRY_COMPARE_WITH_TIMEOUT(controller.gradientColor0(), QStringLiteral("#00bb00"), 2000);
+    QCOMPARE(gradientSpy.count(), 2);
+}
+
+void PlaybackSnapshotMappingTest::stalePriorTrackFullArtworkDoesNotLeak()
+{
+    Seriona::App::PlaybackController controller([](const QString &) {
+        return Seriona::App::GradientPalette{
+            QStringLiteral("#010101"), QStringLiteral("#020202"), QStringLiteral("#030303")};
+    });
+
+    seriona::control::PlayerStateSnapshot trackA = makeFilledSnapshot(seriona::control::PlaybackStatus::Playing);
+    trackA.artwork = seriona::control::ArtworkRef{
+        .localPath = std::filesystem::path{"/covers/a-full.png"},
+        .thumbnailPath = std::filesystem::path{"/thumbs/a.png"},
+    };
+    controller.applyPlayerStateSnapshot(trackA);
+    QCOMPARE(controller.coverArtworkSource(), QUrl::fromLocalFile(QStringLiteral("/covers/a-full.png")).toString());
+
+    seriona::control::PlayerStateSnapshot trackB = makeFilledSnapshot(seriona::control::PlaybackStatus::Playing);
+    trackB.currentTrack->trackId = "track-echo-2";
+    controller.applyPlayerStateSnapshot(trackB);
+
+    QCOMPARE(controller.currentTrackId(), QStringLiteral("track-echo-2"));
+    QCOMPARE(controller.coverArtworkPath(), QString());
+    QCOMPARE(controller.coverArtworkSource(), QString());
+    QCOMPARE(controller.coverThumbnailSource(), QString());
+}
+
+void PlaybackSnapshotMappingTest::shutdownWithBlockedDecoder()
+{
+    QSemaphore decoderEntered;
+    QSemaphore releaseDecode;
+    Seriona::App::ArtworkPaletteWorker worker([&decoderEntered, &releaseDecode](const QString &) {
+        decoderEntered.release();
+        releaseDecode.acquire();
+        return Seriona::App::GradientPalette{
+            QStringLiteral("#000000"), QStringLiteral("#111111"), QStringLiteral("#222222")};
+    });
+    worker.requestPalette(QStringLiteral("/thumbs/blocked.png"));
+    QVERIFY(decoderEntered.tryAcquire(1, 2000));
+
+    std::atomic<bool> shutdownReturned{false};
+    std::thread shutdownThread([&worker, &shutdownReturned] {
+        worker.shutdown();
+        shutdownReturned.store(true);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds{100});
+    QCOMPARE(shutdownReturned.load(), false);
+
+    releaseDecode.release();
+    shutdownThread.join();
+    QCOMPARE(shutdownReturned.load(), true);
+
+    worker.shutdown();
 }
 
 QTEST_GUILESS_MAIN(PlaybackSnapshotMappingTest)

@@ -273,9 +273,9 @@ private:
     void activateTrack(const LibraryModel::Entry *entry);
     void requestScrollToNode(const QString &nodeId);
     bool persistCurrentFolderSortRules(const QVector<LibraryModel::SortRule> &rules);
+    QVariantList sortRuleVariantsFromModelRules(const QVector<LibraryModel::SortRule> &rules) const;
 #if SERIONA_HAS_BACKEND
     std::optional<std::vector<seriona::control::FolderSortRule>> backendSortRulesFromModelRules(const QVector<LibraryModel::SortRule> &rules) const;
-    QVariantList sortRuleVariantsFromModelRules(const QVector<LibraryModel::SortRule> &rules) const;
     std::optional<QVector<LibraryModel::SortRule>> modelSortRulesFromBackendRules(const std::vector<seriona::control::FolderSortRule> &rules) const;
     seriona::control::MediaControllerCommandResult submitCommand(const seriona::control::MediaControlCommand &command);
 #endif

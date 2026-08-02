@@ -23,6 +23,9 @@ struct CurrentTrackViewState {
     QString artist = QStringLiteral("Unknown Artist");
     QString album = QStringLiteral("Unknown Album");
     QString artworkPath;
+    // 原始 Linux 路径（保持 raw，不做 URL 化）；QML 侧 URL 化由 getter 完成。
+    QString preferredArtworkPath;
+    QString fallbackThumbnailPath;
     qreal durationSeconds = 0.0;
     QString audioFormat;
     int audioSampleRate = 0;

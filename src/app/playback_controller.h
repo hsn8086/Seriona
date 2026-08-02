@@ -5,6 +5,7 @@
 #endif
 
 #include "backend_snapshot_mapper.h"
+#include "artwork_palette_worker.h"
 
 #include <QObject>
 #include <QQmlEngine>
@@ -41,6 +42,7 @@ class PlaybackController : public QObject
     Q_PROPERTY(QString currentTrackNodeId READ currentTrackNodeId NOTIFY currentSongChanged)
     Q_PROPERTY(QString coverArtworkPath READ coverArtworkPath NOTIFY currentSongChanged)
     Q_PROPERTY(QString coverArtworkSource READ coverArtworkSource NOTIFY currentSongChanged)
+    Q_PROPERTY(QString coverThumbnailSource READ coverThumbnailSource NOTIFY currentSongChanged)
     Q_PROPERTY(QString coverPlaceholderText READ coverPlaceholderText NOTIFY currentSongChanged)
     Q_PROPERTY(qreal currentTrackDuration READ currentTrackDuration NOTIFY currentSongChanged)
     Q_PROPERTY(QString audioFormat READ audioFormat NOTIFY currentSongChanged)
@@ -64,6 +66,8 @@ public:
 #endif
 
     explicit PlaybackController(QObject *parent = nullptr);
+    explicit PlaybackController(ArtworkPaletteWorker::Decoder decoder, QObject *parent = nullptr);
+    ~PlaybackController() override;
 
     bool ready() const;
     QString capability() const;
@@ -86,6 +90,7 @@ public:
     QString currentTrackNodeId() const;
     QString coverArtworkPath() const;
     QString coverArtworkSource() const;
+    QString coverThumbnailSource() const;
     QString coverPlaceholderText() const;
     qreal currentTrackDuration() const;
     QString audioFormat() const;
@@ -144,7 +149,8 @@ private:
     void applyRepeatMode(int repeatMode);
     void setCurrentTrackViewState(const CurrentTrackViewState &state);
     void setCapability(const QString &capability);
-    void updateGradientColors(const QString &imagePath);
+    void applyGradientPalette(const GradientPalette &palette);
+    void applyPaletteResult(quint64 generation, const QString &color0, const QString &color1, const QString &color2);
 
 #if SERIONA_HAS_BACKEND
     static seriona::control::RepeatMode repeatModeForIndex(int repeatMode);
@@ -176,6 +182,11 @@ private:
         15, 10, 20, 35, 45, 40, 30, 25, 35, 45, 50, 40, 30, 20, 15, 25, 35, 40, 30, 20
     };
     int m_waveformBarWidth = 3;
+    ArtworkPaletteWorker m_paletteWorker{decodeGradientPalette};
+    // Generation of the most recent palette request; paletteReady deliveries
+    // for any older generation are stale (a track switch happened while the
+    // result was in flight) and must be dropped.
+    quint64 m_lastPaletteRequestGeneration = 0;
     QString m_gradientColor0 = QStringLiteral("#2d2d2d");
     QString m_gradientColor1 = QStringLiteral("#1a1a1a");
     QString m_gradientColor2 = QStringLiteral("#121212");

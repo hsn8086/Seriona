@@ -205,20 +205,29 @@ void LibraryTreeModelTest::mapsTrackAndLogicalTrackIdsToStableNodeIds()
 
 void LibraryTreeModelTest::exposesArtworkAndDurationRoles()
 {
-    PlaylistNode track = makeTrack("track-cover", "track-cover-id", "Covered", "Artist", "Album");
-    track.song->duration = std::chrono::milliseconds{185000};
-    track.song->artworkPath = "/music/cover.png";
+    PlaylistNode trackA = makeTrack("track-cover-a", "track-cover-a-id", "Covered A", "Artist", "Album");
+    trackA.song->duration = std::chrono::milliseconds{185000};
+    trackA.song->artworkPath = "/music/cover-a.png";
+    PlaylistNode trackB = makeTrack("track-cover-b", "track-cover-b-id", "Covered B", "Artist", "Album");
+    trackB.song->artworkPath = "/music/cover-b.png";
 
     PlaylistTreeSnapshot snapshot;
     snapshot.version = 13;
-    snapshot.nodes = {track};
+    snapshot.nodes = {trackA, trackB};
 
     Seriona::App::LibraryModel model;
     model.setPlaylistTreeSnapshot(snapshot);
 
-    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.rowCount(), 2);
     QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::DurationRole).toString(), QStringLiteral("3:05"));
-    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::ArtworkSourceRole).toString(), QStringLiteral("file:///music/cover.png"));
+    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::ArtworkSourceRole).toString(), QStringLiteral("file:///music/cover-a.png"));
+    QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::ArtworkSourceRole).toString(), QStringLiteral("file:///music/cover-b.png"));
+
+    // now-playing 封面双源（PlaybackController.coverArtworkSource / coverThumbnailSource）
+    // 不回流到每行 delegate 的 artworkSource：播放状态变化不得改写各行的 per-entry 封面。
+    QVERIFY(model.setPlayingTrackId(QStringLiteral("track-cover-b-id")));
+    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::ArtworkSourceRole).toString(), QStringLiteral("file:///music/cover-a.png"));
+    QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::ArtworkSourceRole).toString(), QStringLiteral("file:///music/cover-b.png"));
 }
 
 void LibraryTreeModelTest::handlesEmptyTree()
