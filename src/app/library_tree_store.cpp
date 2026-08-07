@@ -156,6 +156,9 @@ void LibraryTreeStore::setSnapshot(const seriona::scanner::PlaylistTreeSnapshot 
         if (sourceNode->song.has_value()) {
             copySongMetadata(*sourceNode->song, node);
         }
+        if (sourceNode->thumbnailPath.has_value() && !sourceNode->thumbnailPath->empty()) {
+            node.thumbnailPath = std::filesystem::path{*sourceNode->thumbnailPath};
+        }
         if (node.title.isEmpty()) {
             node.title = node.displayName;
         }

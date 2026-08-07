@@ -6,6 +6,7 @@
 #include <QSet>
 #include <QSignalSpy>
 #include <QString>
+#include <QUrl>
 #include <QtTest/QTest>
 
 #include <chrono>
@@ -23,7 +24,8 @@ PlaylistNode makeFolder(const std::string &nodeId,
                         const std::string &displayName,
                         std::vector<std::string> childNodeIds = {},
                         std::optional<std::string> parentNodeId = std::nullopt,
-                        PlaylistNodeKind kind = PlaylistNodeKind::Directory)
+                        PlaylistNodeKind kind = PlaylistNodeKind::Directory,
+                        std::optional<std::string> thumbnailPath = std::nullopt)
 {
     PlaylistNode node;
     node.nodeId = nodeId;
@@ -31,6 +33,7 @@ PlaylistNode makeFolder(const std::string &nodeId,
     node.kind = kind;
     node.parentNodeId = std::move(parentNodeId);
     node.childNodeIds = std::move(childNodeIds);
+    node.thumbnailPath = std::move(thumbnailPath);
     return node;
 }
 
@@ -112,6 +115,8 @@ private slots:
     void emitsDataChangedOnlyForProjectedRows();
     void keepsProjectionRoleNamesStable();
     void invalidChildNodeIdsAreSkipped();
+    void folderEntriesExposeNodeLevelThumbnailAsArtworkSource();
+    void folderEntriesWithoutThumbnailKeepArtworkSourceEmpty();
 };
 
 void LibraryTreeModelTest::rootProjectionSkipsVirtualLibraryRow()
@@ -371,6 +376,58 @@ void LibraryTreeModelTest::invalidChildNodeIdsAreSkipped()
     QCOMPARE(nodeIdAt(model, 0), QStringLiteral("valid-track"));
     QCOMPARE(model.rowForNodeId(QStringLiteral("root")), -1);
     QCOMPARE(model.rowForNodeId(QStringLiteral("valid-track")), 0);
+}
+
+void LibraryTreeModelTest::folderEntriesExposeNodeLevelThumbnailAsArtworkSource()
+{
+    PlaylistTreeSnapshot snapshot;
+    snapshot.version = 14;
+    snapshot.rootNodeId = std::string{"root"};
+    snapshot.nodes = {
+        makeFolder("root", "Library", {"folder-a", "folder-b"}, std::nullopt, PlaylistNodeKind::Root),
+        makeFolder("folder-a", "Folder A", {"folder-c", "track-a"}, std::string{"root"}, PlaylistNodeKind::Directory,
+                   std::string{"/covers/folder-a.png"}),
+        makeFolder("folder-b", "Folder B", {}, std::string{"root"}, PlaylistNodeKind::Directory),
+        makeFolder("folder-c", "Folder C", {}, std::string{"folder-a"}, PlaylistNodeKind::Directory,
+                   std::string{"/covers/folder-c.png"}),
+        makeTrack("track-a", "track-a-id", "Song A", "Artist A", "Album A", std::string{"folder-a"}),
+    };
+
+    Seriona::App::LibraryModel model;
+    model.setPlaylistTreeSnapshot(snapshot);
+
+    // 根投影：带 node-level thumbnailPath 的文件夹 Entry 输出 file URL（无 song，路径来自快照 node 字段）
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(nodeIdAt(model, 0), QStringLiteral("folder-a"));
+    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::ArtworkSourceRole).toString(),
+             QUrl::fromLocalFile(QStringLiteral("/covers/folder-a.png")).toString());
+
+    // 当前文件夹投影：子文件夹 Entry 同样生效，track 不受 node-level 字段影响（song 无缩略图 → 空）
+    model.applyBrowsingState({}, {}, {}, QStringLiteral("folder-a"));
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(nodeIdAt(model, 0), QStringLiteral("folder-c"));
+    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::ArtworkSourceRole).toString(),
+             QUrl::fromLocalFile(QStringLiteral("/covers/folder-c.png")).toString());
+    QCOMPARE(nodeIdAt(model, 1), QStringLiteral("track-a"));
+    QCOMPARE(dataAt(model, 1, Seriona::App::LibraryModel::ArtworkSourceRole).toString(), QString());
+}
+
+void LibraryTreeModelTest::folderEntriesWithoutThumbnailKeepArtworkSourceEmpty()
+{
+    PlaylistTreeSnapshot snapshot;
+    snapshot.version = 15;
+    snapshot.rootNodeId = std::string{"root"};
+    snapshot.nodes = {
+        makeFolder("root", "Library", {"folder-b"}, std::nullopt, PlaylistNodeKind::Root),
+        makeFolder("folder-b", "Folder B", {}, std::string{"root"}, PlaylistNodeKind::Directory),
+    };
+
+    Seriona::App::LibraryModel model;
+    model.setPlaylistTreeSnapshot(snapshot);
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(nodeIdAt(model, 0), QStringLiteral("folder-b"));
+    QCOMPARE(dataAt(model, 0, Seriona::App::LibraryModel::ArtworkSourceRole).toString(), QString());
 }
 
 QTEST_GUILESS_MAIN(LibraryTreeModelTest)

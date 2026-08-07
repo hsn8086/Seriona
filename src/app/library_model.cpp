@@ -187,22 +187,21 @@ LibraryModel::Entry entryFromNode(const LibraryTreeStore::Node &node, const QStr
 
     if (entry.isFolder) {
         entry.name = node.displayName;
-        return entry;
+    } else {
+        entry.trackId = node.trackId;
+        entry.title = node.title.isEmpty() ? node.displayName : node.title;
+        entry.artist = node.artist;
+        entry.album = node.album;
+        entry.format = formatFromNode(node);
+        entry.sampleRate = node.sampleRate;
+        entry.bitDepth = node.bitDepth;
+        entry.duration = node.duration.has_value() ? formatDuration(*node.duration) : QString();
+        entry.durationValue = node.duration;
+        entry.year = node.year;
+        entry.discNumber = node.discNumber;
+        entry.trackNumber = node.trackNumber;
+        entry.createdDate = node.fileMtime;
     }
-
-    entry.trackId = node.trackId;
-    entry.title = node.title.isEmpty() ? node.displayName : node.title;
-    entry.artist = node.artist;
-    entry.album = node.album;
-    entry.format = formatFromNode(node);
-    entry.sampleRate = node.sampleRate;
-    entry.bitDepth = node.bitDepth;
-    entry.duration = node.duration.has_value() ? formatDuration(*node.duration) : QString();
-    entry.durationValue = node.duration;
-    entry.year = node.year;
-    entry.discNumber = node.discNumber;
-    entry.trackNumber = node.trackNumber;
-    entry.createdDate = node.fileMtime;
 
     const std::filesystem::path &artworkPath = !node.thumbnailPath.empty() ? node.thumbnailPath : node.artworkPath;
     if (!artworkPath.empty()) {

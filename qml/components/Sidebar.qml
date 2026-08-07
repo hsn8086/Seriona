@@ -417,6 +417,8 @@ Item {
                         required property bool isFocused
                         required property string artworkSource
 
+                        readonly property bool hasFolderArtwork: delegate.isFolder && delegate.artworkSource.length > 0
+
                         width: playlistView.width
                         height: 72
                         topPadding: 8
@@ -469,11 +471,21 @@ Item {
                                     visible: !delegate.isFolder && status === Image.Ready
                                 }
 
+                                Image {
+                                    id: folderArtworkIcon
+                                    anchors.fill: parent
+                                    source: delegate.artworkSource
+                                    sourceSize: Qt.size(88, 88)
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    visible: delegate.hasFolderArtwork && status === Image.Ready
+                                }
+
                                 ColorOverlay {
                                     anchors.fill: folderThumbIcon
                                     source: folderThumbIcon
                                     color: "white"
-                                    visible: delegate.isFolder
+                                    visible: delegate.isFolder && !delegate.hasFolderArtwork
                                 }
 
                                 Rectangle {
@@ -609,6 +621,20 @@ Item {
                                             text: delegate.duration || ""
                                             color: Theme.secondaryTextColor
                                             font.pixelSize: 10
+                                        }
+                                    }
+
+                                    Image {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        source: "qrc:/qt/qml/Seriona/qml/assets/folder.svg"
+                                        sourceSize: Qt.size(14, 14)
+                                        fillMode: Image.PreserveAspectFit
+                                        visible: delegate.isFolder
+
+                                        ColorOverlay {
+                                            anchors.fill: parent
+                                            source: parent
+                                            color: "white"
                                         }
                                     }
                                 }
