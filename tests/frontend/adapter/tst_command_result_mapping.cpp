@@ -111,6 +111,10 @@ void CommandResultMappingTest::mapsDomainNotificationDefaults()
         ControlDomainNotificationKind::PlaybackError,
         MediaControllerErrorCode::BackendRejected,
         {}));
+    const NotificationViewState playbackEnded = Seriona::App::mapDomainNotification(domainNotification(
+        ControlDomainNotificationKind::PlaybackEnded,
+        MediaControllerErrorCode::None,
+        {}));
 
     QCOMPARE(completed.kind, QStringLiteral("LibraryScanCompleted"));
     QCOMPARE(completed.code, QStringLiteral("None"));
@@ -122,6 +126,11 @@ void CommandResultMappingTest::mapsDomainNotificationDefaults()
     QCOMPARE(playbackError.message, QStringLiteral("播放过程中发生错误"));
     QCOMPARE(playbackError.title, QStringLiteral("播放错误"));
     QCOMPARE(playbackError.severity, QStringLiteral("error"));
+    QCOMPARE(playbackEnded.kind, QStringLiteral("PlaybackEnded"));
+    QCOMPARE(playbackEnded.code, QStringLiteral("None"));
+    QCOMPARE(playbackEnded.message, QStringLiteral("播放列表已播放完毕"));
+    QCOMPARE(playbackEnded.title, QStringLiteral("列表播放结束"));
+    QCOMPARE(playbackEnded.severity, QStringLiteral("info"));
 }
 
 void CommandResultMappingTest::mapsEveryDomainNotificationKindName()

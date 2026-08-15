@@ -173,9 +173,9 @@ NotificationViewState mapDomainNotification(const seriona::control::ControlDomai
         }
         break;
     case seriona::control::ControlDomainNotificationKind::PlaybackEnded:
-        title = notificationText("播放结束");
+        title = notificationText("列表播放结束");
         if (message.isEmpty()) {
-            message = notificationText("当前曲目播放结束");
+            message = notificationText("播放列表已播放完毕");
         }
         break;
     case seriona::control::ControlDomainNotificationKind::OutputModeFallback:
