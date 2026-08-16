@@ -16,6 +16,27 @@ QString fromBackendString(const std::string &value)
 }
 #endif
 
+struct DelimiterHit {
+    qsizetype index = -1;
+    qsizetype size = 0;
+};
+
+DelimiterHit earliestDelimiterHit(const QString &line, const QStringList &delimiters)
+{
+    DelimiterHit earliest;
+    for (const QString &delimiter : delimiters) {
+        if (delimiter.isEmpty()) {
+            continue;
+        }
+
+        const qsizetype delimiterIndex = line.indexOf(delimiter);
+        if (delimiterIndex >= 0 && (earliest.index < 0 || delimiterIndex < earliest.index)) {
+            earliest = DelimiterHit{delimiterIndex, delimiter.size()};
+        }
+    }
+    return earliest;
+}
+
 }
 
 LyricsModel::LyricsModel(QObject *parent)
@@ -123,20 +144,29 @@ void LyricsModel::setShowTranslation(bool showTranslation)
     emit showTranslationChanged();
 }
 
-QString LyricsModel::lyricDelimiter() const
+QStringList LyricsModel::lyricDelimiters() const
 {
-    return m_lyricDelimiter;
+    return m_lyricDelimiters;
 }
 
-void LyricsModel::setLyricDelimiter(const QString &delimiter)
+void LyricsModel::setLyricDelimiters(const QStringList &delimiters)
 {
-    if (m_lyricDelimiter == delimiter) {
+    if (m_lyricDelimiters == delimiters) {
         return;
     }
 
-    m_lyricDelimiter = delimiter;
-    emit lyricDelimiterChanged();
+    m_lyricDelimiters = delimiters;
+    emit lyricDelimitersChanged();
     emitAllLyricsChanged({DisplayLineRole, TranslationRole});
+}
+
+QString LyricsModel::lyricDelimiter() const
+{
+    if (m_lyricDelimiters.isEmpty()) {
+        return {};
+    }
+
+    return m_lyricDelimiters.first();
 }
 
 #if SERIONA_HAS_BACKEND
@@ -199,30 +229,22 @@ void LyricsModel::toggleTranslation()
 
 QString LyricsModel::displayLine(const QString &line) const
 {
-    if (m_lyricDelimiter.isEmpty()) {
+    const DelimiterHit hit = earliestDelimiterHit(line, m_lyricDelimiters);
+    if (hit.index < 0) {
         return line;
     }
 
-    const qsizetype delimiterIndex = line.indexOf(m_lyricDelimiter);
-    if (delimiterIndex < 0) {
-        return line;
-    }
-
-    return line.left(delimiterIndex).trimmed();
+    return line.left(hit.index).trimmed();
 }
 
 QString LyricsModel::translationLine(const QString &line) const
 {
-    if (m_lyricDelimiter.isEmpty()) {
+    const DelimiterHit hit = earliestDelimiterHit(line, m_lyricDelimiters);
+    if (hit.index < 0) {
         return {};
     }
 
-    const qsizetype delimiterIndex = line.indexOf(m_lyricDelimiter);
-    if (delimiterIndex < 0) {
-        return {};
-    }
-
-    return line.mid(delimiterIndex + m_lyricDelimiter.size()).trimmed();
+    return line.mid(hit.index + hit.size).trimmed();
 }
 
 void LyricsModel::clearLyrics()

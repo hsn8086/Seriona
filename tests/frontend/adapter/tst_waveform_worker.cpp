@@ -349,7 +349,7 @@ void WaveformWorkerTest::staleLyricsSnapshotForDifferentTrackIsIgnored()
 
     Seriona::App::LyricsModel model;
     model.setShowTranslation(false);
-    model.setLyricDelimiter(QStringLiteral(" | "));
+    model.setLyricDelimiters({QStringLiteral(" | ")});
     model.applyPlayerStateSnapshot(currentPlayer, &currentLibrary);
 
     QCOMPARE(model.rowCount(), 1);

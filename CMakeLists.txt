@@ -795,6 +795,7 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
 
         add_test(NAME seriona_frontend_lyrics_trackid_lookup COMMAND seriona_frontend_lyrics_model_tests trackidLookup)
         add_test(NAME seriona_frontend_lyrics_missing_empty COMMAND seriona_frontend_lyrics_model_tests missingEmpty)
+        add_test(NAME seriona_frontend_lyrics_delimiter_resolution COMMAND seriona_frontend_lyrics_model_tests delimiterResolution)
 
         add_executable(seriona_frontend_backend_bridge_tests
             tests/frontend/adapter/tst_backend_bridge.cpp
