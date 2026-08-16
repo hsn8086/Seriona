@@ -610,6 +610,8 @@ Window {
                 }
             }
             
+            }
+            
             // Row 6: Lyric Delimiters Group
             ColumnLayout {
                 id: delimiterListGroup
@@ -775,7 +777,6 @@ Window {
                 }
             }
             
-            }
             }
         }
     }
