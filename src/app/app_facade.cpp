@@ -107,6 +107,21 @@ AppFacade::AppFacade(QObject *parent)
         }
         m_notifications.enqueueDomainNotification(notification);
     });
+    m_settings.setApplyOutputConfigExecutor([this](int outputMode, int sampleRate, int bufferDurationMs, const QString &preferredDeviceId) {
+        return m_backendBridge->submitConfigureOutput(outputMode, sampleRate, bufferDurationMs, preferredDeviceId);
+    });
+    m_settings.setEnumerateDevicesExecutor([this] {
+        return m_backendBridge->enumeratePlaybackDevices();
+    });
+    // 启动路径：bridge 就绪（startedChanged 且 started() 为真）后推送一次持久化配置；
+    // shutdown 也会发 startedChanged（started()==false），必须跳过。
+    connect(m_backendBridge.get(), &BackendBridge::startedChanged, this, [this] {
+        if (!m_backendBridge->started()) {
+            return;
+        }
+        m_settings.reloadFromSettings();
+        m_settings.apply();
+    });
 #endif
 
     if (backendBridgeAutostartEnabled()) {
@@ -156,6 +171,11 @@ NotificationController *AppFacade::notifications()
 NavigationController *AppFacade::navigation()
 {
     return &m_navigation;
+}
+
+SettingsController *AppFacade::settings()
+{
+    return &m_settings;
 }
 
 bool AppFacade::backendBridgeStartedForTests() const

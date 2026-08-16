@@ -74,6 +74,8 @@ required_app_layer_sources=(
     src/app/playback_controller.h
     src/app/navigation_controller.cpp
     src/app/navigation_controller.h
+    src/app/settings_controller.cpp
+    src/app/settings_controller.h
     src/app/backend_snapshot_mapper.cpp
     src/app/backend_snapshot_mapper.h
     src/app/backend_command_adapter.cpp
@@ -152,6 +154,7 @@ required_frontend_test_sources=(
     tests/frontend/adapter/tst_playback_snapshot_mapping.cpp
     tests/frontend/adapter/tst_sidebar_local_browsing.cpp
     tests/frontend/adapter/tst_snapshot_mapping.cpp
+    tests/frontend/adapter/tst_settings_controller.cpp
     tests/frontend/adapter/tst_startup_restore.cpp
     tests/frontend/adapter/tst_ui_only_handler_policy.cpp
     tests/frontend/adapter/tst_waveform_worker.cpp
@@ -174,6 +177,7 @@ required_frontend_test_targets=(
     seriona_frontend_playback_snapshot_tests
     seriona_frontend_sidebar_local_browsing_tests
     seriona_frontend_snapshot_mapping
+    seriona_frontend_settings_controller_tests
     seriona_frontend_startup_restore_tests
     seriona_frontend_ui_only_handler_policy_tests
     seriona_frontend_waveform_worker_tests

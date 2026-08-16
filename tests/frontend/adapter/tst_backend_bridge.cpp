@@ -1,5 +1,7 @@
 #include "backend_bridge.h"
 
+#include "settings_controller.h"
+
 #include "seriona/audio/audio_contracts.h"
 #include "seriona/control/folder_sort_settings_store.h"
 #include "seriona/metadata/metadata_contracts.h"
@@ -11,6 +13,7 @@
 #include <QObject>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QTemporaryFile>
 #include <QThread>
 #include <QVariantList>
 #include <QVariantMap>
@@ -40,7 +43,13 @@ public:
         m_eventSink = std::move(sink);
     }
 
-    void configureOutput(const seriona::audio::AudioOutputConfig &) override { }
+    void configureOutput(const seriona::audio::AudioOutputConfig &config) override
+    {
+        std::scoped_lock lock(m_mutex);
+        ++m_configureOutputCalls;
+        m_lastOutputConfig = config;
+    }
+
     void loadTrack(const seriona::audio::TrackPlaybackRequest &) override { }
     void prepareNext(const seriona::audio::TrackPlaybackRequest &) override { }
     void play() override { }
@@ -61,6 +70,30 @@ public:
     seriona::audio::PlaybackClockSnapshot queryPlaybackClock() const override
     {
         return {};
+    }
+
+    seriona::audio::AudioOutputConfig lastOutputConfig() const
+    {
+        std::scoped_lock lock(m_mutex);
+        return m_lastOutputConfig;
+    }
+
+    int configureOutputCalls() const
+    {
+        std::scoped_lock lock(m_mutex);
+        return m_configureOutputCalls;
+    }
+
+    std::vector<seriona::audio::AudioDeviceFormat> enumeratePlaybackDevices() const override
+    {
+        return {
+            {"dev-1", "Device One", "pulse", 48000, seriona::audio::AudioSampleFormat::Int16, 2, 0,
+             seriona::audio::AudioOutputMode::Mixed, false},
+            {"dev-2", "Device Two", "alsa", 96000, seriona::audio::AudioSampleFormat::Float32, 2, 0,
+             seriona::audio::AudioOutputMode::Mixed, false},
+            {"", "Nameless Device", "pulse", 44100, seriona::audio::AudioSampleFormat::Unknown, 0, 0,
+             seriona::audio::AudioOutputMode::Mixed, false},
+        };
     }
 
     void emitEvent(seriona::audio::BackendEvent event)
@@ -90,8 +123,10 @@ public:
 private:
     mutable std::mutex m_mutex;
     seriona::audio::BackendEventSink m_eventSink;
+    seriona::audio::AudioOutputConfig m_lastOutputConfig;
     int m_stopCalls = 0;
     int m_eventSinkClearCalls = 0;
+    int m_configureOutputCalls = 0;
 };
 
 class FakeFileScannerService final : public seriona::scanner::FileScannerService
@@ -329,6 +364,10 @@ private slots:
     void applyFolderSortRulesAllowsEmptyRules();
     void applyFolderSortRulesRejectsInvalidPayloadWithoutDispatch();
     void applyFolderSortRulesRejectsMissingContextWithoutDispatch();
+    void submitConfigureOutputBuildsTypedBackendCommand();
+    void submitConfigureOutputRejectsInvalidPayloadWithoutDispatch();
+    void enumeratePlaybackDevicesMapsDeviceIds();
+    void settingsPushOnStart();
 };
 
 void BackendBridgeTest::threading()
@@ -612,6 +651,114 @@ void BackendBridgeTest::applyFolderSortRulesRejectsMissingContextWithoutDispatch
     QCOMPARE(harness.folderSortStore->upsertCalls(), 0);
 
     bridge.shutdown();
+}
+
+void BackendBridgeTest::submitConfigureOutputBuildsTypedBackendCommand()
+{
+    ControllerHarness harness;
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    waitForInitialPlayerSnapshot(bridge);
+
+    const seriona::control::MediaControllerCommandResult mixed = bridge.submitConfigureOutput(
+        1, 96000, 500, QStringLiteral("dev-1"));
+    QVERIFY(mixed.accepted);
+    QCOMPARE(mixed.code, seriona::control::MediaControllerErrorCode::None);
+    QCOMPARE(harness.audio->configureOutputCalls(), 1);
+    const seriona::audio::AudioOutputConfig mixedConfig = harness.audio->lastOutputConfig();
+    QCOMPARE(mixedConfig.outputMode, seriona::audio::AudioOutputMode::Mixed);
+    QVERIFY(mixedConfig.targetSampleRate.has_value());
+    QCOMPARE(*mixedConfig.targetSampleRate, std::uint32_t{96000});
+    QCOMPARE(mixedConfig.bufferDuration, std::chrono::milliseconds(500));
+    QCOMPARE(QString::fromStdString(mixedConfig.preferredDeviceId), QStringLiteral("dev-1"));
+
+    // 0 采样率 = 跟随设备：不携带 targetSampleRate；空设备 id 表示默认设备
+    const seriona::control::MediaControllerCommandResult direct = bridge.submitConfigureOutput(
+        0, 0, 300, QString());
+    QVERIFY(direct.accepted);
+    QCOMPARE(direct.code, seriona::control::MediaControllerErrorCode::None);
+    QCOMPARE(harness.audio->configureOutputCalls(), 2);
+    const seriona::audio::AudioOutputConfig directConfig = harness.audio->lastOutputConfig();
+    QCOMPARE(directConfig.outputMode, seriona::audio::AudioOutputMode::Direct);
+    QVERIFY(!directConfig.targetSampleRate.has_value());
+    QCOMPARE(directConfig.bufferDuration, std::chrono::milliseconds(300));
+    QVERIFY(directConfig.preferredDeviceId.empty());
+
+    bridge.shutdown();
+}
+
+void BackendBridgeTest::submitConfigureOutputRejectsInvalidPayloadWithoutDispatch()
+{
+    ControllerHarness harness;
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    waitForInitialPlayerSnapshot(bridge);
+
+    const seriona::control::MediaControllerCommandResult invalidMode = bridge.submitConfigureOutput(
+        7, 48000, 300, QString());
+    QCOMPARE(invalidMode.accepted, false);
+    QCOMPARE(invalidMode.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
+
+    const seriona::control::MediaControllerCommandResult invalidRate = bridge.submitConfigureOutput(
+        0, 100, 300, QString());
+    QCOMPARE(invalidRate.accepted, false);
+    QCOMPARE(invalidRate.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
+
+    const seriona::control::MediaControllerCommandResult invalidDuration = bridge.submitConfigureOutput(
+        0, 48000, 2000, QString());
+    QCOMPARE(invalidDuration.accepted, false);
+    QCOMPARE(invalidDuration.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
+
+    QCOMPARE(harness.audio->configureOutputCalls(), 0);
+
+    bridge.shutdown();
+}
+
+void BackendBridgeTest::enumeratePlaybackDevicesMapsDeviceIds()
+{
+    ControllerHarness harness;
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    waitForInitialPlayerSnapshot(bridge);
+
+    // 空 deviceId 的设备不参与映射（无法被选择）
+    const QStringList devices = bridge.enumeratePlaybackDevices();
+    QCOMPARE(devices, QStringList({QStringLiteral("dev-1"), QStringLiteral("dev-2")}));
+
+    bridge.shutdown();
+}
+
+void BackendBridgeTest::settingsPushOnStart()
+{
+    QTemporaryFile settingsFile;
+    QVERIFY(settingsFile.open());
+    settingsFile.close();
+    QCoreApplication::instance()->setProperty("seriona.settingsFileForTests", settingsFile.fileName());
+
+    ControllerHarness harness;
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    Seriona::App::SettingsController settings;
+    int pushCount = 0;
+    settings.setApplyOutputConfigExecutor(
+        [&pushCount](int, int, int, const QString &) {
+            ++pushCount;
+        });
+
+    // AppFacade 启动挂钩契约：startedChanged 且 started() 为真时推送一次持久化配置
+    connect(&bridge, &Seriona::App::BackendBridge::startedChanged, &bridge, [&] {
+        if (!bridge.started()) {
+            return;
+        }
+        settings.reloadFromSettings();
+        settings.apply();
+    });
+
+    bridge.start();
+    QCOMPARE(bridge.started(), true);
+    QCOMPARE(pushCount, 1);
+
+    // shutdown 的 startedChanged（started()==false）不得再次推送
+    bridge.shutdown();
+    QCOMPARE(pushCount, 1);
+
+    QCoreApplication::instance()->setProperty("seriona.settingsFileForTests", QVariant{});
 }
 
 QTEST_GUILESS_MAIN(BackendBridgeTest)

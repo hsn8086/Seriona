@@ -319,6 +319,64 @@ seriona::control::MediaControllerCommandResult BackendBridge::applyFolderSortRul
     return submitCommand(command);
 }
 
+seriona::control::MediaControllerCommandResult BackendBridge::submitConfigureOutput(
+    int outputMode,
+    int sampleRate,
+    int bufferDurationMs,
+    const QString &preferredDeviceId)
+{
+    if (outputMode != 0 && outputMode != 1) {
+        seriona::control::MediaControllerCommandResult result = invalidCommandResult(
+            "ConfigureOutput requires outputMode 0 (Direct) or 1 (Mixed)");
+        enqueueCommandFailureNotification(result);
+        return result;
+    }
+    if (sampleRate != 0 && (sampleRate < 8000 || sampleRate > 768000)) {
+        seriona::control::MediaControllerCommandResult result = invalidCommandResult(
+            "ConfigureOutput sample rate is out of range (8000-768000)");
+        enqueueCommandFailureNotification(result);
+        return result;
+    }
+    if (bufferDurationMs < 50 || bufferDurationMs > 1000) {
+        seriona::control::MediaControllerCommandResult result = invalidCommandResult(
+            "ConfigureOutput buffer duration is out of range (50-1000 ms)");
+        enqueueCommandFailureNotification(result);
+        return result;
+    }
+
+    seriona::audio::AudioOutputConfig config;
+    config.outputMode = (outputMode == 0) ? seriona::audio::AudioOutputMode::Direct
+                                          : seriona::audio::AudioOutputMode::Mixed;
+    if (sampleRate > 0) {
+        config.targetSampleRate = static_cast<std::uint32_t>(sampleRate);
+    }
+    config.bufferDuration = std::chrono::milliseconds(bufferDurationMs);
+    config.preferredDeviceId = toBackendString(preferredDeviceId);
+
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::ConfigureOutput;
+    command.outputConfig = std::move(config);
+    return submitCommand(command);
+}
+
+QStringList BackendBridge::enumeratePlaybackDevices()
+{
+    if (m_shuttingDown || !m_controller) {
+        return {};
+    }
+
+    const std::vector<seriona::audio::AudioDeviceFormat> devices = m_controller->enumeratePlaybackDevices();
+    QStringList deviceIds;
+    deviceIds.reserve(static_cast<int>(devices.size()));
+    for (const seriona::audio::AudioDeviceFormat &device : devices) {
+        const QString deviceId = QString::fromStdString(device.deviceId);
+        if (!deviceId.isEmpty()) {
+            deviceIds.append(deviceId);
+        }
+    }
+    return deviceIds;
+}
+
 const seriona::control::PlayerStateSnapshot &BackendBridge::playerSnapshot() const
 {
     return m_playerSnapshot;

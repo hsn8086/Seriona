@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 
 #ifndef SERIONA_HAS_BACKEND
@@ -46,6 +47,12 @@ public:
         const QString &rootPath,
         const QString &folderNodeId,
         const QVariantList &rules);
+    seriona::control::MediaControllerCommandResult submitConfigureOutput(
+        int outputMode,
+        int sampleRate,
+        int bufferDurationMs,
+        const QString &preferredDeviceId);
+    QStringList enumeratePlaybackDevices();
     const seriona::control::PlayerStateSnapshot &playerSnapshot() const;
     const seriona::control::LibraryStateSnapshot &librarySnapshot() const;
     const std::deque<seriona::control::ControlDomainNotification> &notifications() const;

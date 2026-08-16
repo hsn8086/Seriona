@@ -151,6 +151,8 @@ set(SERIONA_APP_LAYER_SOURCES
     src/app/artwork_palette_worker.h
     src/app/navigation_controller.cpp
     src/app/navigation_controller.h
+    src/app/settings_controller.cpp
+    src/app/settings_controller.h
     src/app/backend_snapshot_mapper.cpp
     src/app/backend_snapshot_mapper.h
     src/app/backend_command_adapter.cpp
@@ -306,6 +308,29 @@ if(BUILD_TESTING)
         PRIVATE Qt6::Test
     )
     add_test(NAME seriona_frontend_library_tree_mapping COMMAND seriona_frontend_library_tree_mapping)
+
+    # 设置控制器为纯 QML 面（无后端依赖），mock-only 构建同样注册
+    add_executable(seriona_frontend_settings_controller_tests
+        tests/frontend/adapter/tst_settings_controller.cpp
+        src/app/settings_controller.cpp
+        src/app/settings_controller.h
+    )
+    target_include_directories(seriona_frontend_settings_controller_tests
+        PRIVATE src/app
+    )
+    target_link_libraries(seriona_frontend_settings_controller_tests
+        PRIVATE Qt6::Quick Qt6::Test
+    )
+    add_test(NAME seriona_frontend_settings_controller COMMAND seriona_frontend_settings_controller_tests defaults)
+    add_test(NAME seriona_frontend_settings_persist_notify COMMAND seriona_frontend_settings_controller_tests propertySettersPersistAndNotify)
+    add_test(NAME seriona_frontend_settings_invalid_values COMMAND seriona_frontend_settings_controller_tests invalidValuesRejected)
+    add_test(NAME seriona_frontend_settings_apply_payload COMMAND seriona_frontend_settings_controller_tests applyAssemblesPayload)
+    add_test(NAME seriona_frontend_settings_discrete_push COMMAND seriona_frontend_settings_controller_tests discreteControlsPushImmediately)
+    add_test(NAME seriona_frontend_settings_debounce COMMAND seriona_frontend_settings_controller_tests bufferDurationDebounces)
+    add_test(NAME seriona_frontend_settings_persistence_roundtrip COMMAND seriona_frontend_settings_controller_tests persistenceRoundTrip)
+    add_test(NAME seriona_frontend_settings_set_defaults COMMAND seriona_frontend_settings_controller_tests setDefaultsLandsPropertiesWithoutPersistenceOrPush)
+    add_test(NAME seriona_frontend_settings_enumerate_devices COMMAND seriona_frontend_settings_controller_tests enumerateDevicesUpdatesList)
+    add_test(NAME seriona_frontend_settings_startup_push COMMAND seriona_frontend_settings_controller_tests startupPushSequence)
 
     if(SERIONA_BACKEND_CONTROL_TARGET)
         add_executable(seriona_frontend_library_tree_model_tests
@@ -487,6 +512,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/artwork_palette_worker.h
             src/app/navigation_controller.cpp
             src/app/navigation_controller.h
+            src/app/settings_controller.cpp
+            src/app/settings_controller.h
             src/app/backend_snapshot_mapper.cpp
             src/app/backend_snapshot_mapper.h
             src/app/backend_command_adapter.cpp
@@ -531,6 +558,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/artwork_palette_worker.h
             src/app/navigation_controller.cpp
             src/app/navigation_controller.h
+            src/app/settings_controller.cpp
+            src/app/settings_controller.h
             src/app/backend_snapshot_mapper.cpp
             src/app/backend_snapshot_mapper.h
             src/app/backend_command_adapter.cpp
@@ -572,6 +601,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/artwork_palette_worker.h
             src/app/navigation_controller.cpp
             src/app/navigation_controller.h
+            src/app/settings_controller.cpp
+            src/app/settings_controller.h
             src/app/backend_snapshot_mapper.cpp
             src/app/backend_snapshot_mapper.h
             src/app/backend_command_adapter.cpp
@@ -614,6 +645,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/artwork_palette_worker.h
             src/app/navigation_controller.cpp
             src/app/navigation_controller.h
+            src/app/settings_controller.cpp
+            src/app/settings_controller.h
             src/app/backend_snapshot_mapper.cpp
             src/app/backend_snapshot_mapper.h
             src/app/backend_command_adapter.cpp
@@ -679,6 +712,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/artwork_palette_worker.h
             src/app/navigation_controller.cpp
             src/app/navigation_controller.h
+            src/app/settings_controller.cpp
+            src/app/settings_controller.h
             src/app/backend_snapshot_mapper.cpp
             src/app/backend_snapshot_mapper.h
             src/app/backend_command_adapter.cpp
@@ -719,6 +754,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/artwork_palette_worker.h
             src/app/navigation_controller.cpp
             src/app/navigation_controller.h
+            src/app/settings_controller.cpp
+            src/app/settings_controller.h
             src/app/backend_snapshot_mapper.cpp
             src/app/backend_snapshot_mapper.h
             src/app/backend_command_adapter.cpp
@@ -801,6 +838,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             tests/frontend/adapter/tst_backend_bridge.cpp
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
+            src/app/settings_controller.cpp
+            src/app/settings_controller.h
             src/app/backend_command_adapter.cpp
             src/app/backend_command_adapter.h
         )
@@ -811,7 +850,7 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             PRIVATE SERIONA_HAS_BACKEND=1
         )
         target_link_libraries(seriona_frontend_backend_bridge_tests
-            PRIVATE Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_APP_TARGET}
+            PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_APP_TARGET}
         )
 
         add_test(NAME seriona_frontend_backend_bridge_threading COMMAND seriona_frontend_backend_bridge_tests threading)
@@ -823,6 +862,10 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_test(NAME seriona_frontend_backend_bridge_sort_empty_rules COMMAND seriona_frontend_backend_bridge_tests applyFolderSortRulesAllowsEmptyRules)
         add_test(NAME seriona_frontend_backend_bridge_sort_invalid_payload COMMAND seriona_frontend_backend_bridge_tests applyFolderSortRulesRejectsInvalidPayloadWithoutDispatch)
         add_test(NAME seriona_frontend_backend_bridge_sort_missing_context COMMAND seriona_frontend_backend_bridge_tests applyFolderSortRulesRejectsMissingContextWithoutDispatch)
+        add_test(NAME seriona_frontend_backend_bridge_configure_output COMMAND seriona_frontend_backend_bridge_tests submitConfigureOutputBuildsTypedBackendCommand)
+        add_test(NAME seriona_frontend_backend_bridge_configure_output_invalid COMMAND seriona_frontend_backend_bridge_tests submitConfigureOutputRejectsInvalidPayloadWithoutDispatch)
+        add_test(NAME seriona_frontend_backend_bridge_enumerate_devices COMMAND seriona_frontend_backend_bridge_tests enumeratePlaybackDevicesMapsDeviceIds)
+        add_test(NAME seriona_frontend_backend_bridge_settings_push_on_start COMMAND seriona_frontend_backend_bridge_tests settingsPushOnStart)
     endif()
 endif()
 

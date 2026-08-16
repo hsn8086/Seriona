@@ -5,6 +5,7 @@
 #include "navigation_controller.h"
 #include "notification_controller.h"
 #include "playback_controller.h"
+#include "settings_controller.h"
 
 #include <QObject>
 #include <QQmlEngine>
@@ -39,6 +40,7 @@ class AppFacade : public QObject
     Q_PROPERTY(LyricsModel *lyrics READ lyrics CONSTANT)
     Q_PROPERTY(NotificationController *notifications READ notifications CONSTANT)
     Q_PROPERTY(NavigationController *navigation READ navigation CONSTANT)
+    Q_PROPERTY(SettingsController *settings READ settings CONSTANT)
     QML_ELEMENT
 
 public:
@@ -52,6 +54,7 @@ public:
     LyricsModel *lyrics();
     NotificationController *notifications();
     NavigationController *navigation();
+    SettingsController *settings();
     bool backendBridgeStartedForTests() const;
     std::size_t backendNotificationCountForTests() const;
 #if SERIONA_HAS_BACKEND
@@ -82,6 +85,7 @@ private:
     LyricsModel m_lyrics;
     NotificationController m_notifications;
     NavigationController m_navigation;
+    SettingsController m_settings;
     std::unique_ptr<BackendBridge> m_backendBridge;
     bool m_shuttingDown = false;
 #if SERIONA_HAS_BACKEND

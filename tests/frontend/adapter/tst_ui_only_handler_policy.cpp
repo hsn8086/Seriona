@@ -140,13 +140,22 @@ void UiOnlyHandlerPolicyTest::uiOnlyHandlersDoNotUseBackendCommands()
     expectAbsent(windowControlsQml, QStringLiteral("libraryController"));
     expectAbsent(windowControlsQml, QStringLiteral("notifications"));
 
-    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("淡入淡出"));
-    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("无缝播放"));
-    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("回放增益"));
-    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("均衡器"));
-    expectUnsupportedOnlyMainAction(mainContentQml, QStringLiteral("关于 Seriona"));
-    expectContains(mainContentQml, QStringLiteral("BubbleMenuItem { text: qsTr(\"退出\"); onTriggered: { mainMenu.close(); root.exitRequested(); } }"));
+    // 更多设置菜单：四项平级（设置/均衡器/关于 Seriona/退出），纯 UI 处理，无后端命令
+    expectContains(mainContentQml, QStringLiteral("signal openSettingsRequested()"));
+    expectContains(mainContentQml, QStringLiteral("signal openEqualizerRequested()"));
+    expectContains(mainContentQml, QStringLiteral("text: qsTr(\"设置\")"));
+    expectContains(mainContentQml, QStringLiteral("root.openSettingsRequested()"));
+    expectContains(mainContentQml, QStringLiteral("text: qsTr(\"均衡器\")"));
+    expectContains(mainContentQml, QStringLiteral("root.openEqualizerRequested()"));
+    expectContains(mainContentQml, QStringLiteral("showUnsupportedFeedback(qsTr(\"关于 Seriona\"))"));
+    expectContains(mainContentQml, QStringLiteral("text: qsTr(\"退出\")"));
+    expectContains(mainContentQml, QStringLiteral("root.exitRequested()"));
     expectAbsent(mainContentQml, QStringLiteral("showUnsupportedFeedback(qsTr(\"退出\"))"));
+    expectAbsent(mainContentQml, QStringLiteral("showUnsupportedFeedback(qsTr(\"均衡器\"))"));
+    expectAbsent(mainContentQml, QStringLiteral("BubbleSubMenuItem"));
+    expectAbsent(mainContentQml, QStringLiteral("淡入淡出"));
+    expectAbsent(mainContentQml, QStringLiteral("无缝播放"));
+    expectAbsent(mainContentQml, QStringLiteral("回放增益"));
     expectAbsent(mainContentQml, QStringLiteral("submitCommand"));
 
     expectContains(sidebarQml, QStringLiteral("function showUnsupportedFeedback(actionName)"));

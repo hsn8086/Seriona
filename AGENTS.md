@@ -34,7 +34,7 @@
 ## 后端集成（可选）
 - `SERIONA_BACKEND_SOURCE_DIR` 默认是相对仓库根目录的 `../Seriona_Backend`；设为 `""` 才会强制 mock-only。非空路径不存在时 CMake 从 `https://github.com/kaizen857/Seriona_Backend.git` 的 `main` 分支 FetchContent，抓取失败会配置失败，不会自动回退。
 - 接入后端时，前端链接后端的 control/audio/app 目标并定义 `SERIONA_HAS_BACKEND=1`；CMake 会关闭后端子树自身的 app/tests，再恢复前端的 `BUILD_TESTING`。
-- `BUILD_TESTING` 默认为 `ON`；启用测试时，mock-only 只注册 `seriona_frontend_command_result_mapping`、`seriona_frontend_snapshot_mapping`、`seriona_frontend_library_tree_mapping`、`seriona_frontend_app_facade_smoke_mode`，其余前端测试都要求后端目标。
+- `BUILD_TESTING` 默认为 `ON`；启用测试时，mock-only 只注册 `seriona_frontend_command_result_mapping`、`seriona_frontend_snapshot_mapping`、`seriona_frontend_library_tree_mapping`、`seriona_frontend_settings_controller_tests`、`seriona_frontend_app_facade_smoke_mode`（设置控制器是纯 QML 面，无后端依赖），其余前端测试都要求后端目标。
 - 离线运行验证脚本时，可用 `SERIONA_FETCHCONTENT_CATCH2_DIR` 和 `SERIONA_FETCHCONTENT_THREAD_POOL_DIR` 指向已有依赖源码。
 
 ## QML 与资源
