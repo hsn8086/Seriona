@@ -211,6 +211,11 @@ Window {
         if (!targetItem || !targetItem.Window.window)
             return;
 
+        // 显示前重置页面栈（替代 onVisibleChanged 中的重置）：
+        // 窗口销毁过程中 visible 变化会触发绑定，此时 StackView 内部
+        // 视图正在销毁，pop() 会访问已删除的过渡 item 导致崩溃（SEGV）。
+        root.resetPage();
+
         root.transientParent = targetItem.Window.window;
 
         var topCenter = targetItem.mapToGlobal(targetItem.width / 2, 0);
@@ -238,7 +243,11 @@ Window {
 
     onVisibleChanged: {
         if (!visible) {
-            root.resetPage();
+            // 不要在这里重置页面栈：窗口销毁（应用退出）时 setVisible(false)
+            // 会触发本处理器，此时对 StackView 调用 pop() 会在过渡机制中
+            // 访问已销毁的 QObject（QQuickPropertyAnimation::createTransitionActions
+            // -> ExternalRefCountData::getAndRef），导致 SIGSEGV。
+            // 页面栈重置已移至 showAtTarget()。
             lastClosedAt = Date.now();
         }
     }
