@@ -93,6 +93,8 @@ public:
              seriona::audio::AudioOutputMode::Mixed, false},
             {"", "Nameless Device", "pulse", 44100, seriona::audio::AudioSampleFormat::Unknown, 0, 0,
              seriona::audio::AudioOutputMode::Mixed, false},
+            {"dev-3", "", "pulse", 48000, seriona::audio::AudioSampleFormat::Int16, 2, 0,
+             seriona::audio::AudioOutputMode::Mixed, false},
         };
     }
 
@@ -741,9 +743,14 @@ void BackendBridgeTest::enumeratePlaybackDevicesMapsDeviceIds()
     Seriona::App::BackendBridge bridge(harness.factory(true));
     waitForInitialPlayerSnapshot(bridge);
 
-    // 空 deviceId 的设备不参与映射（无法被选择）
-    const QStringList devices = bridge.enumeratePlaybackDevices();
-    QCOMPARE(devices, QStringList({QStringLiteral("dev-1"), QStringLiteral("dev-2")}));
+    // 空 deviceId 的设备不参与映射（无法被选择）；deviceName 为空时以 deviceId 兜底
+    const QList<QPair<QString, QString>> devices = bridge.enumeratePlaybackDevices();
+    const QList<QPair<QString, QString>> expected = {
+        {QStringLiteral("dev-1"), QStringLiteral("Device One")},
+        {QStringLiteral("dev-2"), QStringLiteral("Device Two")},
+        {QStringLiteral("dev-3"), QStringLiteral("dev-3")},
+    };
+    QCOMPARE(devices, expected);
 
     bridge.shutdown();
 }

@@ -493,6 +493,7 @@ Window {
                     }
                 }
             }
+            }
             
             // Row 4: Output Device
             RowLayout {
@@ -511,10 +512,10 @@ Window {
                     Layout.preferredWidth: 200
                     Layout.preferredHeight: 32
                     
-                    model: settings.playbackDevices
-                    enabled: settings.outputMode === 1 && settings.playbackDevices.length > 0
+                    model: settings.playbackDeviceNames
+                    enabled: settings.playbackDevices.length > 0
                     
-                    displayText: enabled ? currentText : (settings.outputMode === 0 ? qsTr("直接输出模式已禁用设备选择") : qsTr("默认设备"))
+                    displayText: enabled ? currentText : qsTr("无可用输出设备")
                     
                     Binding {
                         target: deviceCombo
@@ -608,8 +609,6 @@ Window {
                         }
                     }
                 }
-            }
-            
             }
             
             // Row 6: Lyric Delimiters Group

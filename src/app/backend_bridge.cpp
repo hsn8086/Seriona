@@ -8,6 +8,8 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QMetaObject>
+#include <QPair>
+#include <QList>
 #include <QPointer>
 #include <QVariantMap>
 
@@ -369,22 +371,27 @@ seriona::control::MediaControllerCommandResult BackendBridge::submitConfigureOut
     return submitCommand(command);
 }
 
-QStringList BackendBridge::enumeratePlaybackDevices()
+QList<QPair<QString, QString>> BackendBridge::enumeratePlaybackDevices()
 {
     if (m_shuttingDown || !m_controller) {
         return {};
     }
 
     const std::vector<seriona::audio::AudioDeviceFormat> devices = m_controller->enumeratePlaybackDevices();
-    QStringList deviceIds;
-    deviceIds.reserve(static_cast<int>(devices.size()));
+    QList<QPair<QString, QString>> devicePairs;
+    devicePairs.reserve(static_cast<qsizetype>(devices.size()));
     for (const seriona::audio::AudioDeviceFormat &device : devices) {
         const QString deviceId = QString::fromStdString(device.deviceId);
-        if (!deviceId.isEmpty()) {
-            deviceIds.append(deviceId);
+        if (deviceId.isEmpty()) {
+            continue;
         }
+        QString deviceName = QString::fromStdString(device.deviceName);
+        if (deviceName.isEmpty()) {
+            deviceName = deviceId;
+        }
+        devicePairs.append({deviceId, deviceName});
     }
-    return deviceIds;
+    return devicePairs;
 }
 
 const seriona::control::PlayerStateSnapshot &BackendBridge::playerSnapshot() const

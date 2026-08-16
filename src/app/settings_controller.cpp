@@ -86,6 +86,11 @@ QStringList SettingsController::playbackDevices() const
     return m_playbackDevices;
 }
 
+QStringList SettingsController::playbackDeviceNames() const
+{
+    return m_playbackDeviceNames;
+}
+
 QString SettingsController::preferredDeviceId() const
 {
     return m_preferredDeviceId;
@@ -231,12 +236,28 @@ void SettingsController::enumerateDevices()
     if (!m_enumerateDevicesExecutor) {
         return;
     }
-    const QStringList devices = m_enumerateDevicesExecutor();
-    if (devices == m_playbackDevices) {
+    const QList<QPair<QString, QString>> devices = m_enumerateDevicesExecutor();
+    QStringList ids;
+    QStringList names;
+    ids.reserve(devices.size());
+    names.reserve(devices.size());
+    for (const auto &device : devices) {
+        ids.append(device.first);
+        names.append(device.second);
+    }
+    const bool idsChanged = ids != m_playbackDevices;
+    const bool namesChanged = names != m_playbackDeviceNames;
+    if (!idsChanged && !namesChanged) {
         return;
     }
-    m_playbackDevices = devices;
-    emit playbackDevicesChanged();
+    m_playbackDevices = ids;
+    m_playbackDeviceNames = names;
+    if (idsChanged) {
+        emit playbackDevicesChanged();
+    }
+    if (namesChanged) {
+        emit playbackDeviceNamesChanged();
+    }
 }
 
 void SettingsController::setApplyOutputConfigExecutor(ApplyOutputConfigExecutor executor)

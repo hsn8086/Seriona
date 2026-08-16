@@ -6,6 +6,8 @@
 #include <QStringList>
 #include <QTimer>
 #include <QVariant>
+#include <QList>
+#include <QPair>
 
 #include <functional>
 
@@ -25,6 +27,7 @@ class SettingsController : public QObject
     Q_OBJECT
     Q_PROPERTY(int outputMode READ outputMode WRITE setOutputMode NOTIFY outputModeChanged)
     Q_PROPERTY(QStringList playbackDevices READ playbackDevices NOTIFY playbackDevicesChanged)
+    Q_PROPERTY(QStringList playbackDeviceNames READ playbackDeviceNames NOTIFY playbackDeviceNamesChanged)
     Q_PROPERTY(QString preferredDeviceId READ preferredDeviceId WRITE setPreferredDeviceId NOTIFY preferredDeviceIdChanged)
     Q_PROPERTY(int sampleRate READ sampleRate WRITE setSampleRate NOTIFY sampleRateChanged)
     Q_PROPERTY(int sampleFormat READ sampleFormat WRITE setSampleFormat NOTIFY sampleFormatChanged)
@@ -36,7 +39,7 @@ class SettingsController : public QObject
 public:
     using ApplyOutputConfigExecutor =
         std::function<void(int outputMode, int sampleRate, int sampleFormat, int bufferDurationMs, const QString &preferredDeviceId)>;
-    using EnumerateDevicesExecutor = std::function<QStringList()>;
+    using EnumerateDevicesExecutor = std::function<QList<QPair<QString, QString>>()>;
 
     explicit SettingsController(QObject *parent = nullptr);
 
@@ -44,6 +47,7 @@ public:
     void setOutputMode(int mode);
 
     QStringList playbackDevices() const;
+    QStringList playbackDeviceNames() const;
 
     QString preferredDeviceId() const;
     void setPreferredDeviceId(const QString &deviceId);
@@ -78,6 +82,7 @@ public:
 signals:
     void outputModeChanged();
     void playbackDevicesChanged();
+    void playbackDeviceNamesChanged();
     void preferredDeviceIdChanged();
     void sampleRateChanged();
     void sampleFormatChanged();
@@ -98,6 +103,7 @@ private:
 
     int m_outputMode = 0;
     QStringList m_playbackDevices;
+    QStringList m_playbackDeviceNames;
     QString m_preferredDeviceId;
     int m_sampleRate = 48000;
     int m_sampleFormat = 0;

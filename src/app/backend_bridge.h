@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QObject>
+#include <QPair>
+#include <QList>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
@@ -53,7 +55,7 @@ public:
         int sampleFormat,
         int bufferDurationMs,
         const QString &preferredDeviceId);
-    QStringList enumeratePlaybackDevices();
+    QList<QPair<QString, QString>> enumeratePlaybackDevices();
     const seriona::control::PlayerStateSnapshot &playerSnapshot() const;
     const seriona::control::LibraryStateSnapshot &librarySnapshot() const;
     const std::deque<seriona::control::ControlDomainNotification> &notifications() const;

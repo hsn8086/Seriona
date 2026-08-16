@@ -313,23 +313,44 @@ void SettingsControllerTest::enumerateDevicesUpdatesList()
     Seriona::App::SettingsController settings;
     settings.setEnumerateDevicesExecutor(
         [] {
-            return QStringList{QStringLiteral("dev-1"), QStringLiteral("dev-2")};
+            return QList<QPair<QString, QString>>{
+                {QStringLiteral("dev-1"), QStringLiteral("Device One")},
+                {QStringLiteral("dev-2"), QStringLiteral("Device Two")},
+            };
         });
     QSignalSpy devicesSpy(&settings, &Seriona::App::SettingsController::playbackDevicesChanged);
+    QSignalSpy namesSpy(&settings, &Seriona::App::SettingsController::playbackDeviceNamesChanged);
 
     settings.enumerateDevices();
-    const QStringList expectedDevices{QStringLiteral("dev-1"), QStringLiteral("dev-2")};
-    QCOMPARE(settings.playbackDevices(), expectedDevices);
+    QCOMPARE(settings.playbackDevices(), QStringList({QStringLiteral("dev-1"), QStringLiteral("dev-2")}));
+    QCOMPARE(settings.playbackDeviceNames(), QStringList({QStringLiteral("Device One"), QStringLiteral("Device Two")}));
     QCOMPARE(devicesSpy.count(), 1);
+    QCOMPARE(namesSpy.count(), 1);
 
-    // 相同列表不重复 NOTIFY
+    // 相同列表不重复 NOTIFY（id 与名字都跳过）
     settings.enumerateDevices();
     QCOMPARE(devicesSpy.count(), 1);
+    QCOMPARE(namesSpy.count(), 1);
+
+    // 仅名字变化时只发 playbackDeviceNamesChanged，id 列表不变
+    settings.setEnumerateDevicesExecutor(
+        [] {
+            return QList<QPair<QString, QString>>{
+                {QStringLiteral("dev-1"), QStringLiteral("Device One Renamed")},
+                {QStringLiteral("dev-2"), QStringLiteral("Device Two")},
+            };
+        });
+    settings.enumerateDevices();
+    QCOMPARE(settings.playbackDevices(), QStringList({QStringLiteral("dev-1"), QStringLiteral("dev-2")}));
+    QCOMPARE(settings.playbackDeviceNames(), QStringList({QStringLiteral("Device One Renamed"), QStringLiteral("Device Two")}));
+    QCOMPARE(devicesSpy.count(), 1);
+    QCOMPARE(namesSpy.count(), 2);
 
     // 无 executor（mock 模式）时无副作用
     Seriona::App::SettingsController mockController;
     mockController.enumerateDevices();
     QVERIFY(mockController.playbackDevices().isEmpty());
+    QVERIFY(mockController.playbackDeviceNames().isEmpty());
 }
 
 void SettingsControllerTest::lyricDelimitersPersistRoundTrip()
