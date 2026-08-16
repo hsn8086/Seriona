@@ -322,6 +322,7 @@ seriona::control::MediaControllerCommandResult BackendBridge::applyFolderSortRul
 seriona::control::MediaControllerCommandResult BackendBridge::submitConfigureOutput(
     int outputMode,
     int sampleRate,
+    int sampleFormat,
     int bufferDurationMs,
     const QString &preferredDeviceId)
 {
@@ -337,6 +338,12 @@ seriona::control::MediaControllerCommandResult BackendBridge::submitConfigureOut
         enqueueCommandFailureNotification(result);
         return result;
     }
+    if (sampleFormat != 0 && sampleFormat != 1 && sampleFormat != 2 && sampleFormat != 4) {
+        seriona::control::MediaControllerCommandResult result = invalidCommandResult(
+            "ConfigureOutput sample format must be 0 (device default), 1 (Int16), 2 (Int24), or 4 (Float32)");
+        enqueueCommandFailureNotification(result);
+        return result;
+    }
     if (bufferDurationMs < 50 || bufferDurationMs > 1000) {
         seriona::control::MediaControllerCommandResult result = invalidCommandResult(
             "ConfigureOutput buffer duration is out of range (50-1000 ms)");
@@ -349,6 +356,9 @@ seriona::control::MediaControllerCommandResult BackendBridge::submitConfigureOut
                                           : seriona::audio::AudioOutputMode::Mixed;
     if (sampleRate > 0) {
         config.targetSampleRate = static_cast<std::uint32_t>(sampleRate);
+    }
+    if (sampleFormat > 0) {
+        config.targetSampleFormat = static_cast<seriona::audio::AudioSampleFormat>(sampleFormat);
     }
     config.bufferDuration = std::chrono::milliseconds(bufferDurationMs);
     config.preferredDeviceId = toBackendString(preferredDeviceId);

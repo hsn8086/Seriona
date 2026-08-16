@@ -50,6 +50,7 @@ public:
     seriona::control::MediaControllerCommandResult submitConfigureOutput(
         int outputMode,
         int sampleRate,
+        int sampleFormat,
         int bufferDurationMs,
         const QString &preferredDeviceId);
     QStringList enumeratePlaybackDevices();

@@ -12,6 +12,8 @@
 #include <QUrl>
 #include <QVariant>
 
+#include <string>
+
 namespace Seriona::App {
 
 namespace {
@@ -27,6 +29,16 @@ bool backendBridgeAutostartEnabled()
 
     const QVariant configured = application->property(kBackendBridgeAutostartProperty);
     return configured.isValid() ? configured.toBool() : true;
+}
+
+// ConfigureOutput 的拒绝通知：前端本地校验与后端 reducer 的拒绝消息均以
+// "ConfigureOutput" 开头（backend_bridge.cpp 的 invalidCommandResult 与
+// control_state_reducer.cpp 的 handleConfigureOutput），其他命令的 CommandRejected
+// 不以此开头，可据此区分而不误触发回退。
+bool isConfigureOutputRejection(const std::string &message)
+{
+    return QString::fromUtf8(message.data(), static_cast<qsizetype>(message.size()))
+        .startsWith(QStringLiteral("ConfigureOutput"));
 }
 
 }
@@ -105,10 +117,14 @@ AppFacade::AppFacade(QObject *parent)
             && notification.folderSortSetting.has_value()) {
             m_library.applyFolderSortSetting(*notification.folderSortSetting);
         }
+        if (notification.kind == seriona::control::ControlDomainNotificationKind::CommandRejected
+            && isConfigureOutputRejection(notification.message)) {
+            m_settings.rollbackRejectedOutputConfig();
+        }
         m_notifications.enqueueDomainNotification(notification);
     });
-    m_settings.setApplyOutputConfigExecutor([this](int outputMode, int sampleRate, int bufferDurationMs, const QString &preferredDeviceId) {
-        return m_backendBridge->submitConfigureOutput(outputMode, sampleRate, bufferDurationMs, preferredDeviceId);
+    m_settings.setApplyOutputConfigExecutor([this](int outputMode, int sampleRate, int sampleFormat, int bufferDurationMs, const QString &preferredDeviceId) {
+        return m_backendBridge->submitConfigureOutput(outputMode, sampleRate, sampleFormat, bufferDurationMs, preferredDeviceId);
     });
     m_settings.setEnumerateDevicesExecutor([this] {
         return m_backendBridge->enumeratePlaybackDevices();
@@ -120,9 +136,15 @@ AppFacade::AppFacade(QObject *parent)
             return;
         }
         m_settings.reloadFromSettings();
+        m_lyrics.setLyricDelimiters(m_settings.lyricDelimiters());
         m_settings.apply();
     });
 #endif
+
+    // 歌词分隔符联动：设置变化立即同步到 LyricsModel（歌词解析立即生效）。
+    connect(&m_settings, &SettingsController::lyricDelimitersChanged, this, [this] {
+        m_lyrics.setLyricDelimiters(m_settings.lyricDelimiters());
+    });
 
     if (backendBridgeAutostartEnabled()) {
         m_backendBridge->start();

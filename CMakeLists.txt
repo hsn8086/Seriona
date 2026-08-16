@@ -333,6 +333,10 @@ if(BUILD_TESTING)
     add_test(NAME seriona_frontend_settings_set_defaults COMMAND seriona_frontend_settings_controller_tests setDefaultsLandsPropertiesWithoutPersistenceOrPush)
     add_test(NAME seriona_frontend_settings_enumerate_devices COMMAND seriona_frontend_settings_controller_tests enumerateDevicesUpdatesList)
     add_test(NAME seriona_frontend_settings_startup_push COMMAND seriona_frontend_settings_controller_tests startupPushSequence)
+    add_test(NAME seriona_frontend_settings_lyrics_persist COMMAND seriona_frontend_settings_controller_tests lyricDelimitersPersistRoundTrip)
+    add_test(NAME seriona_frontend_settings_sample_format COMMAND seriona_frontend_settings_controller_tests sampleFormatPersistRoundTrip)
+    add_test(NAME seriona_frontend_settings_apply_sample_format COMMAND seriona_frontend_settings_controller_tests applyIncludesSampleFormat)
+    add_test(NAME seriona_frontend_settings_rollback COMMAND seriona_frontend_settings_controller_tests rollbackRejectedOutputConfigRestoresSnapshot)
 
     if(SERIONA_BACKEND_CONTROL_TARGET)
         add_executable(seriona_frontend_library_tree_model_tests

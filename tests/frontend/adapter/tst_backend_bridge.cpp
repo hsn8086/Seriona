@@ -660,7 +660,7 @@ void BackendBridgeTest::submitConfigureOutputBuildsTypedBackendCommand()
     waitForInitialPlayerSnapshot(bridge);
 
     const seriona::control::MediaControllerCommandResult mixed = bridge.submitConfigureOutput(
-        1, 96000, 500, QStringLiteral("dev-1"));
+        1, 96000, 2, 500, QStringLiteral("dev-1"));
     QVERIFY(mixed.accepted);
     QCOMPARE(mixed.code, seriona::control::MediaControllerErrorCode::None);
     QCOMPARE(harness.audio->configureOutputCalls(), 1);
@@ -668,20 +668,33 @@ void BackendBridgeTest::submitConfigureOutputBuildsTypedBackendCommand()
     QCOMPARE(mixedConfig.outputMode, seriona::audio::AudioOutputMode::Mixed);
     QVERIFY(mixedConfig.targetSampleRate.has_value());
     QCOMPARE(*mixedConfig.targetSampleRate, std::uint32_t{96000});
+    QVERIFY(mixedConfig.targetSampleFormat.has_value());
+    QCOMPARE(*mixedConfig.targetSampleFormat, seriona::audio::AudioSampleFormat::Int24);
     QCOMPARE(mixedConfig.bufferDuration, std::chrono::milliseconds(500));
     QCOMPARE(QString::fromStdString(mixedConfig.preferredDeviceId), QStringLiteral("dev-1"));
 
-    // 0 采样率 = 跟随设备：不携带 targetSampleRate；空设备 id 表示默认设备
+    // 0 采样率/位深 = 跟随设备：不携带 targetSampleRate/targetSampleFormat；空设备 id 表示默认设备
     const seriona::control::MediaControllerCommandResult direct = bridge.submitConfigureOutput(
-        0, 0, 300, QString());
+        0, 0, 0, 300, QString());
     QVERIFY(direct.accepted);
     QCOMPARE(direct.code, seriona::control::MediaControllerErrorCode::None);
     QCOMPARE(harness.audio->configureOutputCalls(), 2);
     const seriona::audio::AudioOutputConfig directConfig = harness.audio->lastOutputConfig();
     QCOMPARE(directConfig.outputMode, seriona::audio::AudioOutputMode::Direct);
     QVERIFY(!directConfig.targetSampleRate.has_value());
+    QVERIFY(!directConfig.targetSampleFormat.has_value());
     QCOMPARE(directConfig.bufferDuration, std::chrono::milliseconds(300));
     QVERIFY(directConfig.preferredDeviceId.empty());
+
+    // 位深 1/4 映射 Int16/Float32
+    const seriona::control::MediaControllerCommandResult int16 = bridge.submitConfigureOutput(
+        0, 0, 1, 300, QString());
+    QVERIFY(int16.accepted);
+    QCOMPARE(*harness.audio->lastOutputConfig().targetSampleFormat, seriona::audio::AudioSampleFormat::Int16);
+    const seriona::control::MediaControllerCommandResult float32 = bridge.submitConfigureOutput(
+        0, 0, 4, 300, QString());
+    QVERIFY(float32.accepted);
+    QCOMPARE(*harness.audio->lastOutputConfig().targetSampleFormat, seriona::audio::AudioSampleFormat::Float32);
 
     bridge.shutdown();
 }
@@ -693,17 +706,27 @@ void BackendBridgeTest::submitConfigureOutputRejectsInvalidPayloadWithoutDispatc
     waitForInitialPlayerSnapshot(bridge);
 
     const seriona::control::MediaControllerCommandResult invalidMode = bridge.submitConfigureOutput(
-        7, 48000, 300, QString());
+        7, 48000, 0, 300, QString());
     QCOMPARE(invalidMode.accepted, false);
     QCOMPARE(invalidMode.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
 
     const seriona::control::MediaControllerCommandResult invalidRate = bridge.submitConfigureOutput(
-        0, 100, 300, QString());
+        0, 100, 0, 300, QString());
     QCOMPARE(invalidRate.accepted, false);
     QCOMPARE(invalidRate.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
 
+    const seriona::control::MediaControllerCommandResult invalidFormat = bridge.submitConfigureOutput(
+        0, 48000, 3, 300, QString());
+    QCOMPARE(invalidFormat.accepted, false);
+    QCOMPARE(invalidFormat.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
+
+    const seriona::control::MediaControllerCommandResult invalidFormatHigh = bridge.submitConfigureOutput(
+        0, 48000, 99, 300, QString());
+    QCOMPARE(invalidFormatHigh.accepted, false);
+    QCOMPARE(invalidFormatHigh.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
+
     const seriona::control::MediaControllerCommandResult invalidDuration = bridge.submitConfigureOutput(
-        0, 48000, 2000, QString());
+        0, 48000, 0, 2000, QString());
     QCOMPARE(invalidDuration.accepted, false);
     QCOMPARE(invalidDuration.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
 
@@ -737,7 +760,7 @@ void BackendBridgeTest::settingsPushOnStart()
     Seriona::App::SettingsController settings;
     int pushCount = 0;
     settings.setApplyOutputConfigExecutor(
-        [&pushCount](int, int, int, const QString &) {
+        [&pushCount](int, int, int, int, const QString &) {
             ++pushCount;
         });
 
