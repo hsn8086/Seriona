@@ -24,7 +24,6 @@ class LyricsModel : public QAbstractListModel
     Q_PROPERTY(qreal playbackPosition READ playbackPosition WRITE setPlaybackPosition NOTIFY playbackPositionChanged)
     Q_PROPERTY(bool showTranslation READ showTranslation WRITE setShowTranslation NOTIFY showTranslationChanged)
     Q_PROPERTY(QStringList lyricDelimiters READ lyricDelimiters WRITE setLyricDelimiters NOTIFY lyricDelimitersChanged)
-    Q_PROPERTY(QString lyricDelimiter READ lyricDelimiter NOTIFY lyricDelimitersChanged) // deprecated: 只读兼容属性，供 MainContent.qml 既有单值绑定编译；T7 迁移后移除
     QML_ELEMENT
 
 public:
@@ -54,9 +53,6 @@ public:
 
     QStringList lyricDelimiters() const;
     void setLyricDelimiters(const QStringList &delimiters);
-
-    // deprecated: 兼容属性，返回 lyricDelimiters 首项；MainContent.qml 迁移到 lyricDelimiters 后移除
-    QString lyricDelimiter() const;
 
 #if SERIONA_HAS_BACKEND
     void applyPlayerStateSnapshot(

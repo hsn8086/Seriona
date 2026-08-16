@@ -160,15 +160,6 @@ void LyricsModel::setLyricDelimiters(const QStringList &delimiters)
     emitAllLyricsChanged({DisplayLineRole, TranslationRole});
 }
 
-QString LyricsModel::lyricDelimiter() const
-{
-    if (m_lyricDelimiters.isEmpty()) {
-        return {};
-    }
-
-    return m_lyricDelimiters.first();
-}
-
 #if SERIONA_HAS_BACKEND
 void LyricsModel::applyPlayerStateSnapshot(
     const seriona::control::PlayerStateSnapshot &snapshot,

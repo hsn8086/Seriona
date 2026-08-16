@@ -13,6 +13,8 @@ Item {
     signal backClicked()
     signal playlistToggled()
     signal exitRequested()
+    signal openSettingsRequested()
+    signal openEqualizerRequested()
     property bool isSidebarOpen: false
     required property PlaybackController playbackController
     required property NotificationController notifications
@@ -64,6 +66,10 @@ Item {
 
     function closeMenus() {
         mainMenu.close();
+    }
+
+    function openMenuForSmoke() {
+        mainMenu.showAtTarget();
     }
 
     function showUnsupportedFeedback(actionName) {
@@ -841,113 +847,33 @@ Item {
                     arrowDirection: "down"
                     targetItem: settingsBtn
 
-                    BubbleSubMenuItem {
+                    BubbleMenuItem {
+                        objectName: "settingsMenuItem"
                         text: qsTr("设置")
-                        title: qsTr("设置")
-                        page: Component {
-                            Column {
-                                width: parent ? parent.width : 180
-                                spacing: 12
-
-                                Item {
-                                    width: parent.width
-                                    height: 140
-
-                                    Column {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: 12
-                                        anchors.rightMargin: 12
-                                        anchors.topMargin: 8
-                                        spacing: 8
-
-                                        Text {
-                                            text: qsTr("歌词分隔符")
-                                            color: Theme.textColor
-                                            font.pixelSize: 13
-                                            font.bold: true
-                                        }
-
-                                        TextField {
-                                            id: customInput
-                                            width: parent.width
-                                            height: 28
-                                            font.pixelSize: 12
-                                            text: lyricsState.lyricDelimiter
-                                            color: Theme.textColor
-                                            placeholderText: "e.g. /"
-                                            placeholderTextColor: "#80FFFFFF"
-                                            background: Rectangle {
-                                                color: "#15FFFFFF"
-                                                border.color: customInput.activeFocus ? Theme.accentColor : "#30FFFFFF"
-                                                border.width: 1
-                                                radius: 4
-                                            }
-                                            onTextChanged: {
-                                                lyricsState.lyricDelimiter = text;
-                                            }
-                                        }
-
-                                        Text {
-                                            text: qsTr("预设：")
-                                            color: Theme.secondaryTextColor
-                                            font.pixelSize: 11
-                                        }
-
-                                        Row {
-                                            spacing: 6
-                                            width: parent.width
-
-                                            Repeater {
-                                                model: [" / ", " | ", " - ", " // "]
-                                                
-                                                Rectangle {
-                                                    width: 32
-                                                    height: 22
-                                                    radius: 4
-                                                    color: lyricsState.lyricDelimiter === modelData ? Theme.accentColor : "#15FFFFFF"
-                                                    border.color: "#30FFFFFF"
-                                                    border.width: 1
-                                                    
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        text: modelData.trim() === "" ? modelData : modelData.trim()
-                                                        color: Theme.textColor
-                                                        font.pixelSize: 11
-                                                    }
-
-                                                    MouseArea {
-                                                        anchors.fill: parent
-                                                        cursorShape: Qt.PointingHandCursor
-                                                        onClicked: {
-                                                            lyricsState.lyricDelimiter = modelData;
-                                                            customInput.text = modelData;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        onTriggered: {
+                            mainMenu.close();
+                            root.openSettingsRequested();
                         }
                     }
-                    BubbleSubMenuItem {
-                        text: qsTr("播放")
-                        title: qsTr("播放")
-                        page: Component {
-                            Column {
-                                width: parent ? parent.width : 160
-                                spacing: 0
-
-                                BubbleMenuItem { text: qsTr("淡入淡出"); onTriggered: root.showUnsupportedFeedback(qsTr("淡入淡出")) }
-                                BubbleMenuItem { text: qsTr("无缝播放"); onTriggered: root.showUnsupportedFeedback(qsTr("无缝播放")) }
-                                BubbleMenuItem { text: qsTr("回放增益"); onTriggered: root.showUnsupportedFeedback(qsTr("回放增益")) }
-                            }
+                    BubbleMenuItem {
+                        objectName: "equalizerMenuItem"
+                        text: qsTr("均衡器")
+                        onTriggered: {
+                            mainMenu.close();
+                            root.openEqualizerRequested();
                         }
                     }
-                    BubbleMenuItem { text: qsTr("均衡器"); onTriggered: root.showUnsupportedFeedback(qsTr("均衡器")) }
-                    BubbleMenuItem { text: qsTr("关于 Seriona"); onTriggered: root.showUnsupportedFeedback(qsTr("关于 Seriona")) }
-                    BubbleMenuItem { text: qsTr("退出"); onTriggered: { mainMenu.close(); root.exitRequested(); } }
+                    BubbleMenuItem {
+                        text: qsTr("关于 Seriona")
+                        onTriggered: root.showUnsupportedFeedback(qsTr("关于 Seriona"))
+                    }
+                    BubbleMenuItem {
+                        text: qsTr("退出")
+                        onTriggered: {
+                            mainMenu.close();
+                            root.exitRequested();
+                        }
+                    }
                 }
             }
         }

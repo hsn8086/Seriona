@@ -48,13 +48,20 @@ Window {
         if (scenario === "sidebar-tree") {
             if (!navigationController.sidebarOpen)
                 navigationController.toggleSidebar();
-            appFacade.library.setFocusedNodeId("favorites");
-            appFacade.library.setPlayingTrackId("track-aurora");
+            appFacade.library.focusedNodeId = "favorites";
+            appFacade.library.playingTrackId = "track-aurora";
             return;
         }
 
         if (scenario === "empty-library") {
-            appFacade.library.setSearchQuery("__seriona_empty_smoke__");
+            appFacade.library.searchQuery = "__seriona_empty_smoke__";
+            return;
+        }
+
+        if (scenario === "settings-menu") {
+            navigationController.showPlaybackView();
+            mainContent.openMenuForSmoke();
+            console.log("[smoke] mainMenu opened");
             return;
         }
 
