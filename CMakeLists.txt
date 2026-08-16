@@ -187,6 +187,8 @@ set(SERIONA_QML_MODULE_FILES
     qml/components/SortRuleRow.qml
     qml/views/MainContent.qml
     qml/views/StartupView.qml
+    qml/windows/SettingsWindow.qml
+    qml/windows/EqualizerWindow.qml
 )
 
 set(SERIONA_QML_MODULE_RESOURCES

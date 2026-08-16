@@ -35,6 +35,7 @@ Window {
     }
 
     function applySmokeScenario(scenario) {
+        console.log("[smoke] applySmokeScenario called with: " + scenario);
         if (scenario === "" || scenario === "startup")
             return;
 
@@ -62,6 +63,8 @@ Window {
             navigationController.showPlaybackView();
             mainContent.openMenuForSmoke();
             console.log("[smoke] mainMenu opened");
+            smokeTimer.step = 0;
+            smokeTimer.start();
             return;
         }
 
@@ -310,6 +313,14 @@ Window {
                         }
 
                         onExitRequested: window.requestApplicationClose()
+
+                        onOpenSettingsRequested: {
+                            settingsWindow.show();
+                        }
+
+                        onOpenEqualizerRequested: {
+                            equalizerWindow.show();
+                        }
                     }
 
                     StartupView {
@@ -446,5 +457,47 @@ Window {
             }
         }
         onPressed: window.startSystemResize(edgeFlag)
+    }
+
+    SettingsWindow {
+        id: settingsWindow
+        appFacade: window.appFacade
+        x: window.x + (window.width - width) / 2
+        y: window.y + (window.height - height) / 2
+    }
+
+    EqualizerWindow {
+        id: equalizerWindow
+        x: window.x + (window.width - width) / 2
+        y: window.y + (window.height - height) / 2
+    }
+
+    Timer {
+        id: smokeTimer
+        interval: 100
+        repeat: false
+        property int step: 0
+        onTriggered: {
+            if (step === 0) {
+                mainContent.openSettingsRequested();
+                step = 1;
+                smokeTimer.interval = 100;
+                smokeTimer.start();
+            } else if (step === 1) {
+                if (settingsWindow.visible) {
+                    console.log("[smoke] settingsWindow opened");
+                    settingsWindow.close();
+                }
+                mainContent.openEqualizerRequested();
+                step = 2;
+                smokeTimer.interval = 100;
+                smokeTimer.start();
+            } else if (step === 2) {
+                if (equalizerWindow.visible) {
+                    console.log("[smoke] equalizerWindow opened");
+                    equalizerWindow.close();
+                }
+            }
+        }
     }
 }
