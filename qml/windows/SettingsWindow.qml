@@ -509,7 +509,8 @@ Window {
                 
                 ComboBox {
                     id: deviceCombo
-                    Layout.preferredWidth: 200
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 120
                     Layout.preferredHeight: 32
                     
                     model: settings.playbackDeviceNames
@@ -573,6 +574,8 @@ Window {
                             font.pixelSize: 13
                             verticalAlignment: Text.AlignVCenter
                             leftPadding: 8
+                            rightPadding: 8
+                            elide: Text.ElideRight
                         }
                         
                         background: Rectangle {
