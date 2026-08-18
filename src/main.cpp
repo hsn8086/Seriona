@@ -10,6 +10,9 @@
 #include "seriona/app/application_logging.h"
 #include "seriona/app/runtime_paths.h"
 
+#include <QtLogging>
+#include <spdlog/spdlog.h>
+
 extern "C" {
 #include <libavutil/log.h>
 }
@@ -21,6 +24,38 @@ extern "C" {
 #include <iostream>
 
 namespace {
+
+#if SERIONA_HAS_BACKEND
+void qtMessageToSpdlog(QtMsgType type, const QMessageLogContext &context, const QString &message)
+{
+    Q_UNUSED(context);
+    // 终端日志统一由 spdlog 负责：Qt 消息（qDebug/qWarning/QML console）重定向到
+    // 默认 logger。不传 source_loc：QML 场景 context.line 可为 -1、function 可为
+    // nullptr（spdlog#3073），且 seriona 的 pattern 只用 %v。
+    if (spdlog::default_logger() == nullptr) {
+        return;
+    }
+    switch (type) {
+    case QtDebugMsg:
+        spdlog::debug("{}", message.toStdString());
+        break;
+    case QtInfoMsg:
+        spdlog::info("{}", message.toStdString());
+        break;
+    case QtWarningMsg:
+        spdlog::warn("{}", message.toStdString());
+        break;
+    case QtCriticalMsg:
+        spdlog::error("{}", message.toStdString());
+        break;
+    case QtFatalMsg:
+        spdlog::critical("{}", message.toStdString());
+        spdlog::shutdown(); // Qt 在 handler 返回后立即 abort，先 flush 再退出
+        break;
+    }
+}
+#endif
+
 struct SmokeOptions {
     bool enabled = false;
     int exitMs = 1000;
@@ -113,6 +148,10 @@ int main(int argc, char *argv[])
         const auto runtimePaths = seriona::app::resolveRuntimePaths(
             QCoreApplication::applicationFilePath().toStdString());
         seriona::app::initializeApplicationLogging(runtimePaths);
+        // 错误处理器设为不抛：sink 失败（如磁盘满）时异常若从 Qt 消息 handler
+        // 逃逸会直接 terminate 应用；静默丢弃单条日志优于进程崩溃。
+        spdlog::set_error_handler([](const std::string &) {});
+        qInstallMessageHandler(qtMessageToSpdlog);
     } catch (const std::exception &error) {
         std::cerr << "seriona: logging initialization failed: " << error.what() << '\n';
     }
@@ -144,6 +183,13 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
     QVariantMap initialProperties;
     initialProperties.insert(QStringLiteral("smokeScenario"), smokeOptions.enabled ? smokeOptions.scenario : QString{});
+    // NDEBUG(Release)下恒为 false:smoke 调试日志不泄漏到正式构建。
+#if defined(NDEBUG)
+    const bool smokeLoggingEnabled = false;
+#else
+    const bool smokeLoggingEnabled = smokeOptions.enabled;
+#endif
+    initialProperties.insert(QStringLiteral("smokeLoggingEnabled"), smokeLoggingEnabled);
     engine.setInitialProperties(initialProperties);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, []()
                      { QCoreApplication::exit(-1); }, Qt::QueuedConnection);

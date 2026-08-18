@@ -20,11 +20,19 @@ Window {
     readonly property int playerMinWidth: 450
     readonly property bool isDockCapable: width >= (sidebarWidth + playerMinWidth)
     property string smokeScenario: ""
+    property bool smokeLoggingEnabled: false
     property bool layoutAnimEnabled: true
 
     readonly property AppFacade appFacade: AppFacade {}
     readonly property var navigationController: appFacade.navigation
     property bool shutdownRequested: false
+
+    // smoke 调试日志统一出口：仅在非 Release 构建且启用 smoke 模式时输出，
+    // 由 C++ 侧 main.cpp 注入 smokeLoggingEnabled 控制（NDEBUG 下恒为 false）。
+    function smokeLog(message) {
+        if (window.smokeLoggingEnabled)
+            console.log(message);
+    }
 
     function requestApplicationClose() {
         if (shutdownRequested)
@@ -35,7 +43,7 @@ Window {
     }
 
     function applySmokeScenario(scenario) {
-        console.log("[smoke] applySmokeScenario called with: " + scenario);
+        smokeLog("[smoke] applySmokeScenario called with: " + scenario);
         if (scenario === "" || scenario === "startup")
             return;
 
@@ -62,7 +70,7 @@ Window {
         if (scenario === "settings-menu") {
             navigationController.showPlaybackView();
             mainContent.openMenuForSmoke();
-            console.log("[smoke] mainMenu opened");
+            smokeLog("[smoke] mainMenu opened");
             smokeTimer.step = 0;
             smokeTimer.start();
             return;

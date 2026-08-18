@@ -1,7 +1,10 @@
 #include "notification_controller.h"
 
-#include <QDebug>
 #include <QVariantMap>
+
+#if SERIONA_HAS_BACKEND
+#include <spdlog/spdlog.h>
+#endif
 
 #include <optional>
 #include <utility>
@@ -125,17 +128,20 @@ void NotificationController::append(NotificationViewState entry)
     }
 
     const NotificationViewState &latest = m_notifications.last();
-    
-    // 只输出错误和警告，跳过普通信息通知（避免进度更新刷屏）
+
+#if SERIONA_HAS_BACKEND
+    // 终端日志统一由 spdlog 负责（initializeApplicationLogging 已初始化默认 logger）
     if (latest.severity == QStringLiteral("error") || latest.severity == QStringLiteral("warning")) {
-        const QString line = QStringLiteral("Frontend notification kind=%1 code=%2 message=%3")
-                                 .arg(latest.kind, latest.code, latest.message);
+        const auto kind = latest.kind.toStdString();
+        const auto code = latest.code.toStdString();
+        const auto message = latest.message.toStdString();
         if (latest.severity == QStringLiteral("error")) {
-            qWarning().noquote() << line;
+            spdlog::error("Frontend notification kind={} code={} message={}", kind, code, message);
         } else {
-            qInfo().noquote() << line;
+            spdlog::warn("Frontend notification kind={} code={} message={}", kind, code, message);
         }
     }
+#endif
 
     emit notificationsChanged();
     emit latestNotificationChanged();
