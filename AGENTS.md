@@ -7,15 +7,15 @@
 - `qt_add_qml_module(...)` 注册本地 URI `Seriona`。新增或重命名 `src/app` C++、模块内 QML、SVG 或 `tests/frontend/adapter/` 测试源时，同步更新 `CMakeLists.txt` 的 `SERIONA_APP_LAYER_SOURCES`、`SERIONA_QML_MODULE_FILES`、`SERIONA_QML_MODULE_RESOURCES` 及对应 `add_executable(...)`；不要把入口或测试 C++ 塞进 QML 模块。
 - `qml/Main.qml` 实例化唯一的 `AppFacade`。它拥有播放、曲库、歌词、通知和导航对象，并持有 `BackendBridge` 与 `WaveformProvider`（两者始终实例化；`SERIONA_HAS_BACKEND=0` 时不编译后端调用）；不要把这些状态重新放回 QML mock 属性。
 - `PlaybackController`、`NavigationController`、`NotificationController` 和 `LibraryModel` 是 `QML_UNCREATABLE`；`LibraryController` 定义在 `library_model.h/.cpp`（没有独立文件），`LyricsModel` 同为 `QML_ELEMENT`。正式 QML 统一使用 `appFacade.playback/library/lyrics/notifications/navigation`，不要另建可创建的控制器或模型。
-- `src/providers/thumbnail_image_provider.{h,cpp}` 与根目录 `test_popup.qml` 都未接入 CMake/engine；修改它们不会影响正式应用或测试。
+- 孤儿文件（均未接入 CMake/engine，修改不影响正式应用或测试）：`src/providers/thumbnail_image_provider.{h,cpp}`、根目录 `test_popup.qml`、`qml/assets/MaterialIcons-Regular.ttf`（不在 QML 模块 RESOURCES，也无 FontLoader 引用）。根目录 `popup_log.txt` 是已跟踪的空日志残留（0 字节，`*.log` 在 .gitignore 中但该文件早于规则提交），属垃圾文件可删除。
 
 ## 构建与验证
 - 顺序是 `cmake -B build`、`cmake --build build`、`ctest --test-dir build --output-on-failure`；应用为 `./build/appSeriona`。
 - `.clangd` 读取 `build/`，`.qmlls.ini` 则硬编码当前工作区 `build/` 的绝对路径；新 worktree 或移动目录后先修正该路径并配置构建目录，再运行语言服务诊断。
 - 聚焦一个 CTest：`ctest --test-dir build -R '^seriona_frontend_command_result_mapping$' --output-on-failure`。同一测试二进制中的单个 QTest case 直接作为参数传入，例如 `./build/seriona_frontend_library_sort_tests titleAscendingAndDescendingSortCurrentFolderProjection`（该目标依赖后端）。
-- `./scripts/verify-middle-layer.sh`（依赖 `rg`）会配置、构建、检查中间层/CMake 不变量并运行 `QT_QPA_PLATFORM=offscreen timeout 5s ./build/appSeriona`，预期退出码为 `124`；它要求 `docs/architecture/backend-integration-contract.md` 存在，但不会运行 CTest。可用 `SERIONA_BUILD_DIR` 覆盖构建目录。
-- Smoke CLI：`./build/appSeriona --smoke-scenario=<name> --smoke-exit-ms=<ms>`；场景为 `startup`/`main-playback`/`lyrics`/`sidebar-tree`/`settings-menu`/`empty-library`。默认 1000 ms 后退出并写入 `.omo/evidence/smoke/smoke-<scenario>.log`；`--smoke-output-dir=<dir>` 可改目录。
-- 仓库没有独立的 lint、format、CI 或代码生成命令；QML/MOC/RCC 生成由 CMake/Qt 完成。
+- `./scripts/verify-middle-layer.sh`（依赖 `rg`）会配置、构建、检查中间层/CMake 不变量并运行 `QT_QPA_PLATFORM=offscreen timeout 5s ./build/appSeriona`，预期退出码为 `124`；它要求 `docs/architecture/backend-integration-contract.md` 存在，但不会运行 CTest。可用 `SERIONA_BUILD_DIR` 覆盖构建目录。它是必要子集门禁而非穷举：QML 只查 17 选 12（漏 DynamicBackground/SortDialog/SortRuleRow/SettingsWindow/EqualizerWindow），测试目标只查 21 选 20（漏 `seriona_frontend_library_sort_tests`），新增文件仍须手动同步 CMakeLists。
+- Smoke CLI：`./build/appSeriona --smoke-scenario=<name> --smoke-exit-ms=<ms>`；场景为 `startup`/`main-playback`/`lyrics`/`sidebar-tree`/`settings-menu`/`empty-library`。默认 1000 ms 后退出并写入 `.omo/evidence/smoke/smoke-<scenario>.log`；`--smoke-output-dir=<dir>` 可改目录。`Main.qml` 的 `smokeVisualStateJson()` 已定义但当前无调用方（为扩展预留），不要删除或自行接线。
+- 仓库没有独立的 lint、format、CI 或代码生成命令；QML/MOC/RCC 生成由 CMake/Qt 完成。CMake 只设 `CMAKE_CXX_STANDARD_REQUIRED ON`，未显式声明 `CMAKE_CXX_STANDARD`；标准由 Qt/后端传递（观测 `-std=c++23`），不要假设已声明某标准。
 
 ## 中间层行为契约
 - 前端不得直接实现文件系统/网络/数据库访问（`QDir::*`、`QFileSystem*`、`QNetwork*`、`QSql*` 等）；一切经 `BackendBridge` 的命令/快照边界，`verify-middle-layer.sh` 会对 `src/` 和 `qml/` 强制检查。
