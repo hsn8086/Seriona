@@ -16,6 +16,7 @@
 - `./scripts/verify-middle-layer.sh`（依赖 `rg`）会配置、构建、检查中间层/CMake 不变量并运行 `QT_QPA_PLATFORM=offscreen timeout 5s ./build/appSeriona`，预期退出码为 `124`；它要求 `docs/architecture/backend-integration-contract.md` 存在，但不会运行 CTest。可用 `SERIONA_BUILD_DIR` 覆盖构建目录。它是必要子集门禁而非穷举：QML 只查 17 选 12（漏 DynamicBackground/SortDialog/SortRuleRow/SettingsWindow/EqualizerWindow），测试目标只查 21 选 20（漏 `seriona_frontend_library_sort_tests`），新增文件仍须手动同步 CMakeLists。
 - Smoke CLI：`./build/appSeriona --smoke-scenario=<name> --smoke-exit-ms=<ms>`；场景为 `startup`/`main-playback`/`lyrics`/`sidebar-tree`/`settings-menu`/`empty-library`。默认 1000 ms 后退出并写入 `.omo/evidence/smoke/smoke-<scenario>.log`；`--smoke-output-dir=<dir>` 可改目录。`Main.qml` 的 `smokeVisualStateJson()` 已定义但当前无调用方（为扩展预留），不要删除或自行接线。
 - 仓库没有独立的 lint、format、CI 或代码生成命令；QML/MOC/RCC 生成由 CMake/Qt 完成。CMake 只设 `CMAKE_CXX_STANDARD_REQUIRED ON`，未显式声明 `CMAKE_CXX_STANDARD`；标准由 Qt/后端传递（观测 `-std=c++23`），不要假设已声明某标准。
+- 接入后端时终端日志统一走 spdlog：Qt 消息（qDebug/QML `console.log`）重定向到 spdlog 默认 logger，`find_package(spdlog CONFIG REQUIRED)` 在配置期强制（与后端同源，mock-only 不要求）；smoke 调试日志仅 Debug 构建输出（`main.cpp` 注入 `smokeLoggingEnabled`，`NDEBUG` 下恒为 false），mock-only 下通知类日志不输出到终端。
 
 ## 中间层行为契约
 - 前端不得直接实现文件系统/网络/数据库访问（`QDir::*`、`QFileSystem*`、`QNetwork*`、`QSql*` 等）；一切经 `BackendBridge` 的命令/快照边界，`verify-middle-layer.sh` 会对 `src/` 和 `qml/` 强制检查。
