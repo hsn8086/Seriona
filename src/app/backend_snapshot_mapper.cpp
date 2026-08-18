@@ -376,7 +376,13 @@ LibrarySnapshotViewState mapLibrarySnapshot(const seriona::control::LibraryState
         lastError = QStringLiteral("扫描失败");
     }
 
-    return LibrarySnapshotViewState{uiScanStatus(snapshot.scanStatus), uiScanProgress(snapshot), lastError};
+    LibrarySnapshotViewState view{uiScanStatus(snapshot.scanStatus), uiScanProgress(snapshot), 0, 0, lastError};
+    if (snapshot.scanProgress.has_value()) {
+        const auto &progress = *snapshot.scanProgress;
+        view.scannedSongCount = static_cast<quint64>(progress.filesScanned + progress.filesSkipped);
+        view.totalSongCount = static_cast<quint64>(progress.filesDiscovered);
+    }
+    return view;
 }
 #endif
 

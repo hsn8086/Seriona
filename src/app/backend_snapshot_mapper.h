@@ -56,6 +56,8 @@ struct PlayerSnapshotViewState {
 struct LibrarySnapshotViewState {
     QString scanStatus = QStringLiteral("pending");
     int scanProgress = 0;
+    quint64 scannedSongCount = 0;
+    quint64 totalSongCount = 0;
     QString lastError;
 };
 

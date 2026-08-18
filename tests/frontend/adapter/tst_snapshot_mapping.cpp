@@ -175,8 +175,12 @@ void SnapshotMappingTest::mapsLibraryScanStatusAndProgress()
 
 	QCOMPARE(scanningMapped.scanStatus, QStringLiteral("running"));
 	QCOMPARE(scanningMapped.scanProgress, 70);
+	QCOMPARE(scanningMapped.scannedSongCount, quint64{7});
+	QCOMPARE(scanningMapped.totalSongCount, quint64{10});
     QCOMPARE(completedMapped.scanStatus, QStringLiteral("completed"));
     QCOMPARE(completedMapped.scanProgress, 100);
+    QCOMPARE(completedMapped.scannedSongCount, quint64{0});
+    QCOMPARE(completedMapped.totalSongCount, quint64{0});
     QCOMPARE(stoppedMapped.scanStatus, QStringLiteral("pending"));
     QCOMPARE(stoppedMapped.scanProgress, 0);
 }

@@ -994,6 +994,16 @@ int LibraryController::scanProgress() const
     return m_scanProgress;
 }
 
+quint64 LibraryController::scannedSongCount() const
+{
+    return m_scannedSongCount;
+}
+
+quint64 LibraryController::totalSongCount() const
+{
+    return m_totalSongCount;
+}
+
 QString LibraryController::lastError() const
 {
     return m_lastError;
@@ -1136,6 +1146,7 @@ void LibraryController::applyLibraryStateSnapshot(const seriona::control::Librar
     const LibrarySnapshotViewState mapped = mapLibrarySnapshot(snapshot);
     setScanStatus(mapped.scanStatus);
     setScanProgress(mapped.scanProgress);
+    setScanCounts(mapped.scannedSongCount, mapped.totalSongCount);
     setLastError(mapped.lastError);
     if (snapshot.libraryTree.has_value()) {
         setPlaylistTreeSnapshot(*snapshot.libraryTree);
@@ -1301,6 +1312,7 @@ bool LibraryController::requestScanForRoot(const QString &rootPath)
 {
     setScanStatus(QStringLiteral("running"));
     setScanProgress(0);
+    setScanCounts(0, 0);
     setLastError(QString());
 
 #if SERIONA_HAS_BACKEND
@@ -1349,6 +1361,17 @@ void LibraryController::setScanProgress(int progress)
 
     m_scanProgress = progress;
     emit scanProgressChanged();
+}
+
+void LibraryController::setScanCounts(quint64 scanned, quint64 total)
+{
+    if (m_scannedSongCount == scanned && m_totalSongCount == total) {
+        return;
+    }
+
+    m_scannedSongCount = scanned;
+    m_totalSongCount = total;
+    emit scanCountsChanged();
 }
 
 void LibraryController::setLastError(const QString &error)

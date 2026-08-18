@@ -156,6 +156,8 @@ class LibraryController : public QObject
     Q_PROPERTY(QString scrollRequest READ scrollRequest NOTIFY scrollRequestChanged)
     Q_PROPERTY(QString scanStatus READ scanStatus NOTIFY scanStatusChanged)
     Q_PROPERTY(int scanProgress READ scanProgress NOTIFY scanProgressChanged)
+    Q_PROPERTY(quint64 scannedSongCount READ scannedSongCount NOTIFY scanCountsChanged)
+    Q_PROPERTY(quint64 totalSongCount READ totalSongCount NOTIFY scanCountsChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(QString savedRootPath READ savedRootPath NOTIFY savedRootPathChanged)
     Q_PROPERTY(QString playingTrackId READ playingTrackId WRITE setPlayingTrackId NOTIFY playingTrackIdChanged)
@@ -189,6 +191,8 @@ public:
     int visibleNodeCount() const;
     QString scanStatus() const;
     int scanProgress() const;
+    quint64 scannedSongCount() const;
+    quint64 totalSongCount() const;
     QString lastError() const;
     QString savedRootPath() const;
     QString playingTrackId() const;
@@ -236,6 +240,7 @@ signals:
     void scrollRequestChanged();
     void scanStatusChanged();
     void scanProgressChanged();
+    void scanCountsChanged();
     void lastErrorChanged();
     void savedRootPathChanged();
     void playingTrackIdChanged();
@@ -254,6 +259,7 @@ private:
 #endif
     void setScanStatus(const QString &status);
     void setScanProgress(int progress);
+    void setScanCounts(quint64 scanned, quint64 total);
     void setLastError(const QString &error);
     void setSavedRootPath(const QString &rootPath);
     void setBackendAvailable(bool available);
@@ -289,6 +295,8 @@ private:
     QString m_scrollRequest;
     QString m_scanStatus = QStringLiteral("pending");
     int m_scanProgress = 0;
+    quint64 m_scannedSongCount = 0;
+    quint64 m_totalSongCount = 0;
     QString m_lastError;
     QString m_savedRootPath;
     QString m_playingTrackId;

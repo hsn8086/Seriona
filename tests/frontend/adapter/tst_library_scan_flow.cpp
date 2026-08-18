@@ -278,6 +278,8 @@ void LibraryScanFlowTest::scanSnapshotsMapUiStates()
 	controller.applyLibraryStateSnapshot(running);
 	QCOMPARE(controller.scanStatus(), QStringLiteral("running"));
 	QCOMPARE(controller.scanProgress(), 100);
+	QCOMPARE(controller.scannedSongCount(), quint64{10});
+	QCOMPARE(controller.totalSongCount(), quint64{10});
 
     LibraryStateSnapshot completed;
     completed.scanStatus = LibraryScanStatus::Completed;

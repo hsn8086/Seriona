@@ -14,7 +14,9 @@ Item {
     readonly property bool scanRunning: libraryController.scanStatus === "running"
     readonly property bool scanError: libraryController.scanStatus === "error"
     readonly property string scanMessage: scanRunning
-        ? qsTr("正在扫描曲库… %1%").arg(libraryController.scanProgress)
+        ? (libraryController.totalSongCount > 0
+            ? qsTr("正在扫描：%1 / %2").arg(libraryController.scannedSongCount).arg(libraryController.totalSongCount)
+            : qsTr("正在扫描曲库…"))
         : scanError
             ? (libraryController.lastError.length > 0 ? libraryController.lastError : qsTr("扫描失败，请重新选择文件夹"))
             : qsTr("选择一个音乐文件夹开始构建曲库")
