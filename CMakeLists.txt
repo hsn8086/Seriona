@@ -807,6 +807,10 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/notification_controller.h
             src/app/lyrics_model.cpp
             src/app/lyrics_model.h
+            src/app/library_model.cpp
+            src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
         )
         target_include_directories(seriona_frontend_artwork_transition_tests
             PRIVATE src/app

@@ -18,7 +18,17 @@ Item {
     property bool isSidebarOpen: false
     required property PlaybackController playbackController
     required property NotificationController notifications
+    required property LibraryController libraryController
     readonly property bool hasOpenMenu: mainMenu.visible
+
+    readonly property bool scanRunning: libraryController.scanStatus === "running"
+    readonly property string scanToastTitle: qsTr("正在扫描曲库")
+    readonly property string scanToastMessage: libraryController.totalSongCount > 0
+        ? qsTr("正在扫描：%1 / %2").arg(libraryController.scannedSongCount).arg(libraryController.totalSongCount)
+        : qsTr("正在扫描曲库…")
+    readonly property real scanToastProgress: libraryController.totalSongCount > 0
+        ? Math.min(libraryController.scannedSongCount / libraryController.totalSongCount, 1.0)
+        : 0.0
 
     property bool isTogglingTranslation: false
     readonly property real currentItemHeight: lyricsContainer.currentItem ? lyricsContainer.currentItem.height : 0
@@ -78,7 +88,7 @@ Item {
     }
 
     function showLatestNotificationToast() {
-        if (!root.notifications.hasNotification)
+        if (root.scanRunning || !root.notifications.hasNotification)
             return;
 
         toastTitle = root.notifications.latestTitle;
@@ -91,7 +101,7 @@ Item {
     }
 
     function hideNotificationToast() {
-        if (!toastVisible)
+        if (!toastVisible || root.scanRunning)
             return;
 
         toastVisible = false;
@@ -105,6 +115,22 @@ Item {
 
         function onLatestNotificationChanged() {
             root.showLatestNotificationToast();
+        }
+    }
+
+    Connections {
+        target: root.libraryController
+
+        function onScanStatusChanged() {
+            if (root.scanRunning) {
+                toastSeverity = "info";
+                toastCode = "";
+                notificationAutoHideTimer.stop();
+                toastVisible = true;
+            } else if (toastVisible) {
+                toastVisible = false;
+                notificationClearTimer.restart();
+            }
         }
     }
 
@@ -166,7 +192,7 @@ Item {
 
             Text {
                 width: parent.width
-                text: root.toastTitle
+                text: root.scanRunning ? root.scanToastTitle : root.toastTitle
                 color: Theme.textColor
                 font.pixelSize: 12
                 font.bold: true
@@ -176,13 +202,37 @@ Item {
 
             Text {
                 width: parent.width
-                text: root.toastCode.length > 0 && root.toastCode !== "None" && root.toastCode !== "Unsupported"
-                    ? qsTr("%1（%2）").arg(root.toastMessage).arg(root.toastCode)
-                    : root.toastMessage
+                text: root.scanRunning
+                    ? root.scanToastMessage
+                    : (root.toastCode.length > 0 && root.toastCode !== "None" && root.toastCode !== "Unsupported"
+                        ? qsTr("%1（%2）").arg(root.toastMessage).arg(root.toastCode)
+                        : root.toastMessage)
                 color: Theme.secondaryTextColor
                 font.pixelSize: 11
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignHCenter
+            }
+
+            ProgressBar {
+                id: scanProgressBar
+                visible: root.scanRunning
+                width: parent.width
+                implicitHeight: 4
+                value: root.scanToastProgress
+                indeterminate: root.scanRunning && root.libraryController.totalSongCount === 0
+                padding: 0
+
+                background: Rectangle {
+                    implicitHeight: 4
+                    radius: 2
+                    color: "#33FFFFFF"
+                }
+
+                contentItem: Rectangle {
+                    implicitHeight: 4
+                    radius: 2
+                    color: Theme.mainColor
+                }
             }
         }
     }

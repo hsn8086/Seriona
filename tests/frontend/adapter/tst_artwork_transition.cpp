@@ -2,6 +2,7 @@
 #include "artwork_palette_worker.h"
 #include "notification_controller.h"
 #include "lyrics_model.h"
+#include "library_model.h"
 
 #include "seriona/control/control_contracts.h"
 
@@ -5471,6 +5472,7 @@ void registerSerionaModuleForTests(const QString &sourceRoot)
     if (qmlRegisterType<PlaybackController>(kModuleUri, 1, 0, "PlaybackController") < 0
         || qmlRegisterType<NotificationController>(kModuleUri, 1, 0, "NotificationController") < 0
         || qmlRegisterType<LyricsModel>(kModuleUri, 1, 0, "LyricsModel") < 0
+        || qmlRegisterType<LibraryController>(kModuleUri, 1, 0, "LibraryController") < 0
         || qmlRegisterSingletonType(moduleFile(QStringLiteral("theme/Theme.qml")),
                kModuleUri, 1, 0, "Theme")
                < 0
@@ -5546,6 +5548,7 @@ private:
         Seriona::App::PlaybackController *playback,
         Seriona::App::NotificationController *notifications,
         Seriona::App::LyricsModel *lyrics,
+        Seriona::App::LibraryController *library,
         QString *error);
 
     CoverBlock locateCoverBlock(QQuickItem *root) const;
@@ -5563,6 +5566,7 @@ QQuickItem *ArtworkTransitionTest::loadMainContent(
     Seriona::App::PlaybackController *playback,
     Seriona::App::NotificationController *notifications,
     Seriona::App::LyricsModel *lyrics,
+    Seriona::App::LibraryController *library,
     QString *error)
 {
     QQmlComponent component(
@@ -5576,6 +5580,7 @@ QQuickItem *ArtworkTransitionTest::loadMainContent(
     initialProperties.insert(QStringLiteral("playbackController"), QVariant::fromValue<QObject *>(playback));
     initialProperties.insert(QStringLiteral("notifications"), QVariant::fromValue<QObject *>(notifications));
     initialProperties.insert(QStringLiteral("lyricsState"), QVariant::fromValue<QObject *>(lyrics));
+    initialProperties.insert(QStringLiteral("libraryController"), QVariant::fromValue<QObject *>(library));
     QScopedPointer<QObject> created(component.createWithInitialProperties(
         initialProperties, m_engine.rootContext()));
     if (!created) {
@@ -5699,10 +5704,11 @@ void ArtworkTransitionTest::artwork_transition()
         [](const QString &) { return samplePalette(); });
     Seriona::App::NotificationController notifications;
     Seriona::App::LyricsModel lyrics;
+    Seriona::App::LibraryController library;
 
     QString error;
     QScopedPointer<QQuickItem> mainContent(
-        loadMainContent(&controller, &notifications, &lyrics, &error));
+        loadMainContent(&controller, &notifications, &lyrics, &library, &error));
     QVERIFY2(mainContent, qPrintable(error));
     const CoverBlock block = locateCoverBlock(mainContent.data());
     QVERIFY(block.container);
@@ -5826,10 +5832,11 @@ void ArtworkTransitionTest::artwork_fallback()
         [](const QString &) { return samplePalette(); });
     Seriona::App::NotificationController notifications;
     Seriona::App::LyricsModel lyrics;
+    Seriona::App::LibraryController library;
 
     QString error;
     QScopedPointer<QQuickItem> mainContent(
-        loadMainContent(&controller, &notifications, &lyrics, &error));
+        loadMainContent(&controller, &notifications, &lyrics, &library, &error));
     QVERIFY2(mainContent, qPrintable(error));
     const CoverBlock block = locateCoverBlock(mainContent.data());
     QVERIFY(block.icon);
@@ -5888,10 +5895,11 @@ void ArtworkTransitionTest::artwork_palette_nonblocking()
         });
     Seriona::App::NotificationController notifications;
     Seriona::App::LyricsModel lyrics;
+    Seriona::App::LibraryController library;
 
     QString error;
     QScopedPointer<QQuickItem> mainContent(
-        loadMainContent(&controller, &notifications, &lyrics, &error));
+        loadMainContent(&controller, &notifications, &lyrics, &library, &error));
     QVERIFY2(mainContent, qPrintable(error));
     const CoverBlock block = locateCoverBlock(mainContent.data());
     QVERIFY(block.preferred);

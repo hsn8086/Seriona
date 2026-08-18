@@ -297,6 +297,7 @@ Window {
                         isSidebarOpen: window.navigationController.sidebarOpen
                         playbackController: window.appFacade.playback
                         notifications: window.appFacade.notifications
+                        libraryController: window.appFacade.library
                         lyricsState: window.appFacade.lyrics
 
                         onCoverClicked: {
