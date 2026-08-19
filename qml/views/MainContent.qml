@@ -724,6 +724,9 @@ Item {
             iconSource: "qrc:/qt/qml/Seriona/qml/assets/prev.svg"
             textColor: Theme.textColor
             onClicked: root.playbackController.skipPrevious()
+            SharedToolTip {
+                text: qsTr("上一首")
+            }
         }
 
         StyleButton {
@@ -737,6 +740,9 @@ Item {
             pressedColor: Qt.darker(Theme.playButtonBg, 1.2)
             textColor: Theme.playButtonText
             onClicked: root.playbackController.togglePlay()
+            SharedToolTip {
+                text: root.playbackController.isPlaying ? qsTr("暂停") : qsTr("播放")
+            }
         }
 
         StyleButton {
@@ -749,6 +755,9 @@ Item {
             iconSource: "qrc:/qt/qml/Seriona/qml/assets/next.svg"
             textColor: Theme.textColor
             onClicked: root.playbackController.skipNext()
+            SharedToolTip {
+                text: qsTr("下一首")
+            }
         }
     }
 
@@ -814,6 +823,10 @@ Item {
                 radius: 7
                 color: Theme.textColor
                 visible: volumeSlider.hovered || volumeSlider.pressed
+            }
+
+            SharedToolTip {
+                text: qsTr("音量")
             }
         }
 
@@ -914,8 +927,12 @@ Item {
                         }
                     }
                     BubbleMenuItem {
+                        objectName: "aboutMenuItem"
                         text: qsTr("关于 Seriona")
-                        onTriggered: root.showUnsupportedFeedback(qsTr("关于 Seriona"))
+                        onTriggered: {
+                            mainMenu.close();
+                            aboutOverlay.open();
+                        }
                     }
                     BubbleMenuItem {
                         text: qsTr("退出")
@@ -1269,4 +1286,10 @@ Item {
             }
         }
     ]
+
+    // 关于 Seriona overlay（T19）：主窗内弹层，入口为设置菜单"关于 Seriona"项
+    AboutOverlay {
+        id: aboutOverlay
+        objectName: "aboutOverlay"
+    }
 }

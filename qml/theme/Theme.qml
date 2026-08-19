@@ -18,6 +18,16 @@ QtObject {
     readonly property color playButtonBg: "white"
     readonly property color playButtonText: "black"
 
+    // ToolTip 悬停提示 (ToolTip Colors)
+    readonly property color tooltipBackgroundColor: "#1A1A1A"
+    readonly property color tooltipBorderColor: "#333333"
+    readonly property color tooltipTextColor: "#FFFFFF"
+    readonly property real tooltipBackgroundOpacity: 0.95
+    readonly property int tooltipFontSize: 12
+    readonly property int tooltipRadius: 4
+    readonly property int tooltipDelay: 500
+    readonly property int tooltipAnimationDuration: 200
+
     // 窗口控制按钮颜色 (Window Control Colors)
     readonly property color closeColor: "#e05c5c" // 降低饱和度
     readonly property color closeHoverColor: "#ff4d4d"

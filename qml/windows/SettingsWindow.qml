@@ -183,21 +183,23 @@ Window {
                 }
             }
             
-            // Output Parameters Group (only enabled in Mixed mode)
+            // Output Parameters Group（灰化按行控制：仅采样率/位深两行在直接输出模式下禁用，
+            // 缓冲时长与设备选择保持可用——需求 1 用户确认范围）
             ColumnLayout {
                 id: outputParamsGroup
                 objectName: "outputParamsGroup"
                 Layout.fillWidth: true
                 spacing: 16
-                enabled: settings.outputMode === 1
                 
-                // Row 2: Sample Rate
+                // Row 2: Sample Rate（直接输出模式下灰化）
                 RowLayout {
                 Layout.fillWidth: true
+                enabled: !settings.sampleParamsGreyed
+                opacity: settings.sampleParamsGreyed ? 0.5 : 1.0
                 
                 Text {
                     text: qsTr("采样率")
-                    color: Theme.textColor
+                    color: settings.sampleParamsGreyed ? Theme.secondaryTextColor : Theme.textColor
                     font.pixelSize: 14
                     Layout.preferredWidth: 100
                 }
@@ -207,13 +209,7 @@ Window {
                     Layout.preferredWidth: 200
                     Layout.preferredHeight: 32
                     
-                    model: [
-                        { value: 0, label: qsTr("跟随设备") },
-                        { value: 44100, label: "44100 Hz" },
-                        { value: 48000, label: "48000 Hz" },
-                        { value: 96000, label: "96000 Hz" },
-                        { value: 192000, label: "192000 Hz" }
-                    ]
+                    model: settings.sampleRateOptions
                     textRole: "label"
                     valueRole: "value"
                     
@@ -311,13 +307,15 @@ Window {
                 }
             }
             
-            // Row 2.5: Bit Depth (sampleFormat)
+            // Row 2.5: Bit Depth (sampleFormat)（直接输出模式下灰化）
             RowLayout {
                 Layout.fillWidth: true
+                enabled: !settings.sampleParamsGreyed
+                opacity: settings.sampleParamsGreyed ? 0.5 : 1.0
                 
                 Text {
                     text: qsTr("位深")
-                    color: Theme.textColor
+                    color: settings.sampleParamsGreyed ? Theme.secondaryTextColor : Theme.textColor
                     font.pixelSize: 14
                     Layout.preferredWidth: 100
                 }
@@ -327,12 +325,7 @@ Window {
                     Layout.preferredWidth: 200
                     Layout.preferredHeight: 32
                     
-                    model: [
-                        { value: 0, label: qsTr("跟随设备") },
-                        { value: 1, label: "16-bit" },
-                        { value: 2, label: "24-bit" },
-                        { value: 4, label: "32-bit float" }
-                    ]
+                    model: settings.sampleFormatOptions
                     textRole: "label"
                     valueRole: "value"
                     
@@ -602,6 +595,127 @@ Window {
                             implicitHeight: contentHeight
                             model: deviceCombo.popup.visible ? deviceCombo.delegateModel : null
                             currentIndex: deviceCombo.highlightedIndex
+                        }
+                        
+                        background: Rectangle {
+                            color: Theme.mainColor
+                            radius: 6
+                            border.color: "#30FFFFFF"
+                            border.width: 1
+                        }
+                    }
+                }
+            }
+            
+            // Row 5: Log Level
+            RowLayout {
+                Layout.fillWidth: true
+                
+                Text {
+                    text: qsTr("日志等级")
+                    color: Theme.textColor
+                    font.pixelSize: 14
+                    Layout.preferredWidth: 100
+                }
+                
+                ComboBox {
+                    id: logLevelCombo
+                    Layout.preferredWidth: 200
+                    Layout.preferredHeight: 32
+                    
+                    model: [
+                        { value: 0, label: qsTr("Trace") },
+                        { value: 1, label: qsTr("Debug") },
+                        { value: 2, label: qsTr("Info") },
+                        { value: 3, label: qsTr("Warn") },
+                        { value: 4, label: qsTr("Error") },
+                        { value: 5, label: qsTr("Critical") }
+                    ]
+                    textRole: "label"
+                    valueRole: "value"
+                    
+                    Binding {
+                        target: logLevelCombo
+                        property: "currentIndex"
+                        value: {
+                            for (var i = 0; i < logLevelCombo.model.length; i++) {
+                                if (logLevelCombo.model[i].value === settings.logLevel) {
+                                    return i;
+                                }
+                            }
+                            return 0;
+                        }
+                        restoreMode: Binding.RestoreBindingOrValue
+                    }
+                    
+                    onActivated: function(index) {
+                        settings.logLevel = model[index].value;
+                    }
+                    
+                    background: Rectangle {
+                        color: logLevelCombo.hovered ? Theme.hoverColor : Theme.baseColor
+                        radius: 6
+                        border.color: "#30FFFFFF"
+                        border.width: 1
+                    }
+                    
+                    contentItem: Text {
+                        text: logLevelCombo.displayText
+                        color: Theme.textColor
+                        font.pixelSize: 13
+                        verticalAlignment: Text.AlignVCenter
+                        leftPadding: 8
+                        rightPadding: logLevelCombo.indicator.width + 8
+                        elide: Text.ElideRight
+                    }
+                    
+                    indicator: Text {
+                        text: "▼"
+                        color: Theme.secondaryTextColor
+                        font.pixelSize: 10
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    
+                    delegate: ItemDelegate {
+                        width: logLevelCombo.width
+                        height: 32
+                        required property var modelData
+                        required property int index
+                        
+                        contentItem: Text {
+                            text: modelData.label
+                            color: Theme.textColor
+                            font.pixelSize: 13
+                            verticalAlignment: Text.AlignVCenter
+                            leftPadding: 8
+                        }
+                        
+                        background: Rectangle {
+                            color: parent.hovered ? Theme.hoverColor : Theme.mainColor
+                        }
+                    }
+                    
+                    popup: Popup {
+                        width: logLevelCombo.width
+                        height: fullListHeight
+                        margins: 8
+                        padding: 4
+                        readonly property real fullListHeight: contentItem.implicitHeight + topPadding + bottomPadding
+                        readonly property real comboTopInWindow: logLevelCombo.mapToItem(null, 0, 0).y
+                        readonly property real preferredY: logLevelCombo.height
+                        readonly property real windowTopLimit: margins
+                        readonly property real windowBottomLimit: logLevelCombo.Window.window ? logLevelCombo.Window.window.height - margins : comboTopInWindow + preferredY + fullListHeight
+                        readonly property real minY: windowTopLimit - comboTopInWindow
+                        readonly property real maxY: windowBottomLimit - comboTopInWindow - fullListHeight
+                        y: Math.max(minY, Math.min(preferredY, maxY))
+                        
+                        contentItem: ListView {
+                            clip: true
+                            implicitHeight: contentHeight
+                            model: logLevelCombo.popup.visible ? logLevelCombo.delegateModel : null
+                            currentIndex: logLevelCombo.highlightedIndex
                         }
                         
                         background: Rectangle {

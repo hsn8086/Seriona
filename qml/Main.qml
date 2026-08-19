@@ -59,6 +59,7 @@ Window {
                 navigationController.toggleSidebar();
             appFacade.library.focusedNodeId = "favorites";
             appFacade.library.playingTrackId = "track-aurora";
+            sidebarSmokeTimer.start();
             return;
         }
 
@@ -479,6 +480,19 @@ Window {
         id: equalizerWindow
         x: window.x + (window.width - width) / 2
         y: window.y + (window.height - height) / 2
+    }
+
+    Timer {
+        id: sidebarSmokeTimer
+        interval: 300
+        onTriggered: {
+            var sb = sidebarContainer.verticalScrollBar;
+            if (sb) {
+                smokeLog("[smoke] sidebar verticalScrollBar attached=true size=" + sb.size.toFixed(2) + " handleVisible=" + sb.contentItem.visible);
+            } else {
+                smokeLog("[smoke] sidebar verticalScrollBar attached=false");
+            }
+        }
     }
 
     Timer {

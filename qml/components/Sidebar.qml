@@ -17,8 +17,12 @@ Item {
     property bool isDockCapable: false
     property bool isSidebarOpen: false
     property bool isSearching: false
+    // 视图切换（T15）：false=文件夹视图，true=队列视图。仅切换列表内容，
+    // 不持久化（每次启动默认文件夹视图）；文件夹视图状态无损保留。
+    property bool queueViewActive: false
     property int folderTransitionDirection: 0
     readonly property bool hasOpenMenu: sidebarMenu.visible
+    readonly property ScrollBar verticalScrollBar: playlistView.ScrollBar.vertical
     readonly property bool scanRunning: libraryController.scanStatus === "running"
     readonly property bool scanError: libraryController.scanStatus === "error"
     readonly property string scanMessage: scanRunning
@@ -141,6 +145,18 @@ Item {
                             onClicked: root.closeMenus()
                         }
 
+                        // 表头空白处按下拖拽窗口（Qt 6.8 Window.startSystemMove；
+                        // offscreen/无窗口系统支持时无副作用）。按钮/搜索框等交互元素
+                        // 位于上层（RowLayout z:1、搜索行 z:10），点击事件不受影响。
+                        MouseArea {
+                            id: headerDragArea
+                            anchors.fill: parent
+                            visible: !root.hasOpenMenu
+                            enabled: visible
+                            acceptedButtons: Qt.LeftButton
+                            onPressed: root.Window.window.startSystemMove()
+                        }
+
                         RowLayout {
                             z: 1
                             anchors.fill: parent
@@ -168,6 +184,9 @@ Item {
                                      libraryController.goBack();
                                      folderTransitionResetTimer.restart();
                                   }
+                                 SharedToolTip {
+                                     text: qsTr("返回")
+                                 }
                               }
 
                             StyleButton {
@@ -190,11 +209,14 @@ Item {
                                          libraryController.clearSearch();
                                      }
                                  }
+                                 SharedToolTip {
+                                     text: qsTr("搜索")
+                                 }
                              }
 
                             Text {
                                 Layout.fillWidth: true
-                                text: libraryController.currentFolderName
+                                text: root.queueViewActive ? qsTr("播放队列") : libraryController.currentFolderName
                                 color: Theme.textColor
                                 font.pixelSize: 15
                                 font.bold: true
@@ -211,6 +233,10 @@ Item {
                                 buttonHeight: 20
                                 iconSize: 14
                                 onClicked: sidebarMenu.toggle()
+
+                                SharedToolTip {
+                                    text: qsTr("更多")
+                                }
 
                                 BubbleMenu {
                                     id: sidebarMenu
@@ -251,6 +277,9 @@ Item {
                                 onClicked: {
                                     root.closeMenus();
                                     root.closeClicked();
+                                }
+                                SharedToolTip {
+                                    text: qsTr("关闭")
                                 }
                             }
                         }
@@ -357,6 +386,83 @@ Item {
                 }
             }
 
+            // 视图切换条（T15）：文件夹视图 ↔ 队列视图。独立一行，不覆盖
+            // 表头拖拽区/搜索行/条目列表的任何既有交互区域。
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 40
+                color: "transparent"
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 176
+                    height: 30
+                    radius: 15
+                    color: "#14FFFFFF"
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 4
+
+                        Rectangle {
+                            id: folderViewButton
+                            objectName: "folderViewButton"
+                            width: 82
+                            height: 30
+                            radius: 15
+                            color: !root.queueViewActive ? Theme.hoverColor : "transparent"
+
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: Theme.animationDuration
+                                }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.queueViewActive = false
+                            }
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: qsTr("文件夹")
+                                color: !root.queueViewActive ? Theme.textColor : Theme.secondaryTextColor
+                                font.pixelSize: 12
+                            }
+                        }
+
+                        Rectangle {
+                            id: queueViewButton
+                            objectName: "queueViewButton"
+                            width: 82
+                            height: 30
+                            radius: 15
+                            color: root.queueViewActive ? Theme.hoverColor : "transparent"
+
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: Theme.animationDuration
+                                }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.queueViewActive = true
+                            }
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: qsTr("播放队列")
+                                color: root.queueViewActive ? Theme.textColor : Theme.secondaryTextColor
+                                font.pixelSize: 12
+                            }
+                        }
+                    }
+                }
+            }
+
             Item {
                 id: playlistPanel
                 Layout.fillWidth: true
@@ -374,7 +480,7 @@ Item {
                     color: root.scanError ? "#33FF5C5C" : Theme.baseColor
                     border.color: root.scanError ? Theme.accentColor : Theme.hoverColor
                     border.width: 1
-                    visible: root.scanRunning || root.scanError
+                    visible: (root.scanRunning || root.scanError) && !root.queueViewActive
                     z: 2
 
                     Text {
@@ -392,13 +498,39 @@ Item {
 
                 ListView {
                     id: playlistView
+                    objectName: "playlistView"
                     anchors.fill: parent
                     model: libraryController.model
+                    visible: !root.queueViewActive
                     spacing: 0
                     topMargin: Theme.paddingMedium + (scanBanner.visible ? scanBanner.height + 8 : 0)
                     bottomMargin: 80
                     clip: true
                     reuseItems: true
+
+                    ScrollBar.vertical: ScrollBar {
+                        id: playlistScrollBar
+                        policy: ScrollBar.AsNeeded
+                        width: Theme.paddingMedium
+
+                        background: Rectangle {
+                            color: "transparent"
+                        }
+
+                        contentItem: Rectangle {
+                            implicitWidth: Theme.paddingMedium
+                            radius: Theme.paddingMedium / 2
+                            // 长列表（内容溢出）显示句柄，短列表/空列表隐藏
+                            visible: playlistScrollBar.size < 1.0
+                            color: playlistScrollBar.pressed ? Theme.pressedColor
+                                 : playlistScrollBar.hovered ? Theme.hoverColor
+                                 : Theme.baseColor
+
+                            Behavior on color {
+                                ColorAnimation { duration: Theme.animationDuration }
+                            }
+                        }
+                    }
 
                     delegate: ItemDelegate {
                         id: delegate
@@ -420,6 +552,7 @@ Item {
                         required property bool isPlaying
                         required property bool isFocused
                         required property string artworkSource
+                        required property int year
 
                         readonly property bool hasFolderArtwork: delegate.isFolder && delegate.artworkSource.length > 0
 
@@ -433,6 +566,34 @@ Item {
                         Accessible.name: isFolder ? name : title
 
                         onClicked: root.activateNode(nodeId, isFolder)
+
+                        // 右键菜单（T14）：仅接受右键，左键事件继续穿透给 ItemDelegate
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.RightButton
+                            onClicked: (mouse) => {
+                                const global = delegate.mapToGlobal(mouse.x, mouse.y);
+                                root.closeMenus();
+                                trackContextMenu.openForEntry({
+                                    nodeId: delegate.nodeId,
+                                    trackId: delegate.trackId,
+                                    isFolder: delegate.isFolder,
+                                    name: delegate.name,
+                                    title: delegate.title,
+                                    artist: delegate.artist,
+                                    album: delegate.album,
+                                    parentName: delegate.parentName,
+                                    songCount: delegate.songCount,
+                                    duration: delegate.duration,
+                                    format: delegate.format,
+                                    sampleRate: delegate.sampleRate,
+                                    bitDepth: delegate.bitDepth,
+                                    artworkSource: delegate.artworkSource,
+                                    year: delegate.year,
+                                    path: root.appFacade.filePathForNodeId(delegate.nodeId)
+                                }, global.x, global.y);
+                            }
+                        }
 
                         background: Rectangle {
                             color: delegate.hovered || delegate.isPlaying ? Theme.hoverColor : "transparent"
@@ -665,7 +826,46 @@ Item {
                     font.pixelSize: 13
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    visible: libraryController.visibleNodeCount === 0
+                    visible: libraryController.visibleNodeCount === 0 && !root.queueViewActive
+                }
+
+                // 队列视图（T15）：展示临时队列，空队列显示引导文案；
+                // 移除/右键命令经信号上抛，由下方 onRemoveRequested/
+                // onContextMenuRequested 接 AppFacade 与 TrackContextMenu。
+                QueueView {
+                    id: queueView
+                    objectName: "queueListView"
+                    anchors.fill: parent
+                    visible: root.queueViewActive
+                    queueEntries: root.appFacade.playback.queueEntries
+
+                    onRemoveRequested: (index) => root.appFacade.removeFromQueue(index)
+
+                    onContextMenuRequested: (index, globalX, globalY) => {
+                        const entry = root.appFacade.playback.queueEntries[index];
+                        if (!entry)
+                            return;
+                        root.closeMenus();
+                        trackContextMenu.openForEntry({
+                            nodeId: entry.nodeId,
+                            trackId: entry.trackId,
+                            isFolder: false,
+                            name: entry.title,
+                            title: entry.title,
+                            artist: entry.artist,
+                            album: "",
+                            parentName: "",
+                            songCount: 0,
+                            duration: "",
+                            format: "",
+                            sampleRate: 0,
+                            bitDepth: 0,
+                            artworkSource: "",
+                            year: 0,
+                            path: root.appFacade.filePathForNodeId(entry.nodeId),
+                            queueIndex: index
+                        }, globalX, globalY);
+                    }
                 }
             }
         }
@@ -702,6 +902,7 @@ Item {
             baseColor: Theme.accentColor
             textColor: "white"
             z: 10
+            visible: !root.queueViewActive
 
             onClicked: libraryController.locateCurrentSong()
 
@@ -728,6 +929,15 @@ Item {
         onAccepted: {
             libraryController.applySortRules(sortRules);
         }
+    }
+
+    // 播放列表条目右键菜单（T14）：详情 / 添加到下一首播放 / 删除（含确认弹窗）；
+    // "从队列移除"（T15）在队列视图上下文可见（queueContext 绑定视图状态）。
+    TrackContextMenu {
+        id: trackContextMenu
+        objectName: "trackContextMenu"
+        appFacade: root.appFacade
+        queueContext: root.queueViewActive
     }
 
 }

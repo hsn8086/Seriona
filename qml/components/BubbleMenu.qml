@@ -230,6 +230,23 @@ Window {
         root.requestActivate();
     }
 
+    // 右键菜单定位（T14）：按全局坐标弹出（箭头向上，菜单出现在坐标下方 12px）。
+    // 与 showAtTarget 同一套 anchoredX/transientParent 约束，只替换定位来源。
+    function showAtGlobal(globalX, globalY) {
+        if (!targetItem || !targetItem.Window.window)
+            return;
+
+        root.resetPage();
+        root.transientParent = targetItem.Window.window;
+
+        root.anchoredX = Math.round(globalX - root.width / 2);
+        root.x = root.anchoredX;
+        root.y = Math.round(globalY + 12);
+        root.lastHeight = root.height;
+        root.show();
+        root.requestActivate();
+    }
+
     function toggle() {
         if (!root.visible && Date.now() - lastClosedAt < 150)
             return;
