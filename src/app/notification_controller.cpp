@@ -88,6 +88,17 @@ void NotificationController::showUnsupportedAction(const QString &actionName)
     });
 }
 
+void NotificationController::showInfo(const QString &title, const QString &message)
+{
+    append(NotificationViewState{
+        QStringLiteral("Info"),
+        QStringLiteral("None"),
+        message,
+        title,
+        QStringLiteral("info"),
+    });
+}
+
 void NotificationController::clear()
 {
     if (m_notifications.isEmpty()) {

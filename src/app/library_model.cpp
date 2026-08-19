@@ -369,6 +369,31 @@ int compareProjectionSortValues(const ProjectionSortValue &left, const Projectio
     return 0;
 }
 
+constexpr int kSearchWeightTitle = 10;
+constexpr int kSearchWeightArtist = 5;
+constexpr int kSearchWeightAlbum = 3;
+constexpr int kSearchWeightFilename = 2;
+
+int fieldSearchScore(const QString &fieldValue, const QString &queryLower, int weight)
+{
+    if (fieldValue.isEmpty()) {
+        return 0;
+    }
+
+    const QString fieldLower = fieldValue.toLower();
+    const qsizetype pos = fieldLower.indexOf(queryLower);
+    if (pos < 0) {
+        return 0;
+    }
+    if (fieldLower == queryLower) {
+        return weight * 10;
+    }
+    if (pos == 0) {
+        return weight * 5;
+    }
+    return weight * 1;
+}
+
 }
 
 LibraryModel::LibraryModel(QObject *parent)
@@ -429,6 +454,8 @@ QVariant LibraryModel::data(const QModelIndex &index, int role) const
         return entry->parentNodeId;
     case ArtworkSourceRole:
         return entry->artworkSource;
+    case YearRole:
+        return entry->year.has_value() ? QVariant{static_cast<qint64>(*entry->year)} : QVariant{};
     default:
         return {};
     }
@@ -453,7 +480,8 @@ QHash<int, QByteArray> LibraryModel::roleNames() const
             {IsPlayingRole, "isPlaying"},
             {IsFocusedRole, "isFocused"},
             {ParentNodeIdRole, "parentNodeId"},
-            {ArtworkSourceRole, "artworkSource"}};
+            {ArtworkSourceRole, "artworkSource"},
+            {YearRole, "year"}};
 }
 
 const LibraryModel::Entry *LibraryModel::entryAt(int row) const
@@ -488,6 +516,75 @@ QString LibraryModel::parentNodeId(const QString &nodeId) const
 QString LibraryModel::nodeIdForTrackId(const QString &trackId) const
 {
     return m_trackIdToNodeId.value(trackId);
+}
+
+QString LibraryModel::absoluteFilePathForNode(const QString &nodeId) const
+{
+    const LibraryTreeStore::Node *node = m_treeStore.nodeById(nodeId);
+    if (node == nullptr) {
+        return QString();
+    }
+
+    const auto effectivePath = [](const LibraryTreeStore::Node &target) -> const std::filesystem::path & {
+        return !target.sourceFilePath.empty() ? target.sourceFilePath : target.filePath;
+    };
+    const auto pathText = [](const std::filesystem::path &path) {
+        return path.empty() ? QString() : QString::fromStdString(path.string());
+    };
+
+    if (!node->isFolder) {
+        return pathText(effectivePath(*node));
+    }
+
+    // 文件夹：沿 显示名链 从某个后代曲目重建完整目录路径。任一父级显示名与路径段
+    // 不一致（cue 容器/虚拟目录等无文件系统实体）则放弃该曲目，全部失败返回空——
+    // 宁可删除被后端拒绝，也不把错误路径送进删除命令。
+    QVector<const LibraryTreeStore::Node *> tracks;
+    QVector<QString> pending = node->childNodeIds;
+    for (qsizetype i = 0; i < pending.size(); ++i) {
+        const LibraryTreeStore::Node *child = m_treeStore.nodeById(pending.at(i));
+        if (child == nullptr) {
+            continue;
+        }
+        if (child->isFolder) {
+            pending += child->childNodeIds;
+        } else {
+            tracks.append(child);
+        }
+    }
+
+    for (const LibraryTreeStore::Node *track : tracks) {
+        const std::filesystem::path trackPath = effectivePath(*track);
+        if (trackPath.empty()) {
+            continue;
+        }
+        std::filesystem::path dir = trackPath.parent_path();
+        QString cursor = track->parentNodeId;
+        bool matched = true;
+        while (!cursor.isEmpty() && cursor != nodeId) {
+            const LibraryTreeStore::Node *parent = m_treeStore.nodeById(cursor);
+            if (parent == nullptr || !parent->isFolder || parent->parentNodeId.isEmpty()
+                || dir.empty() || QString::fromStdString(dir.filename().string()) != parent->displayName) {
+                matched = false;
+                break;
+            }
+            dir = dir.parent_path();
+            cursor = parent->parentNodeId;
+        }
+        if (matched && cursor == nodeId) {
+            // 返回前校验目标文件夹自身显示名与最终 dir.filename() 一致（R1 修复）：
+            // 上方循环只校验非目标的中间父级，cue 曲目是 cue 容器的直接子级时循环
+            // 零次执行，会把 .cue 所在真实目录送进删除命令——此处兜底校验目标自身。
+            // root 虚拟根（parentNodeId 为空）不在投影中，显示名从未被校验，行为不变；
+            // 真实文件夹显示名必然与路径段一致，不误伤；不一致宁可返回空拒绝删除。
+            if (!node->parentNodeId.isEmpty() && !dir.empty()
+                && QString::fromStdString(dir.filename().string()) != node->displayName) {
+                continue;
+            }
+            return pathText(dir);
+        }
+    }
+    return QString();
 }
 
 bool LibraryModel::containsNodeId(const QString &nodeId) const
@@ -601,11 +698,17 @@ void LibraryModel::applyBrowsingState(const QString &focusedNodeId,
 
     QVector<QString> projectionNodeIds;
     if (!trimmedQuery.isEmpty()) {
-        projectionNodeIds = searchProjectionNodeIds(trimmedQuery);
-    } else if (!browserRootNodeId.isEmpty() && containsNodeId(browserRootNodeId)) {
-        projectionNodeIds = childNodeIds(browserRootNodeId);
+        const QString searchRootNodeId = (!browserRootNodeId.isEmpty() && containsNodeId(browserRootNodeId))
+            ? browserRootNodeId
+            : m_rootNodeId;
+        projectionNodeIds = searchProjectionNodeIds(trimmedQuery, searchRootNodeId);
     } else {
-        projectionNodeIds = m_rootProjectionNodeIds;
+        m_searchScoreByNodeId.clear();
+        if (!browserRootNodeId.isEmpty() && containsNodeId(browserRootNodeId)) {
+            projectionNodeIds = childNodeIds(browserRootNodeId);
+        } else {
+            projectionNodeIds = m_rootProjectionNodeIds;
+        }
     }
 
     projectionNodeIds = sortedProjectionNodeIds(std::move(projectionNodeIds), sortRules);
@@ -681,21 +784,19 @@ bool LibraryModel::setEntryRoleFlag(int row, Role role, bool value, bool notify)
     return true;
 }
 
-bool LibraryModel::entryMatchesSearch(const Entry &entry, const QString &trimmedQuery) const
+int LibraryModel::entrySearchScore(const Entry &entry, const QString &trimmedQuery) const
 {
-    if (trimmedQuery.isEmpty()) {
-        return true;
+    if (entry.isFolder || trimmedQuery.isEmpty()) {
+        return 0;
     }
 
-    if (entry.isFolder) {
-        return entry.name.contains(trimmedQuery, Qt::CaseInsensitive)
-            || entry.parentName.contains(trimmedQuery, Qt::CaseInsensitive);
-    }
-
-    return entry.title.contains(trimmedQuery, Qt::CaseInsensitive)
-        || entry.artist.contains(trimmedQuery, Qt::CaseInsensitive)
-        || entry.album.contains(trimmedQuery, Qt::CaseInsensitive)
-        || entry.format.contains(trimmedQuery, Qt::CaseInsensitive);
+    const QString queryLower = trimmedQuery.toLower();
+    int score = 0;
+    score += fieldSearchScore(entry.title, queryLower, kSearchWeightTitle);
+    score += fieldSearchScore(entry.artist, queryLower, kSearchWeightArtist);
+    score += fieldSearchScore(entry.album, queryLower, kSearchWeightAlbum);
+    score += fieldSearchScore(entry.fileName, queryLower, kSearchWeightFilename);
+    return score;
 }
 
 void LibraryModel::rebuildEntryIndexes()
@@ -777,6 +878,15 @@ QVector<QString> LibraryModel::sortedProjectionNodeIds(QVector<QString> nodeIds,
         }
 
         for (const SortRule &rule : sortRules) {
+            if (rule.field == QStringLiteral("searchScore")) {
+                const int leftScore = m_searchScoreByNodeId.value(leftNodeId, 0);
+                const int rightScore = m_searchScoreByNodeId.value(rightNodeId, 0);
+                if (leftScore != rightScore) {
+                    return rule.order == QStringLiteral("desc") ? leftScore > rightScore : leftScore < rightScore;
+                }
+                continue;
+            }
+
             const ProjectionSortValue leftValue = sortValueForEntry(leftIt.value(), rule.field);
             const ProjectionSortValue rightValue = sortValueForEntry(rightIt.value(), rule.field);
             if (leftValue.hasValue != rightValue.hasValue) {
@@ -800,21 +910,36 @@ QVector<QString> LibraryModel::sortedProjectionNodeIds(QVector<QString> nodeIds,
     return nodeIds;
 }
 
-QVector<QString> LibraryModel::searchProjectionNodeIds(const QString &searchQuery) const
+QVector<QString> LibraryModel::searchProjectionNodeIds(const QString &searchQuery, const QString &subtreeRootNodeId)
 {
+    m_searchScoreByNodeId.clear();
     const QString trimmedQuery = searchQuery.trimmed();
     QVector<QString> nodeIds;
-    if (trimmedQuery.isEmpty()) {
+    if (trimmedQuery.isEmpty() || subtreeRootNodeId.isEmpty() || !containsNodeId(subtreeRootNodeId)) {
         return nodeIds;
     }
 
-    for (const QString &nodeId : m_nodeOrder) {
-        if (nodeId == m_rootNodeId) {
+    QVector<QString> pending{subtreeRootNodeId};
+    while (!pending.isEmpty()) {
+        const QString nodeId = pending.takeLast();
+        const auto entryIt = m_nodeById.constFind(nodeId);
+        if (entryIt == m_nodeById.cend()) {
             continue;
         }
-        const auto entryIt = m_nodeById.constFind(nodeId);
-        if (entryIt != m_nodeById.cend() && entryMatchesSearch(entryIt.value(), trimmedQuery)) {
+
+        const Entry &entry = entryIt.value();
+        if (entry.isFolder) {
+            const QVector<QString> children = m_childrenById.value(nodeId);
+            for (auto it = children.crbegin(); it != children.crend(); ++it) {
+                pending.append(*it);
+            }
+            continue;
+        }
+
+        const int score = entrySearchScore(entry, trimmedQuery);
+        if (score > 0) {
             nodeIds.append(nodeId);
+            m_searchScoreByNodeId.insert(nodeId, score);
         }
     }
     return nodeIds;
@@ -1515,8 +1640,6 @@ void LibraryController::clearSearch()
     }
 
     m_searchQuery.clear();
-    m_hasSearchSortRules = false;
-    m_searchSortRules.clear();
     if (!m_currentFolderNodeId.isEmpty()) {
         restoreSortRulesForCurrentFolder();
     }
@@ -1569,10 +1692,6 @@ void LibraryController::applySortRules(const QVariantList &rules)
     }
 
     if (!m_searchQuery.trimmed().isEmpty()) {
-        m_searchSortRules = *parsedRules;
-        m_hasSearchSortRules = true;
-        applyBrowsingState();
-        emit currentSortRulesChanged();
         return;
     }
 
@@ -1598,15 +1717,18 @@ void LibraryController::applySortRules(const QVariantList &rules)
 
 void LibraryController::applyBrowsingState()
 {
-    m_model.applyBrowsingState(m_focusedNodeId, m_playingTrackId, m_searchQuery, m_currentFolderNodeId, sortRulesForCurrentProjection());
+    QVector<LibraryModel::SortRule> sortRules;
+    if (m_searchQuery.trimmed().isEmpty()) {
+        sortRules = sortRulesForCurrentProjection();
+    } else {
+        sortRules = QVector<LibraryModel::SortRule>{LibraryModel::SortRule{QStringLiteral("searchScore"), QStringLiteral("desc")}};
+    }
+    m_model.applyBrowsingState(m_focusedNodeId, m_playingTrackId, m_searchQuery, m_currentFolderNodeId, sortRules);
     updateVisibleNodeCount();
 }
 
 QVector<LibraryModel::SortRule> LibraryController::sortRulesForCurrentProjection() const
 {
-    if (!m_searchQuery.trimmed().isEmpty()) {
-        return m_hasSearchSortRules ? m_searchSortRules : m_sortRules;
-    }
     return m_sortRules;
 }
 
@@ -1782,8 +1904,6 @@ bool LibraryController::showNodeInBrowserProjection(const QString &nodeId)
     m_currentFolderName = folderName;
     if (searchChanged) {
         m_searchQuery.clear();
-        m_hasSearchSortRules = false;
-        m_searchSortRules.clear();
     }
     restoreSortRulesForCurrentFolder();
 

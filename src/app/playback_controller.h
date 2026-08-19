@@ -57,10 +57,13 @@ class PlaybackController : public QObject
     Q_PROPERTY(QString gradientColor0 READ gradientColor0 NOTIFY gradientColorsChanged)
     Q_PROPERTY(QString gradientColor1 READ gradientColor1 NOTIFY gradientColorsChanged)
     Q_PROPERTY(QString gradientColor2 READ gradientColor2 NOTIFY gradientColorsChanged)
+    Q_PROPERTY(QVariantList queueEntries READ queueEntries NOTIFY queueEntriesChanged)
     QML_ELEMENT
     QML_UNCREATABLE("PlaybackController is owned by AppFacade")
 
 public:
+    using TrackStartedHandler = std::function<void(const QString &trackId)>;
+
 #if SERIONA_HAS_BACKEND
     using CommandExecutor = std::function<seriona::control::MediaControllerCommandResult(const seriona::control::MediaControlCommand &)>;
 #endif
@@ -68,6 +71,10 @@ public:
     explicit PlaybackController(QObject *parent = nullptr);
     explicit PlaybackController(ArtworkPaletteWorker::Decoder decoder, QObject *parent = nullptr);
     ~PlaybackController() override;
+
+    // 轨道切换（新曲目开始播放）回调：AppFacade 接 TrackStatsController::recordPlayback，
+    // 作为播放次数自增的计数点（T16）。空实现默认无副作用。
+    void setTrackStartedHandler(TrackStartedHandler handler);
 
     bool ready() const;
     QString capability() const;
@@ -106,6 +113,7 @@ public:
     QString gradientColor0() const;
     QString gradientColor1() const;
     QString gradientColor2() const;
+    QVariantList queueEntries() const;
 
 #if SERIONA_HAS_BACKEND
     void setCommandExecutor(CommandExecutor executor);
@@ -137,6 +145,7 @@ signals:
     void waveformHeightsChanged();
     void waveformBarWidthChanged();
     void gradientColorsChanged();
+    void queueEntriesChanged();
 
 private:
     static qreal clamp(qreal value, qreal minimum, qreal maximum);
@@ -151,6 +160,7 @@ private:
     void setCapability(const QString &capability);
     void applyGradientPalette(const GradientPalette &palette);
     void applyPaletteResult(quint64 generation, const QString &color0, const QString &color1, const QString &color2);
+    void applyQueueEntries(const QVariantList &entries);
 
 #if SERIONA_HAS_BACKEND
     static seriona::control::RepeatMode repeatModeForIndex(int repeatMode);
@@ -167,6 +177,7 @@ private:
     std::uint64_t m_timelineSnapshotVersion = 0;
 #endif
 
+    TrackStartedHandler m_trackStartedHandler;
     bool m_isPlaying = false;
     qreal m_currentPosition = 0.0;
     qreal m_totalDuration = 0.0;
@@ -190,6 +201,7 @@ private:
     QString m_gradientColor0 = QStringLiteral("#2d2d2d");
     QString m_gradientColor1 = QStringLiteral("#1a1a1a");
     QString m_gradientColor2 = QStringLiteral("#121212");
+    QVariantList m_queueEntries;
 };
 
 }

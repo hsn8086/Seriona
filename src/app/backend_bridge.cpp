@@ -14,6 +14,9 @@
 #include <QVariantMap>
 
 #include "seriona/app/runtime_paths.h"
+#include "seriona/app/application_logging.h"
+
+#include <spdlog/common.h>
 
 #include <exception>
 #include <optional>
@@ -371,27 +374,100 @@ seriona::control::MediaControllerCommandResult BackendBridge::submitConfigureOut
     return submitCommand(command);
 }
 
+seriona::control::MediaControllerCommandResult BackendBridge::deleteTarget(const QString &path, bool folder)
+{
+    const QString normalized = path.trimmed();
+    if (normalized.isEmpty()) {
+        seriona::control::MediaControllerCommandResult result = invalidCommandResult(
+            "DeleteTrack/DeleteFolder requires a target path");
+        enqueueCommandFailureNotification(result);
+        return result;
+    }
+
+    seriona::control::MediaControlCommand command;
+    command.kind = folder ? seriona::control::MediaControlCommandKind::DeleteFolder
+                          : seriona::control::MediaControlCommandKind::DeleteTrack;
+    command.targetPath = toBackendPath(normalized);
+    return submitCommand(command);
+}
+
+seriona::control::MediaControllerCommandResult BackendBridge::playNextTrack(const QString &trackId)
+{
+    const QString normalized = trackId.trimmed();
+    if (normalized.isEmpty()) {
+        seriona::control::MediaControllerCommandResult result = invalidCommandResult(
+            "PlayNextTrack requires a track id");
+        enqueueCommandFailureNotification(result);
+        return result;
+    }
+
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::PlayNextTrack;
+    seriona::control::TrackIdentity identity;
+    identity.trackId = toBackendString(normalized);
+    command.track = std::move(identity);
+    return submitCommand(command);
+}
+
+seriona::control::MediaControllerCommandResult BackendBridge::removeFromQueue(quint64 queueIndex)
+{
+    seriona::control::MediaControlCommand command;
+    command.kind = seriona::control::MediaControlCommandKind::RemoveFromQueue;
+    command.queueIndex = static_cast<std::size_t>(queueIndex);
+    return submitCommand(command);
+}
+
 QList<QPair<QString, QString>> BackendBridge::enumeratePlaybackDevices()
+{
+    const QList<PlaybackDeviceCapabilities> devices = enumeratePlaybackDeviceCapabilities();
+    QList<QPair<QString, QString>> devicePairs;
+    devicePairs.reserve(devices.size());
+    for (const PlaybackDeviceCapabilities &device : devices) {
+        devicePairs.append({device.deviceId, device.deviceName});
+    }
+    return devicePairs;
+}
+
+QList<PlaybackDeviceCapabilities> BackendBridge::enumeratePlaybackDeviceCapabilities()
 {
     if (m_shuttingDown || !m_controller) {
         return {};
     }
 
-    const std::vector<seriona::audio::AudioDeviceFormat> devices = m_controller->enumeratePlaybackDevices();
-    QList<QPair<QString, QString>> devicePairs;
-    devicePairs.reserve(static_cast<qsizetype>(devices.size()));
+    const std::vector<seriona::audio::AudioDeviceFormat> devices = m_controller->enumeratePlaybackDevices();    QList<PlaybackDeviceCapabilities> capabilities;
+    capabilities.reserve(static_cast<qsizetype>(devices.size()));
     for (const seriona::audio::AudioDeviceFormat &device : devices) {
-        const QString deviceId = QString::fromStdString(device.deviceId);
-        if (deviceId.isEmpty()) {
+        PlaybackDeviceCapabilities caps;
+        caps.deviceId = QString::fromStdString(device.deviceId);
+        if (caps.deviceId.isEmpty()) {
             continue;
         }
-        QString deviceName = QString::fromStdString(device.deviceName);
-        if (deviceName.isEmpty()) {
-            deviceName = deviceId;
+        caps.deviceName = QString::fromStdString(device.deviceName);
+        if (caps.deviceName.isEmpty()) {
+            caps.deviceName = caps.deviceId;
         }
-        devicePairs.append({deviceId, deviceName});
+        caps.sampleFormats.reserve(static_cast<qsizetype>(device.supportedSampleFormats.size()));
+        for (const seriona::audio::AudioSampleFormat format : device.supportedSampleFormats) {
+            caps.sampleFormats.append(static_cast<int>(format));
+        }
+        caps.sampleRates.reserve(static_cast<qsizetype>(device.supportedSampleRates.size()));
+        for (const std::uint32_t rate : device.supportedSampleRates) {
+            caps.sampleRates.append(static_cast<int>(rate));
+        }
+        capabilities.append(std::move(caps));
     }
-    return devicePairs;
+    return capabilities;
+}
+
+void BackendBridge::setLogLevel(int level)
+{
+    // 值域防御在前端 settings_controller 完成（仅 [trace, critical]）；此处仍做
+    // 转换前检查，避免越界 int 直接静态转换破坏 spdlog 的 should_log 比较。
+    const auto asEnum = static_cast<spdlog::level::level_enum>(level);
+    if (asEnum < spdlog::level::trace || asEnum > spdlog::level::off) {
+        return;
+    }
+    seriona::app::setLogLevel(asEnum);
 }
 
 const seriona::control::PlayerStateSnapshot &BackendBridge::playerSnapshot() const

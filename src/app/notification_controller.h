@@ -47,6 +47,8 @@ public:
     QString latestSeverity() const;
 
     Q_INVOKABLE void showUnsupportedAction(const QString &actionName);
+    // 通用信息 toast（T16：删除成功反馈等成功类提示）
+    Q_INVOKABLE void showInfo(const QString &title, const QString &message);
     Q_INVOKABLE void clear();
 
 #if SERIONA_HAS_BACKEND

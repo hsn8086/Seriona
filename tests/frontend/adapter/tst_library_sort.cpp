@@ -173,6 +173,27 @@ PlaylistTreeSnapshot makeFolderRemovedSnapshot()
     return snapshot;
 }
 
+// 搜索专用快照：根下两个文件夹（folder-alpha、folder-nest）+ 一首根歌曲。
+// 查询 "Alpha" 的加权得分：track-t1 标题完全匹配 100 > track-nested 标题前缀 50 >
+// track-t2 歌手前缀 25 > track-t3 专辑前缀 15；文件夹名含 "Alpha" 也不得出现。
+PlaylistTreeSnapshot makeSearchSnapshot()
+{
+    PlaylistTreeSnapshot snapshot;
+    snapshot.version = 41;
+    snapshot.rootNodeId = std::string{"root"};
+    snapshot.nodes = {
+        makeFolder("root", "Library", {"folder-alpha", "folder-nest", "track-root-solo"}, std::nullopt, PlaylistNodeKind::Root),
+        makeFolder("folder-alpha", "Alpha Tracks", {"track-t1", "track-t2", "track-t3"}, std::string{"root"}, PlaylistNodeKind::Album),
+        makeFolder("folder-nest", "Nested Box", {"track-nested"}, std::string{"root"}, PlaylistNodeKind::Album),
+        makeTrack("track-t1", "track-t1-id", "01-t1.flac", "Alpha", "Beta Singer", "Gamma Album", std::chrono::milliseconds{120000}, std::string{"folder-alpha"}),
+        makeTrack("track-t2", "track-t2-id", "02-t2.flac", "Omega", "Alpha Singer", "Delta Album", std::chrono::milliseconds{130000}, std::string{"folder-alpha"}),
+        makeTrack("track-t3", "track-t3-id", "03-t3.flac", "Omega Two", "Epsilon", "Alpha Album", std::chrono::milliseconds{140000}, std::string{"folder-alpha"}),
+        makeTrack("track-nested", "track-nested-id", "04-nest.flac", "Alpha Deep", "Nest Artist", "Nest Album", std::chrono::milliseconds{150000}, std::string{"folder-nest"}),
+        makeTrack("track-root-solo", "track-root-solo-id", "05-solo.flac", "Solo", "Nested", "Box", std::chrono::milliseconds{160000}, std::string{"root"}),
+    };
+    return snapshot;
+}
+
 QString nodeIdAt(const LibraryModel *model, int row)
 {
     return model->data(model->index(row, 0), LibraryModel::NodeIdRole).toString();
@@ -283,6 +304,10 @@ private slots:
     void currentSortRulesExposeFolderRulesForQmlAndFallbacks();
     void searchProjectionSortDoesNotPersistOrOverwriteSavedFolderRules();
     void missingContextAndMalformedSortPayloadDoNotPersist();
+    void searchScopedToCurrentFolderSubtree();
+    void searchExcludesFolders();
+    void searchRanksByWeightedScore();
+    void clearSearchRestoresUserSortRules();
 };
 
 void LibrarySortTest::noRulesPreserveScannerOrderForRootFolderAndSearch()
@@ -374,11 +399,11 @@ void LibrarySortTest::currentRulesReapplyAcrossEnterFolderSearchSubmitAndClear()
     expectProjection(controller.model(), {QStringLiteral("track-folder-a"), QStringLiteral("track-folder-b"), QStringLiteral("track-folder-c")});
 
     controller.setSearchQuery(QStringLiteral("Tune"));
-    expectProjection(controller.model(), {QStringLiteral("track-folder-a"), QStringLiteral("track-folder-b"), QStringLiteral("track-folder-c")});
+    expectProjection(controller.model(), {QStringLiteral("track-folder-b"), QStringLiteral("track-folder-a"), QStringLiteral("track-folder-c")});
 
     controller.submitSearch();
-    QCOMPARE(controller.selectedBrowserNodeId(), QStringLiteral("track-folder-a"));
-    QCOMPARE(controller.scrollRequest(), QStringLiteral("track-folder-a"));
+    QCOMPARE(controller.selectedBrowserNodeId(), QStringLiteral("track-folder-b"));
+    QCOMPARE(controller.scrollRequest(), QStringLiteral("track-folder-b"));
 
     controller.clearSearch();
     expectProjection(controller.model(), {QStringLiteral("track-folder-a"), QStringLiteral("track-folder-b"), QStringLiteral("track-folder-c")});
@@ -414,7 +439,7 @@ void LibrarySortTest::snapshotReconcileKeepsRootSearchSortAndPlaybackMarkers()
     controller.setPlaylistTreeSnapshot(makeUpdatedSortableSnapshot());
 
     QCOMPARE(controller.model()->version(), 22ULL);
-    expectProjection(controller.model(), {QStringLiteral("track-root-z"), QStringLiteral("track-root-a")});
+    expectProjection(controller.model(), {QStringLiteral("track-root-a"), QStringLiteral("track-root-z")});
     QVERIFY(nodeIsPlaying(controller.model(), QStringLiteral("track-root-z")));
 
     controller.clearSearch();
@@ -649,7 +674,7 @@ void LibrarySortTest::searchProjectionSortDoesNotPersistOrOverwriteSavedFolderRu
     controller.applySortRules(sortRules({{QStringLiteral("title"), QStringLiteral("desc")}}));
 
     QCOMPARE(recorder.commands.size(), std::size_t{1});
-    expectProjection(controller.model(), {QStringLiteral("track-folder-c"), QStringLiteral("track-folder-b"), QStringLiteral("track-folder-a")});
+    expectProjection(controller.model(), {QStringLiteral("track-folder-b"), QStringLiteral("track-folder-a"), QStringLiteral("track-folder-c")});
 
     controller.clearSearch();
     controller.goBack();
@@ -699,6 +724,68 @@ void LibrarySortTest::missingContextAndMalformedSortPayloadDoNotPersist()
 
     QCOMPARE(malformedRecorder.commands.size(), std::size_t{0});
     expectProjection(malformed.model(), {QStringLiteral("track-folder-b"), QStringLiteral("track-folder-a"), QStringLiteral("track-folder-c")});
+}
+
+void LibrarySortTest::searchScopedToCurrentFolderSubtree()
+{
+    LibraryController controller;
+    controller.setPlaylistTreeSnapshot(makeSearchSnapshot());
+
+    controller.setSearchQuery(QStringLiteral("Alpha"));
+    expectProjection(controller.model(), {QStringLiteral("track-t1"), QStringLiteral("track-nested"), QStringLiteral("track-t2"), QStringLiteral("track-t3")});
+
+    controller.enterFolder(QStringLiteral("folder-alpha"));
+    expectProjection(controller.model(), {QStringLiteral("track-t1"), QStringLiteral("track-t2"), QStringLiteral("track-t3")});
+
+    controller.setSearchQuery(QStringLiteral("Solo"));
+    expectProjection(controller.model(), {});
+
+    controller.setSearchQuery(QStringLiteral("Alpha"));
+    expectProjection(controller.model(), {QStringLiteral("track-t1"), QStringLiteral("track-t2"), QStringLiteral("track-t3")});
+}
+
+void LibrarySortTest::searchExcludesFolders()
+{
+    LibraryController controller;
+    controller.setPlaylistTreeSnapshot(makeSearchSnapshot());
+
+    controller.setSearchQuery(QStringLiteral("Nested Box"));
+    expectProjection(controller.model(), {});
+
+    controller.setSearchQuery(QStringLiteral("Alpha Tracks"));
+    expectProjection(controller.model(), {});
+
+    controller.setSearchQuery(QStringLiteral("Nested"));
+    expectProjection(controller.model(), {QStringLiteral("track-root-solo")});
+}
+
+void LibrarySortTest::searchRanksByWeightedScore()
+{
+    LibraryController controller;
+    controller.setPlaylistTreeSnapshot(makeSearchSnapshot());
+
+    controller.setSearchQuery(QStringLiteral("Alpha"));
+    expectProjection(controller.model(), {QStringLiteral("track-t1"), QStringLiteral("track-nested"), QStringLiteral("track-t2"), QStringLiteral("track-t3")});
+
+    controller.enterFolder(QStringLiteral("folder-alpha"));
+    controller.setSearchQuery(QStringLiteral("Alpha"));
+    expectProjection(controller.model(), {QStringLiteral("track-t1"), QStringLiteral("track-t2"), QStringLiteral("track-t3")});
+}
+
+void LibrarySortTest::clearSearchRestoresUserSortRules()
+{
+    LibraryController controller;
+    controller.setPlaylistTreeSnapshot(makeSearchSnapshot());
+    controller.enterFolder(QStringLiteral("folder-alpha"));
+
+    controller.applySortRules(sortRules({{QStringLiteral("title"), QStringLiteral("desc")}}));
+    expectProjection(controller.model(), {QStringLiteral("track-t3"), QStringLiteral("track-t2"), QStringLiteral("track-t1")});
+
+    controller.setSearchQuery(QStringLiteral("Alpha"));
+    expectProjection(controller.model(), {QStringLiteral("track-t1"), QStringLiteral("track-t2"), QStringLiteral("track-t3")});
+
+    controller.clearSearch();
+    expectProjection(controller.model(), {QStringLiteral("track-t3"), QStringLiteral("track-t2"), QStringLiteral("track-t1")});
 }
 
 QTEST_GUILESS_MAIN(LibrarySortTest)

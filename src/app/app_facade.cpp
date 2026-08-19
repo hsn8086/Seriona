@@ -73,11 +73,16 @@ AppFacade::AppFacade(QObject *parent)
     , m_lyrics(this)
     , m_notifications(this)
     , m_navigation(this)
+    , m_trackStats(this)
     , m_backendBridge(std::make_unique<BackendBridge>(this))
 #if SERIONA_HAS_BACKEND
     , m_waveformProvider(std::make_unique<WaveformProvider>(this))
 #endif
 {
+    // 播放次数计数点（T16）：新曲目开始播放（轨道切换/PlaybackEnded 后续播）自增。
+    m_playback.setTrackStartedHandler([this](const QString &trackId) {
+        m_trackStats.recordPlayback(trackId);
+    });
 #if SERIONA_HAS_BACKEND
     m_playback.setCommandExecutor([this](const seriona::control::MediaControlCommand &command) {
         return m_backendBridge->submitCommand(command);
@@ -127,7 +132,10 @@ AppFacade::AppFacade(QObject *parent)
         return m_backendBridge->submitConfigureOutput(outputMode, sampleRate, sampleFormat, bufferDurationMs, preferredDeviceId);
     });
     m_settings.setEnumerateDevicesExecutor([this] {
-        return m_backendBridge->enumeratePlaybackDevices();
+        return m_backendBridge->enumeratePlaybackDeviceCapabilities();
+    });
+    m_settings.setLogLevelExecutor([this](int level) {
+        return m_backendBridge->setLogLevel(level);
     });
     // 启动路径：bridge 就绪（startedChanged 且 started() 为真）后推送一次持久化配置；
     // shutdown 也会发 startedChanged（started()==false），必须跳过。
@@ -138,6 +146,8 @@ AppFacade::AppFacade(QObject *parent)
         m_settings.reloadFromSettings();
         m_lyrics.setLyricDelimiters(m_settings.lyricDelimiters());
         m_settings.apply();
+        // 持久化的日志等级在启动时同步到后端（initializeApplicationLogging 默认之后覆盖）
+        m_settings.applyLogLevel();
     });
 #endif
 
@@ -198,6 +208,64 @@ NavigationController *AppFacade::navigation()
 SettingsController *AppFacade::settings()
 {
     return &m_settings;
+}
+
+TrackStatsController *AppFacade::trackStats()
+{
+    return &m_trackStats;
+}
+
+bool AppFacade::deleteTarget(const QString &path, bool folder)
+{
+#if SERIONA_HAS_BACKEND
+    if (m_shuttingDown) {
+        return false;
+    }
+    const seriona::control::MediaControllerCommandResult result = m_backendBridge->deleteTarget(path, folder);
+    if (result.accepted) {
+        m_notifications.showInfo(folder ? tr("删除文件夹") : tr("删除歌曲"),
+                                 folder ? tr("文件夹已从磁盘删除，不可恢复") : tr("歌曲已从磁盘删除，不可恢复"));
+    }
+    return result.accepted;
+#else
+    m_notifications.showUnsupportedAction(folder ? tr("删除文件夹") : tr("删除歌曲"));
+    return false;
+#endif
+}
+
+bool AppFacade::playNextTrack(const QString &trackId)
+{
+#if SERIONA_HAS_BACKEND
+    if (m_shuttingDown) {
+        return false;
+    }
+    const seriona::control::MediaControllerCommandResult result = m_backendBridge->playNextTrack(trackId);
+    if (result.accepted) {
+        m_notifications.showInfo(tr("已添加到下一首播放"), tr("该曲目将在当前歌曲结束后播放"));
+    }
+    return result.accepted;
+#else
+    m_notifications.showUnsupportedAction(tr("添加到下一首播放"));
+    return false;
+#endif
+}
+
+bool AppFacade::removeFromQueue(quint64 queueIndex)
+{
+#if SERIONA_HAS_BACKEND
+    if (m_shuttingDown) {
+        return false;
+    }
+    return m_backendBridge->removeFromQueue(queueIndex).accepted;
+#else
+    m_notifications.showUnsupportedAction(tr("从队列移除"));
+    return false;
+#endif
+}
+
+QString AppFacade::filePathForNodeId(const QString &nodeId)
+{
+    return m_library.model()->absoluteFilePathForNode(nodeId);
 }
 
 bool AppFacade::backendBridgeStartedForTests() const

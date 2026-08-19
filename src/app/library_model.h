@@ -53,7 +53,9 @@ public:
         IsPlayingRole,
         IsFocusedRole,
         ParentNodeIdRole,
-        ArtworkSourceRole
+        ArtworkSourceRole,
+        // 只追加末尾：roleNames/既有 role 索引按数值兼容（T14 修复 B：年份 QML 可达）
+        YearRole
     };
     Q_ENUM(Role)
 
@@ -100,6 +102,10 @@ public:
     QVector<QString> childNodeIds(const QString &nodeId) const;
     QString parentNodeId(const QString &nodeId) const;
     QString nodeIdForTrackId(const QString &trackId) const;
+    // 绝对路径查询（T14 修复 A）：歌曲返回音频文件绝对路径（sourceFilePath 优先，
+    // 与 fileNameFromNode 同一约定），文件夹沿显示名链从某个后代曲目重建完整目录路径；
+    // 路径段与显示名不一致（cue 容器/虚拟目录等无文件系统实体）或未知节点返回空。
+    QString absoluteFilePathForNode(const QString &nodeId) const;
     bool containsNodeId(const QString &nodeId) const;
     int rowForNodeId(const QString &nodeId) const;
     QString firstNodeId() const;
@@ -122,12 +128,12 @@ public:
 
 private:
     bool setEntryRoleFlag(int row, Role role, bool value, bool notify);
-    bool entryMatchesSearch(const Entry &entry, const QString &trimmedQuery) const;
+    int entrySearchScore(const Entry &entry, const QString &trimmedQuery) const;
     void rebuildEntryIndexes();
     void rebuildProjectionIndexes();
     void setProjectionNodeIds(const QVector<QString> &nodeIds);
     QVector<QString> sortedProjectionNodeIds(QVector<QString> nodeIds, const QVector<SortRule> &sortRules) const;
-    QVector<QString> searchProjectionNodeIds(const QString &searchQuery) const;
+    QVector<QString> searchProjectionNodeIds(const QString &searchQuery, const QString &subtreeRootNodeId);
 
     LibraryTreeStore m_treeStore;
     QVector<Entry> m_entries;
@@ -136,6 +142,7 @@ private:
     QHash<QString, QString> m_parentById;
     QHash<QString, QString> m_trackIdToNodeId;
     QHash<QString, int> m_rowByNodeId;
+    QHash<QString, int> m_searchScoreByNodeId;
     QVector<QString> m_nodeOrder;
     QVector<QString> m_rootProjectionNodeIds;
     QString m_rootNodeId;
@@ -304,8 +311,6 @@ private:
     int m_visibleNodeCount = 0;
     bool m_backendAvailable = false;
     QVector<LibraryModel::SortRule> m_sortRules;
-    QVector<LibraryModel::SortRule> m_searchSortRules;
-    bool m_hasSearchSortRules = false;
     QHash<QString, QVector<LibraryModel::SortRule>> m_savedFolderSortRules;
     QString m_activeFolderSortKey;
 #if SERIONA_HAS_BACKEND

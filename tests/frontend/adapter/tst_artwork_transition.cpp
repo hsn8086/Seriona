@@ -5493,6 +5493,12 @@ void registerSerionaModuleForTests(const QString &sourceRoot)
                < 0
         || qmlRegisterType(moduleFile(QStringLiteral("components/BubbleSubMenuItem.qml")),
                kModuleUri, 1, 0, "BubbleSubMenuItem")
+               < 0
+        || qmlRegisterType(moduleFile(QStringLiteral("components/SharedToolTip.qml")),
+               kModuleUri, 1, 0, "SharedToolTip")
+               < 0
+        || qmlRegisterType(moduleFile(QStringLiteral("components/AboutOverlay.qml")),
+               kModuleUri, 1, 0, "AboutOverlay")
                < 0) {
         qFatal("Seriona QML module registration failed");
     }

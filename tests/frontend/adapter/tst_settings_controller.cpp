@@ -38,6 +38,15 @@ private slots:
     void sampleFormatPersistRoundTrip();
     void applyIncludesSampleFormat();
     void rollbackRejectedOutputConfigRestoresSnapshot();
+    void directOutputGreyState();
+    void deviceCapsEmptyShowsAllOptions();
+    void deviceCapsFilterSampleRatesAndFormats();
+    void deviceCapsFollowSelectedDevice();
+    void enumerateDevicesExposesCapabilities();
+    void unsupportedSavedValueKeptAndMarked();
+    void logLevelPersistRoundTrip();
+    void logLevelMapping();
+    void logLevelPushAndDefense();
 
 private:
     std::unique_ptr<QTemporaryDir> m_settingsDir;
@@ -79,6 +88,8 @@ void SettingsControllerTest::defaults()
     QCOMPARE(settings.bufferDurationMs(), 300);
     const QStringList defaultDelimiters{QStringLiteral(" / ")};
     QCOMPARE(settings.lyricDelimiters(), defaultDelimiters);
+    // 日志等级默认 info（与前端持久化默认一致，启动后经 applyLogLevel 同步后端）
+    QCOMPARE(settings.logLevel(), 2);
 }
 
 void SettingsControllerTest::propertySettersPersistAndNotify()
@@ -313,9 +324,9 @@ void SettingsControllerTest::enumerateDevicesUpdatesList()
     Seriona::App::SettingsController settings;
     settings.setEnumerateDevicesExecutor(
         [] {
-            return QList<QPair<QString, QString>>{
-                {QStringLiteral("dev-1"), QStringLiteral("Device One")},
-                {QStringLiteral("dev-2"), QStringLiteral("Device Two")},
+            return QList<Seriona::App::PlaybackDeviceCapabilities>{
+                {QStringLiteral("dev-1"), QStringLiteral("Device One"), {}, {}},
+                {QStringLiteral("dev-2"), QStringLiteral("Device Two"), {}, {}},
             };
         });
     QSignalSpy devicesSpy(&settings, &Seriona::App::SettingsController::playbackDevicesChanged);
@@ -335,9 +346,9 @@ void SettingsControllerTest::enumerateDevicesUpdatesList()
     // 仅名字变化时只发 playbackDeviceNamesChanged，id 列表不变
     settings.setEnumerateDevicesExecutor(
         [] {
-            return QList<QPair<QString, QString>>{
-                {QStringLiteral("dev-1"), QStringLiteral("Device One Renamed")},
-                {QStringLiteral("dev-2"), QStringLiteral("Device Two")},
+            return QList<Seriona::App::PlaybackDeviceCapabilities>{
+                {QStringLiteral("dev-1"), QStringLiteral("Device One Renamed"), {}, {}},
+                {QStringLiteral("dev-2"), QStringLiteral("Device Two"), {}, {}},
             };
         });
     settings.enumerateDevices();
@@ -351,6 +362,279 @@ void SettingsControllerTest::enumerateDevicesUpdatesList()
     mockController.enumerateDevices();
     QVERIFY(mockController.playbackDevices().isEmpty());
     QVERIFY(mockController.playbackDeviceNames().isEmpty());
+    QVERIFY(mockController.playbackDeviceCapabilities().isEmpty());
+}
+
+void SettingsControllerTest::directOutputGreyState()
+{
+    Seriona::App::SettingsController settings;
+    QSignalSpy modeSpy(&settings, &Seriona::App::SettingsController::outputModeChanged);
+
+    // 默认直接输出（0）→ 采样率/位深行灰化
+    QVERIFY(settings.sampleParamsGreyed());
+
+    settings.setOutputMode(1);
+    QVERIFY(!settings.sampleParamsGreyed());
+
+    settings.setOutputMode(0);
+    QVERIFY(settings.sampleParamsGreyed());
+    QCOMPARE(modeSpy.count(), 2);
+}
+
+void SettingsControllerTest::deviceCapsEmptyShowsAllOptions()
+{
+    Seriona::App::SettingsController settings;
+    settings.setEnumerateDevicesExecutor(
+        [] {
+            return QList<Seriona::App::PlaybackDeviceCapabilities>{
+                {QStringLiteral("dev-1"), QStringLiteral("Device One"), {}, {}},
+            };
+        });
+    settings.enumerateDevices();
+    settings.setPreferredDeviceId(QStringLiteral("dev-1"));
+
+    // 空能力 = 未枚举/全支持 → 显示全部标准选项（含 0=跟随设备）
+    const QVariantList rates = settings.sampleRateOptions();
+    QCOMPARE(rates.size(), 5);
+    QCOMPARE(rates.at(0).toMap().value(QStringLiteral("value")).toInt(), 0);
+    QCOMPARE(rates.at(1).toMap().value(QStringLiteral("value")).toInt(), 44100);
+    QCOMPARE(rates.at(2).toMap().value(QStringLiteral("value")).toInt(), 48000);
+    QCOMPARE(rates.at(3).toMap().value(QStringLiteral("value")).toInt(), 96000);
+    QCOMPARE(rates.at(4).toMap().value(QStringLiteral("value")).toInt(), 192000);
+
+    const QVariantList formats = settings.sampleFormatOptions();
+    QCOMPARE(formats.size(), 4);
+    QCOMPARE(formats.at(0).toMap().value(QStringLiteral("value")).toInt(), 0);
+    QCOMPARE(formats.at(1).toMap().value(QStringLiteral("value")).toInt(), 1);
+    QCOMPARE(formats.at(2).toMap().value(QStringLiteral("value")).toInt(), 2);
+    QCOMPARE(formats.at(3).toMap().value(QStringLiteral("value")).toInt(), 4);
+}
+
+void SettingsControllerTest::deviceCapsFilterSampleRatesAndFormats()
+{
+    Seriona::App::SettingsController settings;
+    settings.setEnumerateDevicesExecutor(
+        [] {
+            return QList<Seriona::App::PlaybackDeviceCapabilities>{
+                {QStringLiteral("dev-1"), QStringLiteral("Device One"), {1, 4}, {44100, 48000}},
+            };
+        });
+    settings.enumerateDevices();
+    settings.setPreferredDeviceId(QStringLiteral("dev-1"));
+
+    // 已枚举能力 → 与标准列表求交（0=跟随设备恒保留）
+    const QVariantList rates = settings.sampleRateOptions();
+    QCOMPARE(rates.size(), 3);
+    QCOMPARE(rates.at(0).toMap().value(QStringLiteral("value")).toInt(), 0);
+    QCOMPARE(rates.at(1).toMap().value(QStringLiteral("value")).toInt(), 44100);
+    QCOMPARE(rates.at(2).toMap().value(QStringLiteral("value")).toInt(), 48000);
+
+    const QVariantList formats = settings.sampleFormatOptions();
+    QCOMPARE(formats.size(), 3);
+    QCOMPARE(formats.at(0).toMap().value(QStringLiteral("value")).toInt(), 0);
+    QCOMPARE(formats.at(1).toMap().value(QStringLiteral("value")).toInt(), 1);
+    QCOMPARE(formats.at(2).toMap().value(QStringLiteral("value")).toInt(), 4);
+}
+
+void SettingsControllerTest::deviceCapsFollowSelectedDevice()
+{
+    Seriona::App::SettingsController settings;
+    settings.setEnumerateDevicesExecutor(
+        [] {
+            return QList<Seriona::App::PlaybackDeviceCapabilities>{
+                {QStringLiteral("dev-1"), QStringLiteral("Device One"), {1, 4}, {44100, 48000}},
+                {QStringLiteral("dev-2"), QStringLiteral("Device Two"), {1, 2}, {48000, 96000}},
+            };
+        });
+    settings.enumerateDevices();
+    settings.setPreferredDeviceId(QStringLiteral("dev-1"));
+    QSignalSpy rateOptionsSpy(&settings, &Seriona::App::SettingsController::sampleRateOptionsChanged);
+    QSignalSpy formatOptionsSpy(&settings, &Seriona::App::SettingsController::sampleFormatOptionsChanged);
+
+    settings.setPreferredDeviceId(QStringLiteral("dev-2"));
+    const QVariantList rates = settings.sampleRateOptions();
+    QCOMPARE(rates.size(), 3);
+    QCOMPARE(rates.at(1).toMap().value(QStringLiteral("value")).toInt(), 48000);
+    QCOMPARE(rates.at(2).toMap().value(QStringLiteral("value")).toInt(), 96000);
+    const QVariantList formats = settings.sampleFormatOptions();
+    QCOMPARE(formats.size(), 3);
+    QCOMPARE(formats.at(1).toMap().value(QStringLiteral("value")).toInt(), 1);
+    QCOMPARE(formats.at(2).toMap().value(QStringLiteral("value")).toInt(), 2);
+    QCOMPARE(rateOptionsSpy.count(), 1);
+    QCOMPARE(formatOptionsSpy.count(), 1);
+}
+
+void SettingsControllerTest::enumerateDevicesExposesCapabilities()
+{
+    Seriona::App::SettingsController settings;
+    settings.setEnumerateDevicesExecutor(
+        [] {
+            return QList<Seriona::App::PlaybackDeviceCapabilities>{
+                {QStringLiteral("dev-1"), QStringLiteral("Device One"), {1, 4}, {48000}},
+            };
+        });
+    QSignalSpy capsSpy(&settings, &Seriona::App::SettingsController::playbackDeviceCapabilitiesChanged);
+
+    settings.enumerateDevices();
+    const QVariantList caps = settings.playbackDeviceCapabilities();
+    QCOMPARE(caps.size(), 1);
+    const QVariantMap device = caps.at(0).toMap();
+    QCOMPARE(device.value(QStringLiteral("deviceId")).toString(), QStringLiteral("dev-1"));
+    QCOMPARE(device.value(QStringLiteral("deviceName")).toString(), QStringLiteral("Device One"));
+    QCOMPARE(device.value(QStringLiteral("sampleFormats")).toList(), QVariantList({1, 4}));
+    QCOMPARE(device.value(QStringLiteral("sampleRates")).toList(), QVariantList({48000}));
+    QCOMPARE(capsSpy.count(), 1);
+
+    // 相同列表不重复 NOTIFY
+    settings.enumerateDevices();
+    QCOMPARE(capsSpy.count(), 1);
+}
+
+void SettingsControllerTest::unsupportedSavedValueKeptAndMarked()
+{
+    Seriona::App::SettingsController settings;
+    settings.setSampleRate(96000);
+    settings.setEnumerateDevicesExecutor(
+        [] {
+            return QList<Seriona::App::PlaybackDeviceCapabilities>{
+                {QStringLiteral("dev-1"), QStringLiteral("Device One"), {1, 4}, {44100, 48000}},
+            };
+        });
+    settings.enumerateDevices();
+    settings.setPreferredDeviceId(QStringLiteral("dev-1"));
+
+    // 已保存值不在设备支持列表 → 保留该选项并标注；已保存值本身不变
+    bool foundSaved = false;
+    const QVariantList rates = settings.sampleRateOptions();
+    for (const auto &entry : rates) {
+        const QVariantMap map = entry.toMap();
+        if (map.value(QStringLiteral("value")).toInt() == 96000) {
+            foundSaved = true;
+            QVERIFY(map.value(QStringLiteral("label")).toString().contains(QStringLiteral("设备不支持")));
+        }
+    }
+    QVERIFY(foundSaved);
+    QCOMPARE(settings.sampleRate(), 96000);
+
+    // 支持列表内已保存值不标注
+    settings.setSampleRate(44100);
+    const QVariantList supportedRates = settings.sampleRateOptions();
+    for (const auto &entry : supportedRates) {
+        QVERIFY(!entry.toMap().value(QStringLiteral("label")).toString().contains(QStringLiteral("设备不支持")));
+    }
+}
+
+void SettingsControllerTest::logLevelPersistRoundTrip()
+{
+    {
+        Seriona::App::SettingsController writer;
+        writer.setLogLevel(1); // debug
+        QCOMPARE(writer.logLevel(), 1);
+    }
+
+    // 持久化键位于 logging 组，值为写入的枚举 int
+    QSettings stored(m_settingsFile, QSettings::IniFormat);
+    stored.beginGroup(QStringLiteral("logging"));
+    QCOMPARE(stored.value(QStringLiteral("logLevel")).toInt(), 1);
+    stored.endGroup();
+
+    Seriona::App::SettingsController reader;
+    reader.reloadFromSettings();
+    QCOMPARE(reader.logLevel(), 1);
+
+    // 未写入时默认 info
+    stored.remove(QStringLiteral("logging/logLevel"));
+    stored.sync();
+    Seriona::App::SettingsController defaultReader;
+    defaultReader.reloadFromSettings();
+    QCOMPARE(defaultReader.logLevel(), 2);
+}
+
+void SettingsControllerTest::logLevelMapping()
+{
+    using Seriona::App::SettingsController;
+
+    // 字符串 → 枚举（spdlog::level::level_enum 值：trace=0..critical=5）
+    QCOMPARE(SettingsController::logLevelFromString(QStringLiteral("trace")), 0);
+    QCOMPARE(SettingsController::logLevelFromString(QStringLiteral("debug")), 1);
+    QCOMPARE(SettingsController::logLevelFromString(QStringLiteral("info")), 2);
+    QCOMPARE(SettingsController::logLevelFromString(QStringLiteral("warn")), 3);
+    QCOMPARE(SettingsController::logLevelFromString(QStringLiteral("error")), 4);
+    QCOMPARE(SettingsController::logLevelFromString(QStringLiteral("critical")), 5);
+    QCOMPARE(SettingsController::logLevelFromString(QStringLiteral("off")), -1);
+    QCOMPARE(SettingsController::logLevelFromString(QStringLiteral("bogus")), -1);
+    QCOMPARE(SettingsController::logLevelFromString(QString()), -1);
+
+    // 枚举 → 字符串（往返一致）
+    QCOMPARE(SettingsController::logLevelToString(0), QStringLiteral("trace"));
+    QCOMPARE(SettingsController::logLevelToString(1), QStringLiteral("debug"));
+    QCOMPARE(SettingsController::logLevelToString(2), QStringLiteral("info"));
+    QCOMPARE(SettingsController::logLevelToString(3), QStringLiteral("warn"));
+    QCOMPARE(SettingsController::logLevelToString(4), QStringLiteral("error"));
+    QCOMPARE(SettingsController::logLevelToString(5), QStringLiteral("critical"));
+    QCOMPARE(SettingsController::logLevelToString(6), QString());
+    QCOMPARE(SettingsController::logLevelToString(-1), QString());
+}
+
+void SettingsControllerTest::logLevelPushAndDefense()
+{
+    Seriona::App::SettingsController settings;
+    QList<int> pushed;
+    settings.setLogLevelExecutor([&pushed](int level) {
+        pushed.append(level);
+    });
+
+    // 离散变更立即推送，值正确
+    settings.setLogLevel(1);
+    QCOMPARE(pushed, QList<int>({1}));
+    settings.setLogLevel(4);
+    QCOMPARE(pushed, QList<int>({1, 4}));
+
+    // 相同值不重复推送
+    settings.setLogLevel(4);
+    QCOMPARE(pushed.size(), 2);
+
+    // 越界值防御：spdlog::level::level_enum 是 int 底层枚举，
+    // 越界值会破坏 should_log 比较，前端直接拒绝（不推送、不持久化）
+    settings.setLogLevel(-1);
+    settings.setLogLevel(6);
+    settings.setLogLevel(99);
+    QCOMPARE(settings.logLevel(), 4);
+    QCOMPARE(pushed.size(), 2);
+
+    // 拒绝不写 QSettings
+    QSettings stored(m_settingsFile, QSettings::IniFormat);
+    stored.beginGroup(QStringLiteral("logging"));
+    QCOMPARE(stored.value(QStringLiteral("logLevel")).toInt(), 4);
+    stored.endGroup();
+
+    // applyLogLevel：推送当前值，不持久化（启动路径：reload 后同步后端）
+    QSettings preApply(m_settingsFile, QSettings::IniFormat);
+    preApply.remove(QStringLiteral("logging/logLevel"));
+    preApply.sync();
+    settings.applyLogLevel();
+    QCOMPARE(pushed.size(), 3);
+    QCOMPARE(pushed.at(2), 4);
+    QSettings postApply(m_settingsFile, QSettings::IniFormat);
+    postApply.beginGroup(QStringLiteral("logging"));
+    QVERIFY(!postApply.contains(QStringLiteral("logLevel")));
+    postApply.endGroup();
+
+    // 无 executor（mock-only）时 setter/applyLogLevel 无副作用
+    Seriona::App::SettingsController mockController;
+    mockController.setLogLevel(3);
+    mockController.applyLogLevel();
+    QCOMPARE(mockController.logLevel(), 3);
+
+    // reload 防御：设置文件中的非法值回退默认
+    QSettings corrupt(m_settingsFile, QSettings::IniFormat);
+    corrupt.beginGroup(QStringLiteral("logging"));
+    corrupt.setValue(QStringLiteral("logLevel"), 42);
+    corrupt.endGroup();
+    corrupt.sync();
+    Seriona::App::SettingsController corruptReader;
+    corruptReader.reloadFromSettings();
+    QCOMPARE(corruptReader.logLevel(), 2);
 }
 
 void SettingsControllerTest::lyricDelimitersPersistRoundTrip()

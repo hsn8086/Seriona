@@ -145,6 +145,8 @@ set_source_files_properties(qml/theme/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE
 
 set(SERIONA_APP_LAYER_SOURCES
     src/app/app_facade.cpp
+    src/app/track_stats_controller.cpp
+    src/app/track_stats_controller.h
     src/app/app_facade.h
     src/app/playback_controller.cpp
     src/app/playback_controller.h
@@ -170,6 +172,8 @@ set(SERIONA_APP_LAYER_SOURCES
     src/app/library_model.h
     src/app/library_tree_store.cpp
     src/app/library_tree_store.h
+    src/app/track_stats_controller.cpp
+    src/app/track_stats_controller.h
 )
 
 set(SERIONA_QML_MODULE_FILES
@@ -181,15 +185,21 @@ set(SERIONA_QML_MODULE_FILES
     qml/components/DynamicBackground.qml
     qml/components/StyleButton.qml
     qml/components/Sidebar.qml
+    qml/components/SharedToolTip.qml
     qml/components/WindowControls.qml
     qml/components/WaveformProgressBar.qml
     qml/components/MarqueeText.qml
     qml/components/SortDialog.qml
     qml/components/SortRuleRow.qml
+    qml/components/ConfirmDeleteDialog.qml
+    qml/components/TrackContextMenu.qml
+    qml/components/QueueView.qml
+    qml/components/AboutOverlay.qml
     qml/views/MainContent.qml
     qml/views/StartupView.qml
     qml/windows/SettingsWindow.qml
     qml/windows/EqualizerWindow.qml
+    qml/windows/TrackDetailWindow.qml
 )
 
 set(SERIONA_QML_MODULE_RESOURCES
@@ -338,6 +348,79 @@ if(BUILD_TESTING)
     add_test(NAME seriona_frontend_settings_sample_format COMMAND seriona_frontend_settings_controller_tests sampleFormatPersistRoundTrip)
     add_test(NAME seriona_frontend_settings_apply_sample_format COMMAND seriona_frontend_settings_controller_tests applyIncludesSampleFormat)
     add_test(NAME seriona_frontend_settings_rollback COMMAND seriona_frontend_settings_controller_tests rollbackRejectedOutputConfigRestoresSnapshot)
+    add_test(NAME seriona_frontend_settings_grey_state COMMAND seriona_frontend_settings_controller_tests directOutputGreyState)
+    add_test(NAME seriona_frontend_settings_device_caps_empty COMMAND seriona_frontend_settings_controller_tests deviceCapsEmptyShowsAllOptions)
+    add_test(NAME seriona_frontend_settings_device_caps_filter COMMAND seriona_frontend_settings_controller_tests deviceCapsFilterSampleRatesAndFormats)
+    add_test(NAME seriona_frontend_settings_device_caps_follow COMMAND seriona_frontend_settings_controller_tests deviceCapsFollowSelectedDevice)
+    add_test(NAME seriona_frontend_settings_device_caps_expose COMMAND seriona_frontend_settings_controller_tests enumerateDevicesExposesCapabilities)
+    add_test(NAME seriona_frontend_settings_unsupported_saved_value COMMAND seriona_frontend_settings_controller_tests unsupportedSavedValueKeptAndMarked)
+    add_test(NAME seriona_frontend_settings_log_level_persist COMMAND seriona_frontend_settings_controller_tests logLevelPersistRoundTrip)
+    add_test(NAME seriona_frontend_settings_log_level_mapping COMMAND seriona_frontend_settings_controller_tests logLevelMapping)
+    add_test(NAME seriona_frontend_settings_log_level_push_defense COMMAND seriona_frontend_settings_controller_tests logLevelPushAndDefense)
+
+    # 播放次数/星级持久化（T16）：纯 QML 面（无后端依赖），mock-only 构建同样注册
+    add_executable(seriona_frontend_track_stats_tests
+        tests/frontend/adapter/tst_track_stats_controller.cpp
+        src/app/track_stats_controller.cpp
+        src/app/track_stats_controller.h
+    )
+    target_include_directories(seriona_frontend_track_stats_tests
+        PRIVATE src/app
+    )
+    target_link_libraries(seriona_frontend_track_stats_tests
+        PRIVATE Qt6::Quick Qt6::Test
+    )
+    add_test(NAME seriona_frontend_track_stats_defaults COMMAND seriona_frontend_track_stats_tests defaultsAreZeroAndUnrated)
+    add_test(NAME seriona_frontend_track_stats_play_count COMMAND seriona_frontend_track_stats_tests recordPlaybackIncrementsPerTrack)
+    add_test(NAME seriona_frontend_track_stats_play_count_signal COMMAND seriona_frontend_track_stats_tests recordPlaybackEmitsSignalWithTrackAndCount)
+    add_test(NAME seriona_frontend_track_stats_rating COMMAND seriona_frontend_track_stats_tests ratingRoundTripAndClamping)
+    add_test(NAME seriona_frontend_track_stats_rating_signal COMMAND seriona_frontend_track_stats_tests ratingEmitsSignal)
+    add_test(NAME seriona_frontend_track_stats_persist COMMAND seriona_frontend_track_stats_tests persistenceRoundTripAcrossControllerInstances)
+    add_test(NAME seriona_frontend_track_stats_empty_id COMMAND seriona_frontend_track_stats_tests emptyTrackIdIgnored)
+
+    # 关于界面 overlay（T19）：纯 QML 面（无后端依赖），mock-only 构建同样注册
+    add_executable(seriona_frontend_about_overlay_tests
+        tests/frontend/adapter/tst_about_overlay.cpp
+    )
+    target_include_directories(seriona_frontend_about_overlay_tests
+        PRIVATE src/app
+    )
+    target_link_libraries(seriona_frontend_about_overlay_tests
+        PRIVATE Qt6::Quick Qt6::Test
+    )
+    # 测试进程复用 appSeriona 的 QML 模块资源（qrc 目录映射），使
+    # `import Seriona`（含 Theme singleton）可解析；qrc 由 qt_add_qml_module
+    # 构建期生成，故测试目标先依赖 appSeriona。
+    qt6_add_resources(SERIONA_ABOUT_TEST_QRC
+        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qmake_Seriona.qrc
+        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0.qrc
+        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0_extra_qmldirs.qrc
+    )
+    target_sources(seriona_frontend_about_overlay_tests PRIVATE ${SERIONA_ABOUT_TEST_QRC})
+    # 测试加载构建目录的 Seriona QML 模块产物（build/Seriona/qmldir），
+    # 依赖 appSeriona 目标的 qt_add_qml_module 输出先就绪。
+    add_dependencies(seriona_frontend_about_overlay_tests appSeriona)
+    add_test(NAME seriona_frontend_about_overlay COMMAND seriona_frontend_about_overlay_tests)
+
+    add_executable(seriona_frontend_queue_view_tests
+        tests/frontend/adapter/tst_queue_view.cpp
+    )
+    target_include_directories(seriona_frontend_queue_view_tests
+        PRIVATE src/app
+    )
+    target_link_libraries(seriona_frontend_queue_view_tests
+        PRIVATE Qt6::Quick Qt6::Test
+    )
+    # 与 about overlay 测试同模式：复用 appSeriona 的 QML 模块资源（qrc 目录
+    # 映射），使 `import Seriona`（含 Theme singleton）可解析。
+    qt6_add_resources(SERIONA_QUEUE_VIEW_TEST_QRC
+        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qmake_Seriona.qrc
+        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0.qrc
+        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0_extra_qmldirs.qrc
+    )
+    target_sources(seriona_frontend_queue_view_tests PRIVATE ${SERIONA_QUEUE_VIEW_TEST_QRC})
+    add_dependencies(seriona_frontend_queue_view_tests appSeriona)
+    add_test(NAME seriona_frontend_queue_view COMMAND seriona_frontend_queue_view_tests)
 
     if(SERIONA_BACKEND_CONTROL_TARGET)
         add_executable(seriona_frontend_library_tree_model_tests
@@ -395,6 +478,10 @@ if(BUILD_TESTING)
         add_test(NAME seriona_frontend_qml_sort_dialog_current_rules COMMAND seriona_frontend_library_sort_tests currentSortRulesExposeFolderRulesForQmlAndFallbacks)
         add_test(NAME seriona_frontend_library_sort_search_not_persisted COMMAND seriona_frontend_library_sort_tests searchProjectionSortDoesNotPersistOrOverwriteSavedFolderRules)
         add_test(NAME seriona_frontend_library_sort_invalid_context COMMAND seriona_frontend_library_sort_tests missingContextAndMalformedSortPayloadDoNotPersist)
+        add_test(NAME seriona_frontend_library_search_subtree COMMAND seriona_frontend_library_sort_tests searchScopedToCurrentFolderSubtree)
+        add_test(NAME seriona_frontend_library_search_no_folders COMMAND seriona_frontend_library_sort_tests searchExcludesFolders)
+        add_test(NAME seriona_frontend_library_search_score_order COMMAND seriona_frontend_library_sort_tests searchRanksByWeightedScore)
+        add_test(NAME seriona_frontend_library_search_clear_restores COMMAND seriona_frontend_library_sort_tests clearSearchRestoresUserSortRules)
 
         add_executable(seriona_frontend_library_dual_cursor_tests
             tests/frontend/adapter/tst_library_dual_cursor.cpp
@@ -512,6 +599,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_executable(seriona_frontend_app_facade_smoke_mode
             tests/frontend/adapter/tst_app_facade_smoke_mode.cpp
             src/app/app_facade.cpp
+            src/app/track_stats_controller.cpp
+            src/app/track_stats_controller.h
             src/app/app_facade.h
             src/app/playback_controller.cpp
             src/app/playback_controller.h
@@ -558,6 +647,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_executable(seriona_frontend_startup_restore_tests
             tests/frontend/adapter/tst_startup_restore.cpp
             src/app/app_facade.cpp
+            src/app/track_stats_controller.cpp
+            src/app/track_stats_controller.h
             src/app/app_facade.h
             src/app/playback_controller.cpp
             src/app/playback_controller.h
@@ -601,6 +692,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_executable(seriona_frontend_playback_snapshot_tests
             tests/frontend/adapter/tst_playback_snapshot_mapping.cpp
             src/app/app_facade.cpp
+            src/app/track_stats_controller.cpp
+            src/app/track_stats_controller.h
             src/app/app_facade.h
             src/app/playback_controller.cpp
             src/app/playback_controller.h
@@ -641,10 +734,68 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_test(NAME seriona_frontend_playback_empty_snapshot COMMAND seriona_frontend_playback_snapshot_tests emptySnapshot)
         add_test(NAME seriona_frontend_playback_timeline_smoothing COMMAND seriona_frontend_playback_snapshot_tests timelineSmoothing)
         add_test(NAME seriona_frontend_playback_timeline_stopped_error COMMAND seriona_frontend_playback_snapshot_tests timelineStoppedAndErrorSnapToBackend)
+        add_test(NAME seriona_frontend_playback_queue_mapping COMMAND seriona_frontend_playback_snapshot_tests queueEntriesMapping)
+
+        add_executable(seriona_frontend_sidebar_queue_tests
+            tests/frontend/adapter/tst_sidebar_queue_switch.cpp
+            src/app/app_facade.cpp
+            src/app/track_stats_controller.cpp
+            src/app/track_stats_controller.h
+            src/app/app_facade.h
+            src/app/playback_controller.cpp
+            src/app/playback_controller.h
+            src/app/artwork_palette_worker.cpp
+            src/app/artwork_palette_worker.h
+            src/app/navigation_controller.cpp
+            src/app/navigation_controller.h
+            src/app/settings_controller.cpp
+            src/app/settings_controller.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
+            src/app/backend_command_adapter.cpp
+            src/app/backend_command_adapter.h
+            src/app/backend_bridge.cpp
+            src/app/backend_bridge.h
+            src/app/notification_controller.cpp
+            src/app/notification_controller.h
+            src/app/waveform_provider.cpp
+            src/app/waveform_provider.h
+            src/app/lyrics_model.cpp
+            src/app/lyrics_model.h
+            src/app/library_model.cpp
+            src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
+        )
+        target_include_directories(seriona_frontend_sidebar_queue_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_sidebar_queue_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_sidebar_queue_tests
+            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET} ${SERIONA_BACKEND_APP_TARGET} spdlog::spdlog
+        )
+        qt6_add_resources(SERIONA_SIDEBAR_QUEUE_TEST_QRC
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qmake_Seriona.qrc
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0.qrc
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0_extra_qmldirs.qrc
+        )
+        # 复用 qt_add_qml_module 生成的静态类型注册器：Sidebar 引用的
+        # AppFacade/PlaybackController/LibraryController 等 C++ 类型只有注册后
+        # QML 引擎才能解析（qmldir 无 plugin 行，类型随 appSeriona 静态注册）。
+        target_sources(seriona_frontend_sidebar_queue_tests PRIVATE
+            ${SERIONA_SIDEBAR_QUEUE_TEST_QRC}
+            ${CMAKE_CURRENT_BINARY_DIR}/appseriona_qmltyperegistrations.cpp
+        )
+        add_dependencies(seriona_frontend_sidebar_queue_tests appSeriona)
+        add_test(NAME seriona_frontend_sidebar_queue_switch COMMAND seriona_frontend_sidebar_queue_tests)
 
         add_executable(seriona_frontend_playback_command_tests
             tests/frontend/adapter/tst_playback_command_mapping.cpp
             src/app/app_facade.cpp
+            src/app/track_stats_controller.cpp
+            src/app/track_stats_controller.h
             src/app/app_facade.h
             src/app/playback_controller.cpp
             src/app/playback_controller.h
@@ -712,6 +863,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_executable(seriona_frontend_waveform_worker_tests
             tests/frontend/adapter/tst_waveform_worker.cpp
             src/app/app_facade.cpp
+            src/app/track_stats_controller.cpp
+            src/app/track_stats_controller.h
             src/app/app_facade.h
             src/app/playback_controller.cpp
             src/app/playback_controller.h
@@ -754,6 +907,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_executable(seriona_frontend_current_track_lookup_tests
             tests/frontend/adapter/tst_current_track_lookup.cpp
             src/app/app_facade.cpp
+            src/app/track_stats_controller.cpp
+            src/app/track_stats_controller.h
             src/app/app_facade.h
             src/app/playback_controller.cpp
             src/app/playback_controller.h
@@ -877,6 +1032,53 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_test(NAME seriona_frontend_backend_bridge_configure_output_invalid COMMAND seriona_frontend_backend_bridge_tests submitConfigureOutputRejectsInvalidPayloadWithoutDispatch)
         add_test(NAME seriona_frontend_backend_bridge_enumerate_devices COMMAND seriona_frontend_backend_bridge_tests enumeratePlaybackDevicesMapsDeviceIds)
         add_test(NAME seriona_frontend_backend_bridge_settings_push_on_start COMMAND seriona_frontend_backend_bridge_tests settingsPushOnStart)
+        add_test(NAME seriona_frontend_backend_bridge_play_next_track COMMAND seriona_frontend_backend_bridge_tests playNextTrackBuildsQueueCommand)
+        add_test(NAME seriona_frontend_backend_bridge_play_next_empty COMMAND seriona_frontend_backend_bridge_tests playNextTrackRejectsEmptyIdWithoutDispatch)
+        add_test(NAME seriona_frontend_backend_bridge_remove_from_queue COMMAND seriona_frontend_backend_bridge_tests removeFromQueueBuildsIndexedCommand)
+
+        add_executable(seriona_frontend_track_detail_tests
+            tests/frontend/adapter/tst_track_detail.cpp
+            src/app/app_facade.cpp
+            src/app/track_stats_controller.cpp
+            src/app/track_stats_controller.h
+            src/app/app_facade.h
+            src/app/playback_controller.cpp
+            src/app/playback_controller.h
+            src/app/artwork_palette_worker.cpp
+            src/app/artwork_palette_worker.h
+            src/app/navigation_controller.cpp
+            src/app/navigation_controller.h
+            src/app/settings_controller.cpp
+            src/app/settings_controller.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
+            src/app/backend_command_adapter.cpp
+            src/app/backend_command_adapter.h
+            src/app/backend_bridge.cpp
+            src/app/backend_bridge.h
+            src/app/notification_controller.cpp
+            src/app/notification_controller.h
+            src/app/waveform_provider.cpp
+            src/app/waveform_provider.h
+            src/app/lyrics_model.cpp
+            src/app/lyrics_model.h
+            src/app/library_model.cpp
+            src/app/library_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
+        )
+        target_include_directories(seriona_frontend_track_detail_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_track_detail_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_track_detail_tests
+            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET} ${SERIONA_BACKEND_APP_TARGET} spdlog::spdlog
+        )
+        add_test(NAME seriona_frontend_track_detail COMMAND seriona_frontend_track_detail_tests trackDetailDataAssembledFromEntryAndStats)
+        add_test(NAME seriona_frontend_track_detail_delete_chain COMMAND seriona_frontend_track_detail_tests deleteChainConfirmedOnceSubmitsSingleCommand)
+        add_test(NAME seriona_frontend_track_detail_file_path COMMAND seriona_frontend_track_detail_tests filePathForNodeIdReturnsAbsolutePaths)
     endif()
 endif()
 

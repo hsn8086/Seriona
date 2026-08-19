@@ -2,6 +2,7 @@
 
 #if SERIONA_HAS_BACKEND
 #include <QStringList>
+#include <QVariantMap>
 
 #include <algorithm>
 #include <filesystem>
@@ -365,6 +366,34 @@ PlayerSnapshotViewState mapPlayerSnapshot(
         repeatModeFromSnapshot(player.repeatMode),
         capabilityFromSnapshot(player.capabilities),
     };
+}
+
+QVariantList mapQueueEntries(
+    const seriona::control::PlayerStateSnapshot &player,
+    const seriona::control::LibraryStateSnapshot *library)
+{
+    QVariantList entries;
+    entries.reserve(static_cast<qsizetype>(player.queueEntries.size()));
+    const QString playingTrackId = playingTrackIdFromSnapshot(player);
+    for (const seriona::control::QueueEntry &entry : player.queueEntries) {
+        const SongLookupResult lookup = findSongByTrackId(library, entry.trackId);
+        QVariantMap item;
+        item.insert(QStringLiteral("trackId"), backendStringToQString(entry.trackId));
+        item.insert(QStringLiteral("nodeId"), backendStringToQString(entry.nodeId));
+        if (lookup.song != nullptr) {
+            item.insert(QStringLiteral("title"),
+                !lookup.song->title.empty() ? backendStringToQString(lookup.song->title)
+                                            : backendStringToQString(entry.trackId));
+            item.insert(QStringLiteral("artist"), backendStringToQString(lookup.song->artist));
+        } else {
+            item.insert(QStringLiteral("title"), backendStringToQString(entry.trackId));
+            item.insert(QStringLiteral("artist"), QString());
+        }
+        item.insert(QStringLiteral("isPlaying"),
+            !playingTrackId.isEmpty() && playingTrackId == QString::fromStdString(entry.trackId));
+        entries.append(item);
+    }
+    return entries;
 }
 
 LibrarySnapshotViewState mapLibrarySnapshot(const seriona::control::LibraryStateSnapshot &snapshot)

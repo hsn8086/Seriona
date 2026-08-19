@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QVariantList>
 
 #include <chrono>
 #include <cstdint>
@@ -69,6 +70,12 @@ struct LibrarySnapshotViewState {
     const seriona::control::LibraryStateSnapshot *library = nullptr);
 [[nodiscard]] LibrarySnapshotViewState mapLibrarySnapshot(
     const seriona::control::LibraryStateSnapshot &snapshot);
+// 临时队列（T15）：把快照 queueEntries: [{trackId, nodeId}]（跨端定死契约）
+// 映射为 QML 列表条目 [{trackId, nodeId, title, artist, isPlaying}]；
+// title 经库快照解析，解析不到回退 trackId 原文，artist 为空串。
+[[nodiscard]] QVariantList mapQueueEntries(
+    const seriona::control::PlayerStateSnapshot &player,
+    const seriona::control::LibraryStateSnapshot *library = nullptr);
 #endif
 
 }

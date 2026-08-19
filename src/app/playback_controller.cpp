@@ -405,10 +405,30 @@ void PlaybackController::applyWaveform(const QVariantList &heights, int barWidth
     }
 }
 
+QVariantList PlaybackController::queueEntries() const
+{
+    return m_queueEntries;
+}
+
+void PlaybackController::applyQueueEntries(const QVariantList &entries)
+{
+    if (m_queueEntries == entries) {
+        return;
+    }
+
+    m_queueEntries = entries;
+    emit queueEntriesChanged();
+}
+
 #if SERIONA_HAS_BACKEND
 void PlaybackController::setCommandExecutor(CommandExecutor executor)
 {
     m_commandExecutor = std::move(executor);
+}
+
+void PlaybackController::setTrackStartedHandler(TrackStartedHandler handler)
+{
+    m_trackStartedHandler = std::move(handler);
 }
 
 void PlaybackController::applyPlayerStateSnapshot(
@@ -417,6 +437,13 @@ void PlaybackController::applyPlayerStateSnapshot(
 {
     const PlayerSnapshotViewState mapped = mapPlayerSnapshot(snapshot, library);
 
+    // 播放次数计数点（T16）：新曲目开始播放（轨道切换/PlaybackEnded 后续播）时通知
+    // TrackStatsController 自增；同一曲目重复快照不重复计数。
+    const QString nextTrackId = mapped.currentTrack.trackId;
+    if (!nextTrackId.isEmpty() && nextTrackId != m_currentTrack.trackId && m_trackStartedHandler) {
+        m_trackStartedHandler(nextTrackId);
+    }
+
     applyPlaying(mapped.isPlaying);
     applyTimelineSnapshot(mapped.timeline);
     applyVolume(mapped.volume);
@@ -424,6 +451,7 @@ void PlaybackController::applyPlayerStateSnapshot(
     applyRepeatMode(mapped.repeatMode);
     setCurrentTrackViewState(mapped.currentTrack);
     setCapability(mapped.capability);
+    applyQueueEntries(mapQueueEntries(snapshot, library));
 }
 
 void PlaybackController::applyTimelineSnapshot(const TimelineSnapshotViewState &snapshot)

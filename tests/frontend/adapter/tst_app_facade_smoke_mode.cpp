@@ -102,6 +102,7 @@ private slots:
     void sourceKeepsFacadeThin();
     void libraryControllerSubmitsTrackActivationThroughBridge();
     void lateLibrarySnapshotReappliesPlayingHighlight();
+    void trackSwitchIncrementsPlayCountThroughFacade();
 };
 
 void AppFacadeSmokeModeTest::doesNotStartBackendBridgeWhenSmokeDisablesAutostart()
@@ -192,6 +193,45 @@ void AppFacadeSmokeModeTest::lateLibrarySnapshotReappliesPlayingHighlight()
     QCOMPARE(facade.library()->playingTrackId(), QStringLiteral("track-c-id"));
     QCOMPARE(modelValue(*facade.library()->model(), QStringLiteral("track-c"), Seriona::App::LibraryModel::IsPlayingRole).toBool(), true);
 
+    QCoreApplication::instance()->setProperty("seriona.backendBridgeAutostartEnabled", QVariant{});
+#else
+    QSKIP("backend disabled");
+#endif
+}
+
+void AppFacadeSmokeModeTest::trackSwitchIncrementsPlayCountThroughFacade()
+{
+#if SERIONA_HAS_BACKEND
+    QCoreApplication::instance()->setProperty("seriona.backendBridgeAutostartEnabled", false);
+
+    QTemporaryDir settingsDir;
+    QVERIFY(settingsDir.isValid());
+    QCoreApplication::instance()->setProperty("seriona.settingsFileForTests",
+                                              settingsDir.filePath(QStringLiteral("settings.ini")));
+
+    Seriona::App::AppFacade facade;
+    seriona::control::PlayerStateSnapshot first;
+    first.currentTrack = seriona::control::TrackIdentity{};
+    first.currentTrack->trackId = "track-c-id";
+    seriona::control::PlayerStateSnapshot second;
+    second.currentTrack = seriona::control::TrackIdentity{};
+    second.currentTrack->trackId = "track-d-id";
+    seriona::control::PlayerStateSnapshot empty;
+
+    facade.applyPlayerSnapshotForTests(first, seriona::control::LibraryStateSnapshot{});
+    QCOMPARE(facade.trackStats()->playCountFor(QStringLiteral("track-c-id")), 1);
+
+    facade.applyPlayerSnapshotForTests(first, seriona::control::LibraryStateSnapshot{});
+    QCOMPARE(facade.trackStats()->playCountFor(QStringLiteral("track-c-id")), 1);
+
+    facade.applyPlayerSnapshotForTests(second, seriona::control::LibraryStateSnapshot{});
+    QCOMPARE(facade.trackStats()->playCountFor(QStringLiteral("track-d-id")), 1);
+    QCOMPARE(facade.trackStats()->playCountFor(QStringLiteral("track-c-id")), 1);
+
+    facade.applyPlayerSnapshotForTests(empty, seriona::control::LibraryStateSnapshot{});
+    QCOMPARE(facade.trackStats()->playCountFor(QStringLiteral("track-d-id")), 1);
+
+    QCoreApplication::instance()->setProperty("seriona.settingsFileForTests", QVariant{});
     QCoreApplication::instance()->setProperty("seriona.backendBridgeAutostartEnabled", QVariant{});
 #else
     QSKIP("backend disabled");

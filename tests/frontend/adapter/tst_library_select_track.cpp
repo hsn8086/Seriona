@@ -289,9 +289,7 @@ void LibrarySelectTrackTest::searchTrackActivationUsesContainingFolderContext()
                                    "track-b-id",
                                    rootPath,
                                    PlaybackContextScope::Folder,
-                                   QStringLiteral("album-a"),
-                                   FolderSortField::Title,
-                                   FolderSortDirection::Descending);
+                                   QStringLiteral("album-a"));
     QCOMPARE(controller.currentFolderName(), QStringLiteral("My Music"));
     QCOMPARE(controller.searchQuery(), QStringLiteral("Song B"));
 }

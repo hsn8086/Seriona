@@ -7,6 +7,8 @@
 #include <QStringList>
 #include <QVariantList>
 
+#include "settings_controller.h"
+
 #ifndef SERIONA_HAS_BACKEND
 #define SERIONA_HAS_BACKEND 0
 #endif
@@ -55,7 +57,18 @@ public:
         int sampleFormat,
         int bufferDurationMs,
         const QString &preferredDeviceId);
+    // 删除目标（T16）：path 为绝对路径（单曲=音频文件，folder=true=递归删除文件夹）。
+    // 字段契约与 T8 定死一致：MediaControlCommand.kind ∈ {DeleteTrack, DeleteFolder}，
+    // targetPath 为后端绝对路径。失败经现有 CommandRejected 通知链路反馈原因。
+    seriona::control::MediaControllerCommandResult deleteTarget(const QString &path, bool folder);
+    // 添加到下一首播放（T14）：PlayNextTrack 命令负载按 T7 契约传 track.trackId，
+    // 后端将其解析入队首（快照 queueEntries: [{trackId, nodeId}]，nodeId 由后端填充）。
+    seriona::control::MediaControllerCommandResult playNextTrack(const QString &trackId);
+    // 从临时队列移除（T14）：RemoveFromQueue 命令按 queueEntries 下标移除。
+    seriona::control::MediaControllerCommandResult removeFromQueue(quint64 queueIndex);
     QList<QPair<QString, QString>> enumeratePlaybackDevices();
+    QList<PlaybackDeviceCapabilities> enumeratePlaybackDeviceCapabilities();
+    void setLogLevel(int level);
     const seriona::control::PlayerStateSnapshot &playerSnapshot() const;
     const seriona::control::LibraryStateSnapshot &librarySnapshot() const;
     const std::deque<seriona::control::ControlDomainNotification> &notifications() const;

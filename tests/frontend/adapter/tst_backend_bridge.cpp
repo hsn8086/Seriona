@@ -151,9 +151,35 @@ public:
     void stopWatching() override { }
     void stop() override { }
 
+    bool removeLocation(const std::filesystem::path &path) override
+    {
+        ++m_removeLocationCalls;
+        m_lastRemovedPath = path.lexically_normal().generic_string();
+        return m_removeLocationResult;
+    }
+
     seriona::scanner::PlaylistTreeSnapshot snapshot() const override
     {
-        return {};
+        return m_snapshot;
+    }
+
+    // T14：可配置初始库快照（PlayNextTrack/RemoveFromQueue 的 reducer 库来源）
+    void setSnapshot(seriona::scanner::PlaylistTreeSnapshot snapshot)
+    {
+        m_snapshot = std::move(snapshot);
+    }
+
+    // T14：发布一次 PlaylistSnapshotUpdated 事件（模拟扫描完成，喂给 reducer 库）
+    void emitSnapshot(const seriona::scanner::PlaylistTreeSnapshot &snapshot)
+    {
+        seriona::scanner::ScannerEvent event;
+        event.type = seriona::scanner::ScannerEventType::PlaylistSnapshotUpdated;
+        event.monotonicVersion = 1;
+        event.timestamp = std::chrono::steady_clock::now();
+        event.payload = snapshot;
+        if (m_eventSink) {
+            m_eventSink(std::move(event));
+        }
     }
 
     int eventSinkClearCalls() const
@@ -171,11 +197,30 @@ public:
         return m_lastScanMode;
     }
 
+    int removeLocationCalls() const
+    {
+        return m_removeLocationCalls;
+    }
+
+    const std::string &lastRemovedPath() const
+    {
+        return m_lastRemovedPath;
+    }
+
+    void setRemoveLocationResult(bool result)
+    {
+        m_removeLocationResult = result;
+    }
+
 private:
     seriona::scanner::ScannerEventSink m_eventSink;
     int m_eventSinkClearCalls = 0;
     int m_scanCalls = 0;
     std::optional<seriona::scanner::ScanMode> m_lastScanMode;
+    int m_removeLocationCalls = 0;
+    bool m_removeLocationResult = false;
+    std::string m_lastRemovedPath;
+    seriona::scanner::PlaylistTreeSnapshot m_snapshot;
 };
 
 class RecordingFolderSortSettingsStore final : public seriona::control::FolderSortSettingsStore
@@ -348,6 +393,51 @@ QVariantList sortRules(std::initializer_list<QVariantMap> rules)
     return result;
 }
 
+seriona::scanner::PlaylistTreeSnapshot makeQueueSnapshot()
+{
+    using seriona::scanner::PlaylistNode;
+    using seriona::scanner::PlaylistNodeKind;
+    using seriona::scanner::SongMetadata;
+
+    SongMetadata song;
+    song.trackId = "track-x-id";
+    song.title = "Track X";
+    song.filePath = std::filesystem::path("/music/folder-x/track-x.mp3");
+
+    PlaylistNode rootNode;
+    rootNode.nodeId = "root";
+    rootNode.kind = PlaylistNodeKind::Root;
+    rootNode.displayName = "Library";
+    rootNode.childNodeIds = {"folder-x"};
+
+    PlaylistNode folder;
+    folder.nodeId = "folder-x";
+    folder.parentNodeId = std::string{"root"};
+    folder.kind = PlaylistNodeKind::Directory;
+    folder.displayName = "Folder X";
+    folder.childNodeIds = {"track-x"};
+
+    PlaylistNode track;
+    track.nodeId = "track-x";
+    track.parentNodeId = std::string{"folder-x"};
+    track.kind = PlaylistNodeKind::Track;
+    track.displayName = "Track X";
+    track.song = song;
+
+    seriona::scanner::PlaylistTreeSnapshot snapshot;
+    snapshot.version = 7;
+    snapshot.rootNodeId = std::string{"root"};
+    snapshot.nodes = {rootNode, folder, track};
+    return snapshot;
+}
+
+void seedLibrarySnapshot(Seriona::App::BackendBridge &bridge, ControllerHarness &harness)
+{
+    QSignalSpy librarySpy(&bridge, &Seriona::App::BackendBridge::librarySnapshotChanged);
+    harness.scanner->emitSnapshot(makeQueueSnapshot());
+    QTRY_VERIFY(librarySpy.count() > 0);
+}
+
 }
 
 class BackendBridgeTest : public QObject
@@ -368,6 +458,12 @@ private slots:
     void applyFolderSortRulesRejectsMissingContextWithoutDispatch();
     void submitConfigureOutputBuildsTypedBackendCommand();
     void submitConfigureOutputRejectsInvalidPayloadWithoutDispatch();
+    void deleteTargetBuildsTypedDeleteTrackCommand();
+    void deleteTargetBuildsTypedDeleteFolderCommand();
+    void deleteTargetRejectsEmptyPathWithoutDispatch();
+    void playNextTrackBuildsQueueCommand();
+    void playNextTrackRejectsEmptyIdWithoutDispatch();
+    void removeFromQueueBuildsIndexedCommand();
     void enumeratePlaybackDevicesMapsDeviceIds();
     void settingsPushOnStart();
 };
@@ -733,6 +829,125 @@ void BackendBridgeTest::submitConfigureOutputRejectsInvalidPayloadWithoutDispatc
     QCOMPARE(invalidDuration.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
 
     QCOMPARE(harness.audio->configureOutputCalls(), 0);
+
+    bridge.shutdown();
+}
+
+void BackendBridgeTest::deleteTargetBuildsTypedDeleteTrackCommand()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+    const QString targetPath = QFileInfo(musicDir.path()).absoluteFilePath() + QStringLiteral("/song.mp3");
+
+    ControllerHarness harness;
+    harness.scanner->setRemoveLocationResult(true);
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    waitForInitialPlayerSnapshot(bridge);
+
+    // 确认弹窗确认后调用一次 deleteTarget → 恰好发出一条删除命令（removeLocation 调用计数为 1）
+    const seriona::control::MediaControllerCommandResult result = bridge.deleteTarget(targetPath, false);
+
+    QVERIFY(result.accepted);
+    QCOMPARE(result.code, seriona::control::MediaControllerErrorCode::None);
+    QCOMPARE(harness.scanner->removeLocationCalls(), 1);
+    QCOMPARE(QString::fromStdString(harness.scanner->lastRemovedPath()), targetPath);
+
+    bridge.shutdown();
+}
+
+void BackendBridgeTest::deleteTargetBuildsTypedDeleteFolderCommand()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+    const QString targetPath = QFileInfo(musicDir.path()).absoluteFilePath();
+
+    ControllerHarness harness;
+    harness.scanner->setRemoveLocationResult(true);
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    waitForInitialPlayerSnapshot(bridge);
+
+    const seriona::control::MediaControllerCommandResult result = bridge.deleteTarget(targetPath, true);
+
+    QVERIFY(result.accepted);
+    QCOMPARE(result.code, seriona::control::MediaControllerErrorCode::None);
+    QCOMPARE(harness.scanner->removeLocationCalls(), 1);
+    QCOMPARE(QString::fromStdString(harness.scanner->lastRemovedPath()), targetPath);
+
+    bridge.shutdown();
+}
+
+void BackendBridgeTest::deleteTargetRejectsEmptyPathWithoutDispatch()
+{
+    ControllerHarness harness;
+    Seriona::App::BackendBridge bridge(harness.factory(true));
+    waitForInitialPlayerSnapshot(bridge);
+
+    // 空白路径直接拒绝，不发出任何删除命令
+    const seriona::control::MediaControllerCommandResult result = bridge.deleteTarget(QStringLiteral("   \t"), false);
+
+    QVERIFY(!result.accepted);
+    QCOMPARE(result.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
+    QCOMPARE(harness.scanner->removeLocationCalls(), 0);
+
+    bridge.shutdown();
+}
+
+void BackendBridgeTest::playNextTrackBuildsQueueCommand()
+{
+    ControllerHarness harness;
+    harness.scanner->setSnapshot(makeQueueSnapshot());
+    Seriona::App::BackendBridge bridge(harness.factory(false));
+    waitForInitialPlayerSnapshot(bridge);
+    seedLibrarySnapshot(bridge, harness);
+
+    const seriona::control::MediaControllerCommandResult result = bridge.playNextTrack(QStringLiteral("track-x-id"));
+
+    QVERIFY(result.accepted);
+    QCOMPARE(result.code, seriona::control::MediaControllerErrorCode::None);
+
+    // 跨端定死字段断言：快照 queueEntries: [{trackId, nodeId}]
+    QTRY_VERIFY(bridge.playerSnapshot().queueEntries.size() == 1);
+    QCOMPARE(QString::fromStdString(bridge.playerSnapshot().queueEntries.at(0).trackId), QStringLiteral("track-x-id"));
+    QCOMPARE(QString::fromStdString(bridge.playerSnapshot().queueEntries.at(0).nodeId), QStringLiteral("folder-x"));
+
+    bridge.shutdown();
+}
+
+void BackendBridgeTest::playNextTrackRejectsEmptyIdWithoutDispatch()
+{
+    ControllerHarness harness;
+    harness.scanner->setSnapshot(makeQueueSnapshot());
+    Seriona::App::BackendBridge bridge(harness.factory(false));
+    waitForInitialPlayerSnapshot(bridge);
+    seedLibrarySnapshot(bridge, harness);
+
+    const seriona::control::MediaControllerCommandResult result = bridge.playNextTrack(QStringLiteral("   "));
+
+    QVERIFY(!result.accepted);
+    QCOMPARE(result.code, seriona::control::MediaControllerErrorCode::InvalidCommand);
+    QTRY_COMPARE(bridge.playerSnapshot().queueEntries.size(), std::size_t{0});
+
+    bridge.shutdown();
+}
+
+void BackendBridgeTest::removeFromQueueBuildsIndexedCommand()
+{
+    ControllerHarness harness;
+    harness.scanner->setSnapshot(makeQueueSnapshot());
+    Seriona::App::BackendBridge bridge(harness.factory(false));
+    waitForInitialPlayerSnapshot(bridge);
+    seedLibrarySnapshot(bridge, harness);
+
+    QVERIFY(bridge.playNextTrack(QStringLiteral("track-x-id")).accepted);
+    QVERIFY(bridge.playNextTrack(QStringLiteral("track-x-id")).accepted);
+    QTRY_COMPARE(bridge.playerSnapshot().queueEntries.size(), std::size_t{2});
+
+    const seriona::control::MediaControllerCommandResult result = bridge.removeFromQueue(0);
+
+    QVERIFY(result.accepted);
+    QCOMPARE(result.code, seriona::control::MediaControllerErrorCode::None);
+    QTRY_COMPARE(bridge.playerSnapshot().queueEntries.size(), std::size_t{1});
+    QCOMPARE(QString::fromStdString(bridge.playerSnapshot().queueEntries.at(0).trackId), QStringLiteral("track-x-id"));
 
     bridge.shutdown();
 }
