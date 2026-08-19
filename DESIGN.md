@@ -79,7 +79,8 @@ Release 模式（`CMAKE_BUILD_TYPE=Release`）按编译器启用全量优化：G
 ├── qml/
 │   ├── Main.qml              # 窗口外壳
 │   ├── views/                # MainContent、StartupView
-│   ├── components/           # 11 个可复用组件
+│   ├── components/           # 可复用组件（Sidebar、BubbleMenu、QueueView、TrackContextMenu、ConfirmDeleteDialog 等）
+│   ├── windows/              # SettingsWindow、TrackDetailWindow、EqualizerWindow（设置/曲目详情/均衡器弹窗）
 │   ├── theme/Theme.qml       # singleton token
 │   └── assets/               # 25 个 SVG 图标 + MaterialIcons-Regular.ttf（QML 未引用）
 ├── tests/frontend/adapter/   # 20 个 QTest 测试源
@@ -109,16 +110,16 @@ Release 模式（`CMAKE_BUILD_TYPE=Release`）按编译器启用全量优化：G
 - 时间轴平滑：后端快照 `smooth=true` 时以 100ms `QTimer`（`Qt::PreciseTimer`）从 `position + elapsedSince(sampledAt)` 插值推进，到达总时长停表；否则直接吸附快照位置。
 - 封面渐变：`ArtworkPaletteWorker` 后台线程从封面缩略图提取 3 色，用 generation 号丢弃过期取色结果；渐变经 `gradientColor0/1/2` 暴露给 QML `DynamicBackground`。
 - 波形：`applyWaveform(heights, barWidth)` 由 `WaveformProvider::waveformReady` 驱动，带去重。
-- 30 个 Q_PROPERTY：播放状态、曲目信息、时间文本（`mm:ss`）、波形、渐变等。
+- 31 个 Q_PROPERTY：播放状态、曲目信息、时间文本（`mm:ss`）、波形、渐变、临时队列（`queueEntries`，映射后端快照 `[{trackId, nodeId}]`）等。
 
 ### 5.3 曲库模块（`library_model.{h,cpp}`、`library_tree_store.{h,cpp}`）
 
 - **LibraryTreeStore**（非 QObject 纯容器）：以节点 id 为键保存整棵曲库树；`setSnapshot()` 一次重建（含悬空子节点剔除、孤儿回补、root 缺失回退到"无父节点集合"、`descendantTrackCount` 递归）。
-- **LibraryModel**（`QAbstractListModel`，`QML_UNCREATABLE`）：把树投影为扁平列表；18 个角色（type/name/title/artist/album/songCount/duration/…/artworkSource）；行⇄节点 id 映射；三种投影：根投影、当前文件夹投影（仅直接子级）、搜索投影（全库匹配，忽略当前文件夹）；多规则稳定排序。
+- **LibraryModel**（`QAbstractListModel`，`QML_UNCREATABLE`）：把树投影为扁平列表；18 个角色（type/name/title/artist/album/songCount/duration/…/artworkSource）；行⇄节点 id 映射；三种投影：根投影、当前文件夹投影（仅直接子级）、搜索投影（当前文件夹子树内只匹配歌曲，文件夹条目不出现；按标题10/歌手5/专辑3/文件名2 加权评分，完全/前缀/包含分别 ×10/×5/×1）；多规则稳定排序（搜索激活时按评分降序，清空恢复用户规则）。
 - **LibraryController**（定义于 `library_model.{h,cpp}`，`QML_ELEMENT`，**无独立文件**）：QML 可见门面。
   - **双游标分离**：`playingTrackId`（播放身份）与 `selectedBrowserNodeId`/`focusedNodeId`（浏览焦点）独立；`setPlayingTrackId` 仅当 `followCurrentlyPlaying=true` 才移动浏览游标；`locateCurrentSong()` 手动定位（切文件夹、清搜索、选中、发滚动请求），不发播放命令；浏览动作一律不污染播放身份。
   - **扫描状态机**：`scanStatus` ∈ pending/running/error/completed（终态由快照映射）；`scanProgress` 0-100 钳制；`libraryState` 派生为 backendUnavailable/empty/ready；`refresh()` 以 Full 模式重扫已存根；`clearSavedRootPath(msg)` 清根并上报错误消息（启动恢复失败时由 NavigationController 调用）。
-  - **排序规则**：内存缓存按 `rootPath\nfolderNodeId` 键存；保存经 `FolderSortExecutor`（未注入则降级 `ApplyFolderSortRules` 命令）持久化到后端，`missingValuePolicy=Last`；搜索投影排序不覆盖已存文件夹规则；快照 reconcile 时按回退链恢复焦点/选中/文件夹与规则。
+  - **排序规则**：内存缓存按 `rootPath\nfolderNodeId` 键存；保存经 `FolderSortExecutor`（未注入则降级 `ApplyFolderSortRules` 命令）持久化到后端，`missingValuePolicy=Last`；搜索期间按相关性评分临时排序、不覆盖已存文件夹规则（搜索中应用排序规则为 no-op）；快照 reconcile 时按回退链恢复焦点/选中/文件夹与规则。
   - 快照 reconcile：`setPlaylistTreeSnapshot` 前记录聚焦/选中节点的祖先链，节点消失后沿链回退，最终落到首个可见节点。
 
 ### 5.4 LyricsModel（`QML_ELEMENT`，可创建但约定用 `appFacade.lyrics`）
@@ -156,10 +157,10 @@ Release 模式（`CMAKE_BUILD_TYPE=Release`）按编译器启用全量优化：G
 ### 5.8 QML 视图层
 
 - **Main.qml**：360×720 无边框透明窗口（`OpacityMask` 圆角 24，最大化 0）；全局拖拽 + 标题栏 + 封面拖拽（`startSystemMove`）、八向缩放（`startSystemResize`，Maximized 时隐藏）；侧栏 dock（窗口宽 ≥ 800）/overlay 双模式；`smokeScenario` 初始属性在 `Component.onCompleted` 应用；关闭链路 `close() → onClosing → appFacade.shutdown()`。
-- **MainContent.qml**（1296 行）：播放/歌词双 state 共享元素迁移（400ms InOutCubic）；播放控制条、音量、进度（波形拖拽 seek、歌词态线性滑杆）、封面三层回退（全图 `coverArtworkSource` → 缩略图 `coverThumbnailSource` → 占位符"🎵"，逐层降级）、设置 BubbleMenu（歌词分隔符真实设置；淡入淡出/无缝/回放增益/均衡器/关于→`showUnsupportedAction`；退出→真实关闭）、通知 toast（3200ms 自动隐藏）。
+- **MainContent.qml**（1296 行）：播放/歌词双 state 共享元素迁移（400ms InOutCubic）；播放控制条、音量、进度（波形拖拽 seek、歌词态线性滑杆）、封面三层回退（全图 `coverArtworkSource` → 缩略图 `coverThumbnailSource` → 占位符"🎵"，逐层降级）、设置 BubbleMenu（歌词分隔符真实设置；淡入淡出/无缝/回放增益/均衡器→`showUnsupportedAction`；"设置"→`openSettingsRequested` 打开 SettingsWindow；"关于 Seriona"→AboutOverlay 真实关于界面；退出→真实关闭）、通知 toast（3200ms 自动隐藏）。
 - **StartupView.qml**：启动页；恢复播放列表、添加文件夹（`Qt.labs.platform.FolderDialog` → `appFacade.scanLibrary`）。
-- **Sidebar.qml**：曲库主交互面（树列表、搜索、排序对话框入口、定位当前歌曲 FAB、扫描状态 banner）。
-- 组件清单：`BubbleMenu`（气泡菜单+子页 StackView）、`BubbleMenuItem/BubbleSubMenuItem`、`DynamicBackground`（3 对角渐变背景）、`MarqueeText`（溢出滚动）、`StyleButton`、`WaveformProgressBar`（数据切换先缩后弹动画）、`SortDialog/SortRuleRow`（最多 5 条规则）、`WindowControls`。
+- **Sidebar.qml**：曲库主交互面（树列表带滚动条、表头空白区可拖拽移动窗口、搜索、排序对话框入口、定位当前歌曲 FAB、扫描状态 banner）；delegate 右键菜单（`TrackContextMenu`：详情/下一首播放/删除，删除经 `ConfirmDeleteDialog` 确认）、顶部队列视图（`QueueView`：`PlayNextTrack`/`RemoveFromQueue`）、头部按钮悬停提示（`SharedToolTip`）。
+- 组件清单：`AboutOverlay`（关于弹层）、`BubbleMenu`（气泡菜单+子页 StackView）、`BubbleMenuItem/BubbleSubMenuItem`、`ConfirmDeleteDialog`（删除确认弹窗）、`DynamicBackground`（3 对角渐变背景）、`MarqueeText`（溢出滚动）、`QueueView`（临时队列视图）、`SharedToolTip`（悬停提示，delay 500ms）、`StyleButton`、`TrackContextMenu`（曲目右键菜单）、`WaveformProgressBar`（数据切换先缩后弹动画）、`SortDialog/SortRuleRow`（最多 5 条规则）、`WindowControls`；`windows/` 下另有 `SettingsWindow`（设置：设备枚举/日志等级/采样率/位深，Direct 输出时采样率位深灰化）、`TrackDetailWindow`（曲目详情：年份/播放次数/星级）、`EqualizerWindow`。
 - **Theme.qml**：singleton token（颜色/尺寸/动画时长；`animationDuration` 150ms、`colorTransitionDuration` 500ms 等）。注意：`Theme.sidebarWidth` 与 Main.qml 内同名常量并存、`Theme.gradientColor0/1/2` 未见使用点（可能遗留）。
 
 ## 6. 模块关系与数据流
