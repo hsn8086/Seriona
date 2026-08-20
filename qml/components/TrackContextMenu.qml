@@ -23,10 +23,24 @@ Item {
         contextMenu.close();
     }
 
-    // 打开右键菜单：data 为条目数据对象；globalX/globalY 为鼠标全局坐标。
-    function openForEntry(data, globalX, globalY) {
+    // 打开右键菜单：data 为条目数据对象；
+    // 支持 openForEntry(data, targetDelegate, clickX, clickY) 或向后兼容的 openForEntry(data, globalX, globalY)
+    function openForEntry(data, targetDelegateOrGlobalX, clickXOrGlobalY, clickY) {
         root.entryData = data;
-        contextMenu.showAtGlobal(globalX, globalY);
+        if (targetDelegateOrGlobalX && typeof targetDelegateOrGlobalX === "object" && targetDelegateOrGlobalX.mapToItem) {
+            var targetDelegate = targetDelegateOrGlobalX;
+            var clickX = clickXOrGlobalY;
+            var safeX = (clickX !== undefined && clickX >= 0 && clickX <= targetDelegate.width) ? clickX : targetDelegate.width / 2;
+            var safeY = (clickY !== undefined && clickY >= 0 && clickY <= targetDelegate.height) ? clickY : targetDelegate.height / 2;
+            var scenePos = targetDelegate.mapToItem(null, safeX, safeY);
+            contextMenu.targetItem = targetDelegate;
+            contextMenu.showAtGlobal(scenePos.x, scenePos.y);
+        } else {
+            var globalX = targetDelegateOrGlobalX;
+            var globalY = clickXOrGlobalY;
+            contextMenu.targetItem = menuAnchor;
+            contextMenu.showAtGlobal(globalX, globalY);
+        }
     }
 
     // 定位锚点（BubbleMenu 需要 targetItem 提供 transientParent 与 geometry）

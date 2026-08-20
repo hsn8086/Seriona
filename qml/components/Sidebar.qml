@@ -581,8 +581,12 @@ Item {
                         MouseArea {
                             anchors.fill: parent
                             acceptedButtons: Qt.RightButton
+                            onPressed: (mouse) => {
+                                if (trackContextMenu.isOpen) {
+                                    trackContextMenu.close();
+                                }
+                            }
                             onClicked: (mouse) => {
-                                const global = delegate.mapToItem(null, mouse.x, mouse.y);
                                 root.closeMenus();
                                 trackContextMenu.openForEntry({
                                     nodeId: delegate.nodeId,
@@ -601,7 +605,7 @@ Item {
                                     artworkSource: delegate.artworkSource,
                                     year: delegate.year,
                                     path: root.appFacade.filePathForNodeId(delegate.nodeId)
-                                }, global.x, global.y);
+                                }, delegate, mouse.x, mouse.y);
                             }
                         }
 
@@ -864,7 +868,7 @@ Item {
 
                     onRemoveRequested: (index) => root.appFacade.removeFromQueue(index)
 
-                    onContextMenuRequested: (index, globalX, globalY) => {
+                    onContextMenuRequested: (index, targetDelegate, mouseX, mouseY) => {
                         const entry = root.appFacade.playback.queueEntries[index];
                         if (!entry)
                             return;
@@ -887,7 +891,7 @@ Item {
                             year: 0,
                             path: root.appFacade.filePathForNodeId(entry.nodeId),
                             queueIndex: index
-                        }, globalX, globalY);
+                        }, targetDelegate, mouseX, mouseY);
                     }
                 }
             }

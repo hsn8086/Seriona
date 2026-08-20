@@ -19,7 +19,7 @@ Item {
     required property var queueEntries
 
     signal removeRequested(int index)
-    signal contextMenuRequested(int index, real globalX, real globalY)
+    signal contextMenuRequested(int index, var targetDelegate, real mouseX, real mouseY)
 
     readonly property bool isEmpty: !root.queueEntries || root.queueEntries.length === 0
     readonly property int count: root.isEmpty ? 0 : root.queueEntries.length
@@ -84,8 +84,7 @@ Item {
                 anchors.fill: parent
                 acceptedButtons: Qt.RightButton
                 onClicked: (mouse) => {
-                    const global = delegate.mapToItem(null, mouse.x, mouse.y);
-                    root.contextMenuRequested(delegate.rowIndex, global.x, global.y);
+                    root.contextMenuRequested(delegate.rowIndex, delegate, mouse.x, mouse.y);
                 }
             }
 
