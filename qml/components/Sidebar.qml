@@ -89,7 +89,7 @@ Item {
         anchors.fill: contentRect
         glowRadius: 10
         spread: 0.2
-        color: "#80000000"
+        color: Theme.shadowPopupColor
         visible: !root.isDockCapable && root.isSidebarOpen
         z: -1
     }
@@ -109,7 +109,7 @@ Item {
             anchors.right: parent.right
             width: 1
             height: parent.height
-            color: "#15FFFFFF"
+            color: Theme.borderSubtle
             z: 2
         }
 
@@ -126,8 +126,8 @@ Item {
 
                 Behavior on Layout.preferredHeight {
                     NumberAnimation {
-                        duration: 250
-                        easing.type: Easing.OutCubic
+                        duration: Theme.animationStandard
+                        easing.type: Theme.easingDecelerate
                     }
                 }
 
@@ -160,9 +160,9 @@ Item {
                         RowLayout {
                             z: 1
                             anchors.fill: parent
-                            anchors.leftMargin: 15
-                            anchors.rightMargin: 15
-                            spacing: 14
+                            anchors.leftMargin: Theme.spacing16
+                            anchors.rightMargin: Theme.spacing16
+                            spacing: Theme.spacing12
 
                             StyleButton {
                                 Layout.preferredWidth: 20
@@ -175,19 +175,19 @@ Item {
                                 opacity: enabled ? 1.0 : 0.3
                                 Behavior on opacity {
                                     NumberAnimation {
-                                        duration: Theme.animationDuration
+                                        duration: Theme.animationFast
                                     }
                                 }
-                                 onClicked: {
-                                     root.closeMenus();
-                                     root.folderTransitionDirection = -1;
-                                     libraryController.goBack();
-                                     folderTransitionResetTimer.restart();
-                                  }
-                                 SharedToolTip {
-                                     text: qsTr("返回")
-                                 }
-                              }
+                                onClicked: {
+                                    root.closeMenus();
+                                    root.folderTransitionDirection = -1;
+                                    libraryController.goBack();
+                                    folderTransitionResetTimer.restart();
+                                }
+                                SharedToolTip {
+                                    text: qsTr("返回")
+                                }
+                            }
 
                             StyleButton {
                                 id: searchButton
@@ -199,26 +199,26 @@ Item {
                                 iconSize: 14
                                 checkable: true
                                 checked: root.isSearching
-                                textColor: root.isSearching ? Theme.accentColor : Theme.textColor
+                                textColor: root.isSearching ? Theme.accentColor : Theme.textPrimary
                                 onClicked: {
                                     root.closeMenus();
                                     root.isSearching = !root.isSearching;
-                                     if (root.isSearching) {
-                                         searchInput.forceActiveFocus();
-                                     } else {
-                                         libraryController.clearSearch();
-                                     }
-                                 }
-                                 SharedToolTip {
-                                     text: qsTr("搜索")
-                                 }
-                             }
+                                    if (root.isSearching) {
+                                        searchInput.forceActiveFocus();
+                                    } else {
+                                        libraryController.clearSearch();
+                                    }
+                                }
+                                SharedToolTip {
+                                    text: qsTr("搜索")
+                                }
+                            }
 
                             Text {
                                 Layout.fillWidth: true
                                 text: root.queueViewActive ? qsTr("播放队列") : libraryController.currentFolderName
-                                color: Theme.textColor
-                                font.pixelSize: 15
+                                color: Theme.textPrimary
+                                font.pixelSize: Theme.fontTitle
                                 font.bold: true
                                 horizontalAlignment: Text.AlignHCenter
                                 elide: Text.ElideRight
@@ -242,14 +242,14 @@ Item {
                                     id: sidebarMenu
                                     targetItem: sidebarMoreBtn
 
-                                BubbleMenuItem {
-                                     text: qsTr("排序")
-                                     onTriggered: {
-                                         sidebarMenu.close();
-                                         sortDialog.sortRules = root.sortRulesForDialog();
-                                         sortDialog.show();
-                                     }
-                                 }
+                                    BubbleMenuItem {
+                                        text: qsTr("排序")
+                                        onTriggered: {
+                                            sidebarMenu.close();
+                                            sortDialog.sortRules = root.sortRulesForDialog();
+                                            sortDialog.show();
+                                        }
+                                    }
                                     BubbleMenuItem {
                                         text: qsTr("刷新")
                                         onTriggered: {
@@ -294,22 +294,28 @@ Item {
 
                         Behavior on opacity {
                             NumberAnimation {
-                                duration: 200
+                                duration: Theme.animationFast
                             }
                         }
 
                         Rectangle {
                             anchors.centerIn: parent
-                            width: parent.width - 20
+                            width: parent.width - Theme.spacing24
                             height: 36
                             color: Theme.baseColor
-                            radius: 18
+                            radius: Theme.radiusLarge
+                            border.color: searchInput.activeFocus ? Theme.borderAccent : Theme.borderSubtle
+                            border.width: 1
+
+                            Behavior on border.color {
+                                ColorAnimation { duration: Theme.animationFast }
+                            }
 
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
-                                spacing: 8
+                                anchors.leftMargin: Theme.spacing12
+                                anchors.rightMargin: Theme.spacing12
+                                spacing: Theme.spacing8
 
                                 Item {
                                     Layout.preferredWidth: 18
@@ -328,7 +334,10 @@ Item {
                                     ColorOverlay {
                                         anchors.fill: searchFieldIcon
                                         source: searchFieldIcon
-                                        color: Theme.secondaryTextColor
+                                        color: searchInput.activeFocus ? Theme.accentColor : Theme.textSecondary
+                                        Behavior on color {
+                                            ColorAnimation { duration: Theme.animationFast }
+                                        }
                                     }
                                 }
 
@@ -336,21 +345,21 @@ Item {
                                     id: searchInput
                                     Layout.fillWidth: true
                                     background: null
-                                    color: Theme.textColor
-                                    font.pixelSize: 14
+                                    color: Theme.textPrimary
+                                    font.pixelSize: Theme.fontBody
                                     placeholderText: qsTr("搜索当前文件夹及子目录...")
-                                     placeholderTextColor: "#60FFFFFF"
-                                     selectByMouse: true
-                                     text: libraryController.searchQuery
-                                     verticalAlignment: Text.AlignVCenter
-                                     onTextEdited: libraryController.searchQuery = text
-                                     onAccepted: libraryController.submitSearch()
-                                 }
+                                    placeholderTextColor: Theme.textDisabled
+                                    selectByMouse: true
+                                    text: libraryController.searchQuery
+                                    verticalAlignment: Text.AlignVCenter
+                                    onTextEdited: libraryController.searchQuery = text
+                                    onAccepted: libraryController.submitSearch()
+                                }
 
-                                 Item {
-                                     Layout.preferredWidth: 16
-                                     Layout.preferredHeight: 16
-                                     visible: libraryController.searchQuery.length > 0
+                                Item {
+                                    Layout.preferredWidth: 16
+                                    Layout.preferredHeight: 16
+                                    visible: libraryController.searchQuery.length > 0
 
                                     Image {
                                         id: clearFieldIcon
@@ -365,15 +374,17 @@ Item {
                                     ColorOverlay {
                                         anchors.fill: clearFieldIcon
                                         source: clearFieldIcon
-                                        color: Theme.secondaryTextColor
+                                        color: clearFieldMouseArea.containsMouse ? Theme.textPrimary : Theme.textSecondary
                                     }
 
-                                     MouseArea {
-                                         anchors.fill: parent
-                                         cursorShape: Qt.PointingHandCursor
-                                         onClicked: libraryController.clearSearch()
-                                     }
-                                 }
+                                    MouseArea {
+                                        id: clearFieldMouseArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: libraryController.clearSearch()
+                                    }
+                                }
                             }
                         }
                     }
@@ -381,7 +392,7 @@ Item {
                     Rectangle {
                         width: parent.width
                         height: 1
-                        color: "#10FFFFFF"
+                        color: Theme.borderSubtle
                     }
                 }
             }
@@ -397,8 +408,10 @@ Item {
                     anchors.centerIn: parent
                     width: 176
                     height: 30
-                    radius: 15
-                    color: "#14FFFFFF"
+                    radius: Theme.radiusFull
+                    color: Theme.borderSubtle
+                    border.color: Theme.borderSubtle
+                    border.width: 1
 
                     Row {
                         anchors.centerIn: parent
@@ -414,7 +427,7 @@ Item {
 
                             Behavior on color {
                                 ColorAnimation {
-                                    duration: Theme.animationDuration
+                                    duration: Theme.animationFast
                                 }
                             }
 
@@ -427,8 +440,9 @@ Item {
                             Text {
                                 anchors.centerIn: parent
                                 text: qsTr("文件夹")
-                                color: !root.queueViewActive ? Theme.textColor : Theme.secondaryTextColor
-                                font.pixelSize: 12
+                                color: !root.queueViewActive ? Theme.textPrimary : Theme.textSecondary
+                                font.pixelSize: Theme.fontCaption + 1
+                                font.weight: !root.queueViewActive ? Font.DemiBold : Font.Normal
                             }
                         }
 
@@ -442,7 +456,7 @@ Item {
 
                             Behavior on color {
                                 ColorAnimation {
-                                    duration: Theme.animationDuration
+                                    duration: Theme.animationFast
                                 }
                             }
 
@@ -455,8 +469,9 @@ Item {
                             Text {
                                 anchors.centerIn: parent
                                 text: qsTr("播放队列")
-                                color: root.queueViewActive ? Theme.textColor : Theme.secondaryTextColor
-                                font.pixelSize: 12
+                                color: root.queueViewActive ? Theme.textPrimary : Theme.textSecondary
+                                font.pixelSize: Theme.fontCaption + 1
+                                font.weight: root.queueViewActive ? Font.DemiBold : Font.Normal
                             }
                         }
                     }
@@ -474,22 +489,22 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: 12
+                    anchors.margins: Theme.spacing12
                     height: 34
-                    radius: 12
-                    color: root.scanError ? "#33FF5C5C" : Theme.baseColor
-                    border.color: root.scanError ? Theme.accentColor : Theme.hoverColor
+                    radius: Theme.radiusLarge
+                    color: root.scanError ? Theme.toastErrorBg : Theme.baseColor
+                    border.color: root.scanError ? Theme.dangerColor : Theme.borderColor
                     border.width: 1
                     visible: (root.scanRunning || root.scanError) && !root.queueViewActive
                     z: 2
 
                     Text {
                         anchors.fill: parent
-                        anchors.leftMargin: 12
-                        anchors.rightMargin: 12
+                        anchors.leftMargin: Theme.spacing12
+                        anchors.rightMargin: Theme.spacing12
                         text: root.scanMessage
-                        color: root.scanError ? Theme.accentColor : Theme.secondaryTextColor
-                        font.pixelSize: 12
+                        color: root.scanError ? Theme.dangerColor : Theme.textSecondary
+                        font.pixelSize: Theme.fontCaption + 1
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         elide: Text.ElideRight
@@ -511,23 +526,23 @@ Item {
                     ScrollBar.vertical: ScrollBar {
                         id: playlistScrollBar
                         policy: ScrollBar.AsNeeded
-                        width: Theme.paddingMedium
+                        width: Theme.scrollbarWidth
 
                         background: Rectangle {
                             color: "transparent"
                         }
 
                         contentItem: Rectangle {
-                            implicitWidth: Theme.paddingMedium
-                            radius: Theme.paddingMedium / 2
+                            implicitWidth: Theme.scrollbarWidth
+                            radius: Theme.scrollbarWidth / 2
                             // 长列表（内容溢出）显示句柄，短列表/空列表隐藏
                             visible: playlistScrollBar.size < 1.0
                             color: playlistScrollBar.pressed ? Theme.pressedColor
-                                 : playlistScrollBar.hovered ? Theme.hoverColor
-                                 : Theme.baseColor
+                                 : playlistScrollBar.hovered ? Theme.scrollbarHoverColor
+                                 : Theme.scrollbarColor
 
                             Behavior on color {
-                                ColorAnimation { duration: Theme.animationDuration }
+                                ColorAnimation { duration: Theme.animationFast }
                             }
                         }
                     }
@@ -558,8 +573,8 @@ Item {
 
                         width: playlistView.width
                         height: 72
-                        topPadding: 8
-                        bottomPadding: 8
+                        topPadding: Theme.spacing8
+                        bottomPadding: Theme.spacing8
                         leftPadding: 15
                         rightPadding: 15
                         Accessible.role: Accessible.ListItem
@@ -596,17 +611,30 @@ Item {
                         }
 
                         background: Rectangle {
-                            color: delegate.hovered || delegate.isPlaying ? Theme.hoverColor : "transparent"
+                            color: delegate.hovered ? Theme.hoverColor : (delegate.isPlaying ? Theme.baseColor : "transparent")
 
                             Behavior on color {
                                 ColorAnimation {
-                                    duration: 150
+                                    duration: Theme.animationFast
                                 }
+                            }
+
+                            // 播放中左侧高亮指示条
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                anchors.topMargin: Theme.spacing8
+                                anchors.bottomMargin: Theme.spacing8
+                                width: 3
+                                radius: 1.5
+                                color: Theme.accentColor
+                                visible: delegate.isPlaying
                             }
                         }
 
                         contentItem: RowLayout {
-                            spacing: 12
+                            spacing: Theme.spacing12
 
                             Rectangle {
                                 Layout.alignment: Qt.AlignVCenter
@@ -649,22 +677,22 @@ Item {
                                 ColorOverlay {
                                     anchors.fill: folderThumbIcon
                                     source: folderThumbIcon
-                                    color: "white"
+                                    color: Theme.textOnAccent
                                     visible: delegate.isFolder && !delegate.hasFolderArtwork
                                 }
 
                                 Rectangle {
                                     anchors.fill: parent
                                     radius: 12
-                                    color: "#20FFFFFF"
+                                    color: Theme.baseColor
                                     visible: !delegate.isFolder && folderThumbIcon.status !== Image.Ready
                                     antialiasing: true
 
                                     Text {
                                         anchors.centerIn: parent
                                         text: "♫"
-                                        color: "white"
-                                        font.pixelSize: 22
+                                        color: Theme.textPrimary
+                                        font.pixelSize: Theme.fontHeading
                                     }
                                 }
                             }
@@ -676,14 +704,14 @@ Item {
 
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    spacing: 6
+                                    spacing: Theme.spacing4
 
                                     Text {
                                         Layout.fillWidth: true
                                         text: delegate.isFolder ? delegate.name : delegate.title
-                                        color: delegate.isPlaying ? Theme.accentColor : Theme.textColor
-                                        font.pixelSize: 13
-                                        font.weight: Font.DemiBold
+                                        color: delegate.isPlaying ? Theme.accentColor : Theme.textPrimary
+                                        font.pixelSize: Theme.fontBody
+                                        font.weight: delegate.isPlaying ? Font.Bold : Font.DemiBold
                                         elide: Text.ElideRight
                                     }
                                 }
@@ -691,38 +719,38 @@ Item {
                                 Text {
                                     Layout.fillWidth: true
                                     text: delegate.isFolder ? delegate.parentName : (delegate.artist.length > 0 && delegate.album.length > 0 ? delegate.artist + " - " + delegate.album : delegate.artist + delegate.album)
-                                    color: Theme.secondaryTextColor
-                                    font.pixelSize: 11
+                                    color: Theme.textSecondary
+                                    font.pixelSize: Theme.fontCaption
                                     elide: Text.ElideRight
                                 }
 
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    spacing: 4
+                                    spacing: Theme.spacing4
 
                                     RowLayout {
                                         visible: !delegate.isFolder
-                                        spacing: 4
+                                        spacing: Theme.spacing4
 
                                         Text {
                                             text: delegate.duration || ""
-                                            color: Theme.secondaryTextColor
+                                            color: Theme.textSecondary
                                             font.pixelSize: 10
                                         }
                                         Text {
                                             text: "|"
-                                            color: "#30FFFFFF"
+                                            color: Theme.borderColor
                                             font.pixelSize: 10
                                             visible: delegate.duration.length > 0 && delegate.format.length > 0
                                         }
                                         Text {
                                             text: delegate.format || ""
-                                            color: Theme.secondaryTextColor
+                                            color: Theme.textSecondary
                                             font.pixelSize: 10
                                         }
                                         Text {
                                             text: "|"
-                                            color: "#30FFFFFF"
+                                            color: Theme.borderColor
                                             font.pixelSize: 10
                                             visible: delegate.sampleRate > 44100
                                         }
@@ -734,7 +762,7 @@ Item {
                                         }
                                         Text {
                                             text: "|"
-                                            color: "#30FFFFFF"
+                                            color: Theme.borderColor
                                             font.pixelSize: 10
                                             visible: delegate.bitDepth > 16
                                         }
@@ -748,7 +776,7 @@ Item {
 
                                     RowLayout {
                                         visible: delegate.isFolder
-                                        spacing: 6
+                                        spacing: Theme.spacing4
 
                                         Item {
                                             Layout.preferredWidth: 10
@@ -766,25 +794,25 @@ Item {
                                             ColorOverlay {
                                                 anchors.fill: musicNoteIcon
                                                 source: musicNoteIcon
-                                                color: Theme.secondaryTextColor
+                                                color: Theme.textSecondary
                                                 opacity: 0.7
                                             }
                                         }
 
                                         Text {
                                             text: qsTr("%1 Songs").arg(delegate.songCount)
-                                            color: Theme.secondaryTextColor
+                                            color: Theme.textSecondary
                                             font.pixelSize: 10
                                         }
                                         Text {
                                             text: "|"
-                                            color: "#30FFFFFF"
+                                            color: Theme.borderColor
                                             font.pixelSize: 10
                                             visible: delegate.duration.length > 0
                                         }
                                         Text {
                                             text: delegate.duration || ""
-                                            color: Theme.secondaryTextColor
+                                            color: Theme.textSecondary
                                             font.pixelSize: 10
                                         }
                                     }
@@ -799,7 +827,7 @@ Item {
                                         ColorOverlay {
                                             anchors.fill: parent
                                             source: parent
-                                            color: "white"
+                                            color: Theme.textOnAccent
                                         }
                                     }
                                 }
@@ -820,10 +848,10 @@ Item {
 
                 Text {
                     anchors.centerIn: parent
-                    width: parent.width - 40
+                    width: parent.width - Theme.spacing24 * 2
                     text: root.emptyStateText
-                    color: Theme.secondaryTextColor
-                    font.pixelSize: 13
+                    color: Theme.textSecondary
+                    font.pixelSize: Theme.fontBody
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     visible: libraryController.visibleNodeCount === 0 && !root.queueViewActive
@@ -894,13 +922,13 @@ Item {
             id: fab
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.margins: 15
+            anchors.margins: Theme.spacing16
             buttonWidth: 40
             buttonHeight: 40
             iconSize: 20
             iconSource: "qrc:/qt/qml/Seriona/qml/assets/my_location.svg"
             baseColor: Theme.accentColor
-            textColor: "white"
+            textColor: Theme.textOnAccent
             z: 10
             visible: !root.queueViewActive
 
@@ -910,11 +938,11 @@ Item {
             layer.enabled: true
             layer.effect: DropShadow {
                 transparentBorder: true
-                horizontalOffset: 0
-                verticalOffset: 4
-                radius: 8
+                horizontalOffset: Theme.shadowCardOffsetX
+                verticalOffset: Theme.shadowCardOffsetY
+                radius: Theme.shadowCardBlur
                 samples: 17
-                color: "#80000000"
+                color: Theme.shadowPopupColor
             }
         }
     }
@@ -939,5 +967,4 @@ Item {
         appFacade: root.appFacade
         queueContext: root.queueViewActive
     }
-
 }

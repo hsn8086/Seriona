@@ -162,7 +162,7 @@ Window {
     Rectangle {
         id: rectMask
         anchors.fill: parent
-        radius: window.visibility === Window.Maximized ? 0 : 24
+        radius: window.visibility === Window.Maximized ? 0 : Theme.spacing24
         visible: false
     }
 
@@ -269,8 +269,8 @@ Window {
 
                     Text {
                         text: qsTr("Seriona")
-                        color: Theme.secondaryTextColor
-                        font.pixelSize: 13
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontBody
                         font.letterSpacing: 1.0
                         anchors.centerIn: parent
                     }
@@ -278,7 +278,7 @@ Window {
                     WindowControls {
                         targetWindow: window
                         anchors.right: parent.right
-                        anchors.rightMargin: 12
+                        anchors.rightMargin: Theme.spacing12
                         anchors.verticalCenter: parent.verticalCenter
                         onCloseRequested: window.requestApplicationClose()
                     }

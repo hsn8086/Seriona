@@ -160,8 +160,8 @@ Item {
         )
         height: notificationColumn.implicitHeight + Theme.paddingLarge
         radius: height / 2
-        color: root.toastSeverity === "error" ? "#E62D0D0D" : root.toastSeverity === "warning" ? "#E62D2300" : "#E6202020"
-        border.color: root.toastSeverity === "error" ? Theme.accentColor : root.toastSeverity === "warning" ? "#CCB35C00" : Theme.hoverColor
+        color: root.toastSeverity === "error" ? Theme.toastErrorBg : root.toastSeverity === "warning" ? Theme.toastWarningBg : Theme.toastInfoBg
+        border.color: root.toastSeverity === "error" ? Theme.accentColor : root.toastSeverity === "warning" ? Theme.toastWarningBorder : Theme.hoverColor
         border.width: 1
         opacity: root.toastVisible ? 1.0 : 0.0
         visible: opacity > 0.0 || root.toastVisible
@@ -225,7 +225,7 @@ Item {
                 background: Rectangle {
                     implicitHeight: 4
                     radius: 2
-                    color: "#33FFFFFF"
+                    color: Theme.borderColor
                 }
 
                 contentItem: Rectangle {
@@ -262,7 +262,7 @@ Item {
             anchors.fill: coverRect
             glowRadius: 30
             spread: 0.1
-            color: "#40000000"
+            color: Theme.shadowCardColor
             cornerRadius: coverRect.radius + 15
             z: -1
             opacity: 1.0

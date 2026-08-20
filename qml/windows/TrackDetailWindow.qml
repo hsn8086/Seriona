@@ -43,9 +43,9 @@ Window {
     Rectangle {
         id: contentRect
         anchors.fill: parent
-        color: Theme.backgroundColor
-        radius: Theme.borderRadius
-        border.color: "#30FFFFFF"
+        color: Theme.surfaceColor
+        radius: Theme.radiusLarge
+        border.color: Theme.borderColor
         border.width: 1
         focus: true
 
@@ -63,20 +63,21 @@ Window {
 
                 Text {
                     text: root.isFolder ? qsTr("文件夹详情") : qsTr("歌曲详情")
-                    color: Theme.textColor
-                    font.pixelSize: 16
+                    color: Theme.textPrimary
+                    font.pixelSize: Theme.fontTitle
                     font.weight: Font.DemiBold
                     anchors.centerIn: parent
                 }
 
                 StyleButton {
                     anchors.right: parent.right
-                    anchors.rightMargin: 12
+                    anchors.rightMargin: Theme.spacing12
                     anchors.verticalCenter: parent.verticalCenter
                     iconSource: "qrc:/qt/qml/Seriona/qml/assets/close.svg"
-                    buttonWidth: 24
-                    buttonHeight: 24
-                    iconSize: 14
+                    buttonWidth: 28
+                    buttonHeight: 28
+                    iconSize: 12
+                    textColor: Theme.textSecondary
                     onClicked: root.close()
                 }
             }
@@ -84,25 +85,25 @@ Window {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 1
-                color: "#30FFFFFF"
+                color: Theme.borderColor
             }
 
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.leftMargin: 24
-                Layout.rightMargin: 24
-                Layout.topMargin: 20
-                Layout.bottomMargin: 20
-                spacing: 14
+                Layout.leftMargin: Theme.spacing24
+                Layout.rightMargin: Theme.spacing24
+                Layout.topMargin: Theme.spacing16
+                Layout.bottomMargin: Theme.spacing16
+                spacing: Theme.spacing12
 
                 // Cover
                 Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: 132
                     Layout.preferredHeight: 132
-                    radius: 14
-                    color: root.isFolder ? Theme.accentColor : Theme.mainColor
+                    radius: Theme.radiusMedium
+                    color: root.isFolder ? Theme.accentColor : Theme.raisedSurfaceColor
                     antialiasing: true
 
                     Image {
@@ -121,7 +122,7 @@ Window {
                             maskSource: Rectangle {
                                 width: 132
                                 height: 132
-                                radius: 14
+                                radius: Theme.radiusMedium
                             }
                         }
                     }
@@ -130,20 +131,20 @@ Window {
                         anchors.fill: parent
                         anchors.margins: root.isFolder ? 26 : 0
                         source: parent
-                        color: "white"
+                        color: Theme.textOnAccent
                         visible: root.isFolder
                     }
 
                     Rectangle {
                         anchors.fill: parent
-                        radius: 14
-                        color: "#20FFFFFF"
+                        radius: Theme.radiusMedium
+                        color: Theme.baseColor
                         visible: !root.isFolder && root.entryArtwork.length === 0
 
                         Text {
                             anchors.centerIn: parent
                             text: "♫"
-                            color: "white"
+                            color: Theme.textOnAccent
                             font.pixelSize: 40
                         }
                     }
@@ -155,8 +156,8 @@ Window {
                     text: root.isFolder
                         ? root.entryName
                         : root.entryTitle
-                    color: Theme.textColor
-                    font.pixelSize: 17
+                    color: Theme.textPrimary
+                    font.pixelSize: Theme.fontSubtitle
                     font.weight: Font.DemiBold
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
@@ -169,8 +170,8 @@ Window {
                     text: root.entryArtist.length > 0 && root.entryAlbum.length > 0
                         ? root.entryArtist + " - " + root.entryAlbum
                         : root.entryArtist + root.entryAlbum
-                    color: Theme.secondaryTextColor
-                    font.pixelSize: 12
+                    color: Theme.textSecondary
+                    font.pixelSize: Theme.fontCaption
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                 }
@@ -178,7 +179,7 @@ Window {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 1
-                    color: "#15FFFFFF"
+                    color: Theme.borderSubtle
                 }
 
                 // 内容区可滚动（T14 修复 D）：长路径/高缩放下内容超高时纵向滚动，永不裁剪
@@ -191,8 +192,8 @@ Window {
 
                     GridLayout {
                         columns: 2
-                        columnSpacing: 16
-                        rowSpacing: 10
+                        columnSpacing: Theme.spacing16
+                        rowSpacing: Theme.spacing8
 
                         Repeater {
                             model: root.isFolder
@@ -213,20 +214,20 @@ Window {
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                spacing: 8
+                                spacing: Theme.spacing8
 
                                 Text {
                                     Layout.preferredWidth: 88
                                     text: modelData.label
-                                    color: Theme.secondaryTextColor
-                                    font.pixelSize: 12
+                                    color: Theme.detailLabelColor
+                                    font.pixelSize: Theme.fontCaption
                                 }
 
                                 Text {
                                     Layout.fillWidth: true
                                     text: modelData.value
-                                    color: Theme.textColor
-                                    font.pixelSize: 12
+                                    color: Theme.detailValueColor
+                                    font.pixelSize: Theme.fontCaption
                                     wrapMode: Text.Wrap
                                     elide: Text.ElideRight
                                     maximumLineCount: 2
@@ -239,30 +240,40 @@ Window {
                 // 星级（可点击编辑；0 = 未评级）
                 Item {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 26
+                    Layout.preferredHeight: 28
                     visible: !root.isFolder
 
                     Text {
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
                         text: qsTr("评分")
-                        color: Theme.secondaryTextColor
-                        font.pixelSize: 12
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontCaption
                     }
 
                     Row {
                         anchors.centerIn: parent
-                        spacing: 6
+                        spacing: Theme.spacing8
 
                         Repeater {
                             model: 5
 
                             Text {
+                                id: starIcon
                                 text: "★"
-                                color: (index + 1) <= root.rating ? Theme.accentColor : "#40FFFFFF"
-                                font.pixelSize: 22
+                                color: (index + 1) <= root.rating ? Theme.ratingColor : Theme.ratingUnselectedColor
+                                font.pixelSize: Theme.fontHeading
+                                scale: starArea.pressed ? 1.25 : (starArea.containsMouse ? 1.15 : 1.0)
+
+                                Behavior on scale {
+                                    NumberAnimation { duration: Theme.animationFast }
+                                }
+                                Behavior on color {
+                                    ColorAnimation { duration: Theme.animationFast }
+                                }
 
                                 MouseArea {
+                                    id: starArea
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
@@ -278,10 +289,11 @@ Window {
                     Layout.alignment: Qt.AlignHCenter
                     visible: !root.isFolder && root.rating === 0
                     text: qsTr("未评级")
-                    color: Theme.secondaryTextColor
-                    font.pixelSize: 12
+                    color: Theme.textDisabled
+                    font.pixelSize: Theme.fontCaption
                 }
             }
         }
     }
 }
+

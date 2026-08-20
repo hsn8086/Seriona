@@ -14,10 +14,11 @@ BubbleMenuItem {
 
     Text {
         text: qsTr("›")
-        color: Theme.secondaryTextColor
-        font.pixelSize: 18
+        color: Theme.textSecondary
+        font.pixelSize: Theme.fontSubtitle
         anchors.right: parent.right
         anchors.rightMargin: 14
         anchors.verticalCenter: parent.verticalCenter
     }
 }
+

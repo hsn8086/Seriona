@@ -14,7 +14,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: Theme.backgroundColor
+        color: Theme.surfaceColor
     }
 
     LinearGradient {
@@ -67,17 +67,21 @@ Item {
 
     Behavior on color0 {
         ColorAnimation {
-            duration: Theme.colorTransitionDuration
+            duration: Theme.animationSlow
+            easing.type: Theme.easingStandard
         }
     }
     Behavior on color1 {
         ColorAnimation {
-            duration: Theme.colorTransitionDuration
+            duration: Theme.animationSlow
+            easing.type: Theme.easingStandard
         }
     }
     Behavior on color2 {
         ColorAnimation {
-            duration: Theme.colorTransitionDuration
+            duration: Theme.animationSlow
+            easing.type: Theme.easingStandard
         }
     }
 }
+

@@ -17,19 +17,19 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        anchors.margins: 4
-        radius: 6
+        anchors.margins: Theme.spacing4
+        radius: Theme.radiusSmall
         color: mouseArea.containsMouse ? Theme.hoverColor : "transparent"
 
         Behavior on color {
-            ColorAnimation { duration: Theme.animationDuration }
+            ColorAnimation { duration: Theme.animationFast }
         }
     }
 
     Text {
         text: root.text
-        color: Theme.textColor
-        font.pixelSize: 13
+        color: Theme.textPrimary
+        font.pixelSize: Theme.fontBody
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
         anchors.fill: parent
@@ -45,3 +45,4 @@ Item {
         onClicked: root.activate()
     }
 }
+

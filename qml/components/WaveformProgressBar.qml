@@ -11,12 +11,10 @@ Item {
     property int barWidth: 3
     property int spacing: 3
 
-    // 颜色配置
-    property color playedColor: "white" // 正常播放时的颜色
-    property color remainingColor: "#30FFFFFF"// 未播放部分的颜色，降低透明度，提升对比
-
-    // 悬浮时的预览颜色
-    property color hoverColor: "#80FFFFFF"
+    // 颜色配置（完整采用 Theme 令牌，同时保留属性支持外部覆盖）
+    property color playedColor: Theme.waveformPlayedColor
+    property color remainingColor: Theme.waveformColor
+    property color hoverColor: Theme.progressBarHoverColor
 
     // 进度 (0.0 - 1.0)
     property real progress: 0.0
@@ -69,7 +67,7 @@ Item {
         property: "globalMultiplier"
         to: 0.0
         duration: 200
-        easing.type: Easing.InQuad
+        easing.type: Theme.easingAccelerate
         onFinished: {
             root.swapAndGrow();
         }
@@ -98,7 +96,7 @@ Item {
         Behavior on spacing {
             NumberAnimation {
                 duration: 300
-                easing.type: Easing.InOutQuad
+                easing.type: Theme.easingStandard
             }
         }
 
@@ -122,19 +120,19 @@ Item {
                 Behavior on height {
                     NumberAnimation {
                         duration: 300
-                        easing.type: Easing.InOutQuad
+                        easing.type: Theme.easingStandard
                     }
                 }
                 Behavior on width {
                     NumberAnimation {
                         duration: 300
-                        easing.type: Easing.InOutQuad
+                        easing.type: Theme.easingStandard
                     }
                 }
                 Behavior on radius {
                     NumberAnimation {
                         duration: 300
-                        easing.type: Easing.InOutQuad
+                        easing.type: Theme.easingStandard
                     }
                 }
 
@@ -155,7 +153,7 @@ Item {
                     }
                 }
 
-                // 颜色变化仍然保留平滑过渡
+                // 颜色变化平滑过渡
                 Behavior on color {
                     ColorAnimation {
                         duration: 100
@@ -221,3 +219,4 @@ Item {
         }
     }
 }
+

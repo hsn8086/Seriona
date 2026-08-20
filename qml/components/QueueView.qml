@@ -72,10 +72,10 @@ Item {
 
             width: queueList.width
             height: 56
-            topPadding: 4
-            bottomPadding: 4
-            leftPadding: 15
-            rightPadding: 15
+            topPadding: Theme.spacing4
+            bottomPadding: Theme.spacing4
+            leftPadding: Theme.spacing16
+            rightPadding: Theme.spacing16
             Accessible.role: Accessible.ListItem
             Accessible.name: title
 
@@ -90,46 +90,51 @@ Item {
             }
 
             background: Rectangle {
-                color: delegate.hovered ? Theme.hoverColor : "transparent"
+                color: delegate.hovered ? Theme.queueItemHoverBg : "transparent"
+                radius: Theme.radiusSmall
 
                 Behavior on color {
                     ColorAnimation {
-                        duration: 150
+                        duration: Theme.animationFast
                     }
                 }
             }
 
             contentItem: RowLayout {
-                spacing: 12
+                spacing: Theme.spacing12
 
                 Rectangle {
                     Layout.alignment: Qt.AlignVCenter
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
-                    radius: 10
-                    color: Theme.mainColor
+                    Layout.preferredWidth: 38
+                    Layout.preferredHeight: 38
+                    radius: Theme.radiusSmall
+                    color: delegate.isPlaying ? Theme.accentColor : Theme.raisedSurfaceColor
                     antialiasing: true
+
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.animationFast }
+                    }
 
                     Text {
                         anchors.centerIn: parent
                         text: "♫"
-                        color: "white"
-                        font.pixelSize: 18
+                        color: delegate.isPlaying ? Theme.textOnAccent : Theme.textPrimary
+                        font.pixelSize: Theme.fontSubtitle
                     }
                 }
 
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
-                    spacing: 2
+                    spacing: Theme.spacing2
 
                     Text {
                         objectName: "queueTitle" + delegate.rowIndex
                         Layout.fillWidth: true
                         text: delegate.title
-                        color: delegate.isPlaying ? Theme.accentColor : Theme.textColor
-                        font.pixelSize: 13
-                        font.weight: Font.DemiBold
+                        color: delegate.isPlaying ? Theme.queuePlayingHighlightColor : Theme.textPrimary
+                        font.pixelSize: Theme.fontBody
+                        font.weight: delegate.isPlaying ? Font.Bold : Font.DemiBold
                         elide: Text.ElideRight
                     }
 
@@ -137,24 +142,32 @@ Item {
                         objectName: "queueArtist" + delegate.rowIndex
                         Layout.fillWidth: true
                         text: delegate.artist
-                        color: Theme.secondaryTextColor
-                        font.pixelSize: 11
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontCaption
                         elide: Text.ElideRight
                         visible: delegate.artist.length > 0
                     }
                 }
 
                 StyleButton {
+                    id: removeBtn
                     objectName: "queueRemoveButton" + delegate.rowIndex
                     Layout.alignment: Qt.AlignVCenter
-                    Layout.preferredWidth: 24
-                    Layout.preferredHeight: 24
-                    buttonWidth: 24
-                    buttonHeight: 24
+                    Layout.preferredWidth: 28
+                    Layout.preferredHeight: 28
+                    buttonWidth: 28
+                    buttonHeight: 28
                     iconSize: 12
                     iconSource: "qrc:/qt/qml/Seriona/qml/assets/close.svg"
-                    textColor: Theme.secondaryTextColor
+                    textColor: removeBtn.hovered ? Theme.dangerColor : Theme.textSecondary
                     baseColor: "transparent"
+                    hoverColor: Theme.baseColor
+                    opacity: delegate.hovered ? 1.0 : 0.4
+
+                    Behavior on opacity {
+                        NumberAnimation { duration: Theme.animationFast }
+                    }
+
                     onClicked: root.removeRequested(delegate.rowIndex)
                 }
             }
@@ -165,15 +178,30 @@ Item {
         id: emptyState
         objectName: "queueEmptyState"
         anchors.centerIn: parent
-        width: parent.width - 40
-        spacing: 6
+        width: parent.width - Theme.spacing24 * 2
+        spacing: Theme.spacing8
         visible: root.isEmpty
+
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 56
+            height: 56
+            radius: Theme.radiusFull
+            color: Theme.baseColor
+
+            Text {
+                anchors.centerIn: parent
+                text: "♫"
+                color: Theme.textSecondary
+                font.pixelSize: 24
+            }
+        }
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: root.emptyTitle
-            color: Theme.textColor
-            font.pixelSize: 14
+            color: Theme.textPrimary
+            font.pixelSize: Theme.fontTitle
             font.bold: true
         }
 
@@ -181,10 +209,11 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width
             text: root.emptyHint
-            color: Theme.secondaryTextColor
-            font.pixelSize: 12
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontBody
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
     }
 }
+

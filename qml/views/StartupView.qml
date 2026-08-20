@@ -23,30 +23,30 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: Theme.backgroundColor
+        color: Theme.surfaceColor
     }
 
     ColumnLayout {
         anchors.centerIn: parent
         width: Math.min(parent.width - Theme.paddingLarge * 2, 320)
-        spacing: Theme.paddingLarge
+        spacing: Theme.spacing16
 
         Rectangle {
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredWidth: 120
             Layout.preferredHeight: 120
             radius: 28
-            color: Theme.mainColor
-            border.color: Theme.hoverColor
+            color: Theme.raisedSurfaceColor
+            border.color: Theme.borderColor
             border.width: 1
 
             Rectangle {
                 anchors.centerIn: parent
                 width: 64
                 height: 48
-                radius: Theme.borderRadius
+                radius: Theme.radiusMedium
                 color: "transparent"
-                border.color: Theme.secondaryTextColor
+                border.color: Theme.textSecondary
                 border.width: 2
 
                 Rectangle {
@@ -55,7 +55,7 @@ Item {
                     width: 10
                     height: 10
                     radius: 5
-                    color: Theme.secondaryTextColor
+                    color: Theme.textSecondary
                 }
 
                 Rectangle {
@@ -66,7 +66,7 @@ Item {
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 9
                     height: 18
-                    color: Theme.secondaryTextColor
+                    color: Theme.textSecondary
                     opacity: 0.7
                     rotation: -6
                     transformOrigin: Item.BottomLeft
@@ -80,7 +80,7 @@ Item {
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 9
                     height: 14
-                    color: Theme.textColor
+                    color: Theme.textPrimary
                     opacity: 0.45
                     rotation: 8
                     transformOrigin: Item.BottomLeft
@@ -92,15 +92,15 @@ Item {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 14
                 text: qsTr("图标占位")
-                color: Theme.secondaryTextColor
-                font.pixelSize: 12
+                color: Theme.textSecondary
+                font.pixelSize: Theme.fontCaption
             }
         }
 
         Text {
             Layout.fillWidth: true
             text: qsTr("Seriona")
-            color: Theme.textColor
+            color: Theme.textPrimary
             font.pixelSize: 30
             font.bold: true
             horizontalAlignment: Text.AlignHCenter
@@ -109,8 +109,8 @@ Item {
         Text {
             Layout.fillWidth: true
             text: root.scanMessage
-            color: root.scanError ? Theme.accentColor : Theme.secondaryTextColor
-            font.pixelSize: 13
+            color: root.scanError ? Theme.accentColor : Theme.textSecondary
+            font.pixelSize: Theme.fontBody
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -127,16 +127,16 @@ Item {
             contentItem: Text {
                 text: restoreButton.text
                 color: Theme.playButtonText
-                font.pixelSize: 15
+                font.pixelSize: Theme.fontTitle
                 font.bold: true
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
             }
 
             background: Rectangle {
-                radius: Theme.borderRadius
+                radius: Theme.radiusMedium
                 color: restoreButton.pressed ? Qt.darker(Theme.playButtonBg, 1.2) : restoreButton.hovered ? Qt.darker(Theme.playButtonBg, 1.1) : Theme.playButtonBg
-                Behavior on color { ColorAnimation { duration: Theme.animationDuration } }
+                Behavior on color { ColorAnimation { duration: Theme.animationFast } }
             }
         }
 
@@ -151,19 +151,19 @@ Item {
 
             contentItem: Text {
                 text: addFolderButton.text
-                color: Theme.textColor
-                font.pixelSize: 15
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontTitle
                 font.bold: true
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
             }
 
             background: Rectangle {
-                radius: Theme.borderRadius
+                radius: Theme.radiusMedium
                 color: addFolderButton.pressed ? Theme.pressedColor : addFolderButton.hovered ? Theme.hoverColor : Theme.baseColor
-                border.color: Theme.hoverColor
+                border.color: Theme.borderColor
                 border.width: 1
-                Behavior on color { ColorAnimation { duration: Theme.animationDuration } }
+                Behavior on color { ColorAnimation { duration: Theme.animationFast } }
             }
         }
     }
@@ -178,3 +178,4 @@ Item {
         }
     }
 }
+

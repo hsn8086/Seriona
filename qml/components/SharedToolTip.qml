@@ -47,6 +47,7 @@ ToolTip {
             from: 0.0
             to: 1.0
             duration: Theme.tooltipAnimationDuration
+            easing.type: Theme.easingDecelerate
         }
     }
 
@@ -56,6 +57,8 @@ ToolTip {
             from: 1.0
             to: 0.0
             duration: Theme.tooltipAnimationDuration
+            easing.type: Theme.easingAccelerate
         }
     }
 }
+

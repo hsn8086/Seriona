@@ -34,7 +34,7 @@ Item {
     BubbleMenu {
         id: contextMenu
         objectName: "trackContextMenuPopup"
-        menuWidth: 170
+        menuWidth: 176
         arrowDirection: "up"
         targetItem: menuAnchor
 
@@ -95,3 +95,4 @@ Item {
         appFacade: root.appFacade
     }
 }
+

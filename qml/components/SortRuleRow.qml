@@ -4,21 +4,21 @@ import Seriona
 
 Rectangle {
     id: root
-    
+
     height: 44
-    radius: 6
+    radius: Theme.radiusSmall
     color: Theme.baseColor
-    
+
     required property int ruleIndex
     required property string fieldValue
     required property string orderValue
     required property var fieldOptions
     required property var orderOptions
-    
+
     signal fieldChanged(string newField)
     signal orderChanged(string newOrder)
     signal removeRequested()
-    
+
     readonly property var prefixTexts: [
         qsTr("先按"), 
         qsTr("再按"), 
@@ -26,31 +26,31 @@ Rectangle {
         qsTr("接着"), 
         qsTr("最后")
     ]
-    
+
     Row {
         anchors.fill: parent
-        anchors.leftMargin: 12
-        anchors.rightMargin: 12
-        spacing: 8
-        
+        anchors.leftMargin: Theme.spacing12
+        anchors.rightMargin: Theme.spacing12
+        spacing: Theme.spacing8
+
         Text {
             text: root.ruleIndex < root.prefixTexts.length ? root.prefixTexts[root.ruleIndex] : `${root.ruleIndex + 1}.`
-            color: Theme.secondaryTextColor
-            font.pixelSize: 13
+            color: Theme.textSecondary
+            font.pixelSize: Theme.fontBody
             anchors.verticalCenter: parent.verticalCenter
             width: 40
         }
-        
+
         ComboBox {
             id: fieldCombo
             width: 140
             height: 32
             anchors.verticalCenter: parent.verticalCenter
-            
+
             model: root.fieldOptions
             textRole: "label"
             valueRole: "value"
-            
+
             currentIndex: {
                 for (var i = 0; i < root.fieldOptions.length; i++) {
                     if (root.fieldOptions[i].value === root.fieldValue) {
@@ -59,54 +59,58 @@ Rectangle {
                 }
                 return 0;
             }
-            
+
             onActivated: function(index) {
                 root.fieldChanged(root.fieldOptions[index].value);
             }
-            
+
             background: Rectangle {
                 color: fieldCombo.hovered ? Theme.hoverColor : Theme.baseColor
-                radius: 4
-                border.color: "#30FFFFFF"
+                radius: Theme.radiusSmall
+                border.color: fieldCombo.visualFocus ? Theme.borderAccent : Theme.borderColor
                 border.width: 1
+
+                Behavior on color { ColorAnimation { duration: Theme.animationFast } }
+                Behavior on border.color { ColorAnimation { duration: Theme.animationFast } }
             }
-            
+
             contentItem: Text {
                 text: fieldCombo.displayText
-                color: Theme.textColor
-                font.pixelSize: 13
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontBody
                 verticalAlignment: Text.AlignVCenter
-                leftPadding: 8
-                rightPadding: fieldCombo.indicator.width + 8
+                leftPadding: Theme.spacing8
+                rightPadding: fieldCombo.indicator.width + Theme.spacing8
                 elide: Text.ElideRight
             }
-            
+
             indicator: Text {
                 text: "▼"
-                color: Theme.secondaryTextColor
+                color: Theme.textSecondary
                 font.pixelSize: 10
                 anchors.right: parent.right
-                anchors.rightMargin: 8
+                anchors.rightMargin: Theme.spacing8
                 anchors.verticalCenter: parent.verticalCenter
             }
-            
+
             delegate: ItemDelegate {
                 width: fieldCombo.width
                 height: 32
-                
+
                 contentItem: Text {
                     text: modelData.label
-                    color: Theme.textColor
-                    font.pixelSize: 13
+                    color: Theme.textPrimary
+                    font.pixelSize: Theme.fontBody
                     verticalAlignment: Text.AlignVCenter
-                    leftPadding: 8
+                    leftPadding: Theme.spacing8
                 }
-                
+
                 background: Rectangle {
-                    color: parent.hovered ? Theme.hoverColor : Theme.mainColor
+                    color: parent.hovered ? Theme.hoverColor : Theme.raisedSurfaceColor
+                    Behavior on color { ColorAnimation { duration: Theme.animationFast } }
                 }
             }
-            
+
             popup: Popup {
                 width: fieldCombo.width
                 height: fullListHeight
@@ -120,117 +124,125 @@ Rectangle {
                 readonly property real minY: windowTopLimit - comboTopInWindow
                 readonly property real maxY: windowBottomLimit - comboTopInWindow - fullListHeight
                 y: Math.max(minY, Math.min(preferredY, maxY))
-                
+
                 contentItem: ListView {
                     clip: true
                     implicitHeight: contentHeight
                     model: fieldCombo.popup.visible ? fieldCombo.delegateModel : null
                     currentIndex: fieldCombo.highlightedIndex
                 }
-                
+
                 background: Rectangle {
-                    color: Theme.mainColor
-                    radius: 6
-                    border.color: "#30FFFFFF"
+                    color: Theme.raisedSurfaceColor
+                    radius: Theme.radiusMedium
+                    border.color: Theme.borderColor
                     border.width: 1
                 }
             }
         }
-        
+
         ComboBox {
             id: orderCombo
             width: 90
             height: 32
             anchors.verticalCenter: parent.verticalCenter
-            
+
             model: root.orderOptions
             textRole: "label"
             valueRole: "value"
-            
+
             currentIndex: root.orderValue === "asc" ? 0 : 1
-            
+
             onActivated: function(index) {
                 root.orderChanged(root.orderOptions[index].value);
             }
-            
+
             background: Rectangle {
                 color: orderCombo.hovered ? Theme.hoverColor : Theme.baseColor
-                radius: 4
-                border.color: "#30FFFFFF"
+                radius: Theme.radiusSmall
+                border.color: orderCombo.visualFocus ? Theme.borderAccent : Theme.borderColor
                 border.width: 1
+
+                Behavior on color { ColorAnimation { duration: Theme.animationFast } }
+                Behavior on border.color { ColorAnimation { duration: Theme.animationFast } }
             }
-            
+
             contentItem: Text {
                 text: orderCombo.displayText
-                color: Theme.textColor
-                font.pixelSize: 13
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontBody
                 verticalAlignment: Text.AlignVCenter
-                leftPadding: 8
-                rightPadding: orderCombo.indicator.width + 8
+                leftPadding: Theme.spacing8
+                rightPadding: orderCombo.indicator.width + Theme.spacing8
                 elide: Text.ElideRight
             }
-            
+
             indicator: Text {
                 text: "▼"
-                color: Theme.secondaryTextColor
+                color: Theme.textSecondary
                 font.pixelSize: 10
                 anchors.right: parent.right
-                anchors.rightMargin: 8
+                anchors.rightMargin: Theme.spacing8
                 anchors.verticalCenter: parent.verticalCenter
             }
-            
+
             delegate: ItemDelegate {
                 width: orderCombo.width
                 height: 32
-                
+
                 contentItem: Text {
                     text: modelData.label
-                    color: Theme.textColor
-                    font.pixelSize: 13
+                    color: Theme.textPrimary
+                    font.pixelSize: Theme.fontBody
                     verticalAlignment: Text.AlignVCenter
-                    leftPadding: 8
+                    leftPadding: Theme.spacing8
                 }
-                
+
                 background: Rectangle {
-                    color: parent.hovered ? Theme.hoverColor : Theme.mainColor
+                    color: parent.hovered ? Theme.hoverColor : Theme.raisedSurfaceColor
+                    Behavior on color { ColorAnimation { duration: Theme.animationFast } }
                 }
             }
-            
+
             popup: Popup {
                 y: orderCombo.height
                 width: orderCombo.width
                 implicitHeight: contentItem.implicitHeight
-                padding: 4
-                
+                padding: Theme.spacing4
+
                 contentItem: ListView {
                     clip: true
                     implicitHeight: contentHeight
                     model: orderCombo.popup.visible ? orderCombo.delegateModel : null
                     currentIndex: orderCombo.highlightedIndex
                 }
-                
+
                 background: Rectangle {
-                    color: Theme.mainColor
-                    radius: 6
-                    border.color: "#30FFFFFF"
+                    color: Theme.raisedSurfaceColor
+                    radius: Theme.radiusMedium
+                    border.color: Theme.borderColor
                     border.width: 1
                 }
             }
         }
-        
+
         Item {
             width: parent.width - 40 - 140 - 90 - 32 - 8 * 4
             height: 1
             anchors.verticalCenter: parent.verticalCenter
         }
-        
+
         StyleButton {
             iconSource: "qrc:/qt/qml/Seriona/qml/assets/close.svg"
             buttonWidth: 24
             buttonHeight: 24
             iconSize: 12
+            baseColor: "transparent"
+            hoverColor: Theme.dangerHoverColor
+            pressedColor: Theme.dangerPressedColor
             anchors.verticalCenter: parent.verticalCenter
             onClicked: root.removeRequested()
         }
     }
 }
+

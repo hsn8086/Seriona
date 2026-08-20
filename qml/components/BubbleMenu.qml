@@ -21,13 +21,13 @@ Window {
 
     readonly property int arrowSize: 12
     readonly property int arrowOffset: 12
-    readonly property int contentPadding: 4
+    readonly property int contentPadding: Theme.spacing4
 
     width: menuWidth + contentPadding * 2
     height: pageStack.implicitHeight + contentPadding * 2 + arrowOffset
 
     Behavior on height {
-        NumberAnimation { duration: Theme.animationDuration; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.animationFast; easing.type: Theme.easingDecelerate }
     }
 
     onHeightChanged: {
@@ -67,13 +67,13 @@ Window {
         opacity: root.visible ? 1.0 : 0.0
 
         Behavior on opacity {
-            NumberAnimation { duration: Theme.animationDuration; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: Theme.animationFast; easing.type: Theme.easingDecelerate }
         }
 
         Rectangle {
             width: root.arrowSize + 2
             height: root.arrowSize + 2
-            color: "#15FFFFFF"
+            color: Theme.borderSubtle
             rotation: 45
             x: (parent.width - width) / 2
             y: root.arrowDirection === "up" ? root.arrowOffset - height / 2 - 1 : body.y + body.height - height / 2 + 1
@@ -84,16 +84,16 @@ Window {
             anchors.fill: parent
             anchors.topMargin: root.arrowDirection === "up" ? root.arrowOffset : 0
             anchors.bottomMargin: root.arrowDirection === "down" ? root.arrowOffset : 0
-            color: Theme.mainColor
-            radius: 8
-            border.color: "#15FFFFFF"
+            color: Theme.raisedSurfaceColor
+            radius: Theme.radiusMedium
+            border.color: Theme.borderSubtle
             border.width: 1
         }
 
         Rectangle {
             width: root.arrowSize
             height: root.arrowSize
-            color: Theme.mainColor
+            color: Theme.raisedSurfaceColor
             rotation: 45
             x: (parent.width - width) / 2
             y: root.arrowDirection === "up" ? root.arrowOffset - height / 2 : body.y + body.height - height / 2
@@ -112,19 +112,19 @@ Window {
 
         pushEnter: Transition {
             id: pushEnterTransition
-            PropertyAnimation { target: pushEnterTransition.ViewTransition.item; property: "x"; from: pageStack.width; to: 0; duration: Theme.animationDuration; easing.type: Easing.OutCubic }
+            PropertyAnimation { target: pushEnterTransition.ViewTransition.item; property: "x"; from: pageStack.width; to: 0; duration: Theme.animationFast; easing.type: Theme.easingDecelerate }
         }
         pushExit: Transition {
             id: pushExitTransition
-            PropertyAnimation { target: pushExitTransition.ViewTransition.item; property: "x"; from: 0; to: -pageStack.width; duration: Theme.animationDuration; easing.type: Easing.OutCubic }
+            PropertyAnimation { target: pushExitTransition.ViewTransition.item; property: "x"; from: 0; to: -pageStack.width; duration: Theme.animationFast; easing.type: Theme.easingDecelerate }
         }
         popEnter: Transition {
             id: popEnterTransition
-            PropertyAnimation { target: popEnterTransition.ViewTransition.item; property: "x"; from: -pageStack.width; to: 0; duration: Theme.animationDuration; easing.type: Easing.OutCubic }
+            PropertyAnimation { target: popEnterTransition.ViewTransition.item; property: "x"; from: -pageStack.width; to: 0; duration: Theme.animationFast; easing.type: Theme.easingDecelerate }
         }
         popExit: Transition {
             id: popExitTransition
-            PropertyAnimation { target: popExitTransition.ViewTransition.item; property: "x"; from: 0; to: pageStack.width; duration: Theme.animationDuration; easing.type: Easing.OutCubic }
+            PropertyAnimation { target: popExitTransition.ViewTransition.item; property: "x"; from: 0; to: pageStack.width; duration: Theme.animationFast; easing.type: Theme.easingDecelerate }
         }
 
         Column {
@@ -159,18 +159,18 @@ Window {
 
                     Rectangle {
                         anchors.fill: parent
-                        anchors.margins: 4
-                        radius: 6
+                        anchors.margins: Theme.spacing4
+                        radius: Theme.radiusSmall
                         color: backMouseArea.containsMouse ? Theme.hoverColor : "transparent"
 
                         Behavior on color {
-                            ColorAnimation { duration: Theme.animationDuration }
+                            ColorAnimation { duration: Theme.animationFast }
                         }
                     }
 
                     Text {
                         text: qsTr("‹")
-                        color: Theme.textColor
+                        color: Theme.textPrimary
                         font.pixelSize: 22
                         anchors.left: parent.left
                         anchors.leftMargin: 14
@@ -179,8 +179,8 @@ Window {
 
                     Text {
                         text: subMenuPage.pageTitle
-                        color: Theme.textColor
-                        font.pixelSize: 13
+                        color: Theme.textPrimary
+                        font.pixelSize: Theme.fontBody
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
@@ -274,3 +274,4 @@ Window {
             close();
     }
 }
+
