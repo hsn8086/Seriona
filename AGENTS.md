@@ -6,6 +6,7 @@
 - 这是单可执行 Qt Quick/CMake 项目（要求 Qt 6.8+，`qt_standard_project_setup(REQUIRES 6.8)`）；`src/main.cpp` 通过 `engine.loadFromModule("Seriona", "Main")` 加载 `qml/Main.qml`。
 - `qt_add_qml_module(...)` 注册本地 URI `Seriona`。新增或重命名 `src/app` C++、模块内 QML、SVG 或 `tests/frontend/adapter/` 测试源时，同步更新 `CMakeLists.txt` 的 `SERIONA_APP_LAYER_SOURCES`、`SERIONA_QML_MODULE_FILES`、`SERIONA_QML_MODULE_RESOURCES` 及对应 `add_executable(...)`；不要把入口或测试 C++ 塞进 QML 模块。
 - `qml/Main.qml` 实例化唯一的 `AppFacade`。它拥有播放、曲库、歌词、通知和导航对象，并持有 `BackendBridge` 与 `WaveformProvider`（两者始终实例化；`SERIONA_HAS_BACKEND=0` 时不编译后端调用）；不要把这些状态重新放回 QML mock 属性。
+- 扫描进度：`LibraryController` 暴露 `scannedSongCount`/`totalSongCount`（库扫描时更新），`MainContent`/`Sidebar`/`StartupView` 经 `scanMessage` 展示扫描进度 toast（扫描完成自动隐藏）。
 - `PlaybackController`、`NavigationController`、`NotificationController` 和 `LibraryModel` 是 `QML_UNCREATABLE`；`LibraryController` 定义在 `library_model.h/.cpp`（没有独立文件），`LyricsModel` 同为 `QML_ELEMENT`。正式 QML 统一使用 `appFacade.playback/library/lyrics/notifications/navigation`，不要另建可创建的控制器或模型。
 - 孤儿文件（均未接入 CMake/engine，修改不影响正式应用或测试）：`src/providers/thumbnail_image_provider.{h,cpp}`、根目录 `test_popup.qml`、`qml/assets/MaterialIcons-Regular.ttf`（不在 QML 模块 RESOURCES，也无 FontLoader 引用）。根目录 `popup_log.txt` 是已跟踪的空日志残留（0 字节，`*.log` 在 .gitignore 中但该文件早于规则提交），属垃圾文件可删除。
 
@@ -42,4 +43,4 @@
 - `qml/theme/Theme.qml` 注册为 singleton；共享颜色、尺寸和动画参数复用 `Theme.*`。
 - SVG 资源使用绝对 QRC 路径，例如 `qrc:/qt/qml/Seriona/qml/assets/play.svg`；新增图标沿用该模式。
 - `qml/Main.qml` 是无边框窗口；标题栏、遮罩、边框改动必须保住 `window.startSystemMove()` 拖拽和 `window.startSystemResize(...)` 八向缩放。
-- 项目同时使用 `Qt5Compat.GraphicalEffects` 和 `QtQuick.Effects`；改图形效果前先看当前文件依赖哪套。
+- 项目以 `Qt5Compat.GraphicalEffects` 为主（Main/MainContent/DynamicBackground/Sidebar/StyleButton 实际使用）；`QtQuick.Effects` 仅 MainContent.qml 导入、当前无 MultiEffect 用法。改图形效果前先看当前文件依赖哪套。
