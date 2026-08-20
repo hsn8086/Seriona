@@ -84,7 +84,7 @@ Item {
                 anchors.fill: parent
                 acceptedButtons: Qt.RightButton
                 onClicked: (mouse) => {
-                    const global = delegate.mapToGlobal(mouse.x, mouse.y);
+                    const global = delegate.mapToItem(null, mouse.x, mouse.y);
                     root.contextMenuRequested(delegate.rowIndex, global.x, global.y);
                 }
             }

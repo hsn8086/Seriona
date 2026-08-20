@@ -9,7 +9,7 @@ QtObject {
     readonly property color backgroundColor: "#1e1e1e"
     readonly property color mainColor: "#2d2d2d"
     readonly property color sidebarBackgroundColor: "#151515"
-    readonly property color accentColor: "#ff5c5c"
+    readonly property color accentColor: "#5B9DFF" // 优雅现代蓝 (#5B9DFF)，和谐融入暗色界面
 
     // ==========================================
     // 控件状态颜色 (Control State Colors)
@@ -177,16 +177,16 @@ QtObject {
     // ==========================================
     // 新增：播放控制与进度条专用令牌 (Playback & Controls)
     // ==========================================
-    readonly property color progressBarColor: accentColor          // 进度条已播高亮色
+    readonly property color progressBarColor: "#FFFFFF"            // 进度条已播高亮色 (纯白/中性高对比)
     readonly property color progressBarTrackColor: "#30FFFFFF"     // 进度条轨道底色
     readonly property color progressBarHoverColor: "#80FFFFFF"     // 进度条悬停/高光色
     readonly property color waveformColor: "#30FFFFFF"             // 波形未播放底色
-    readonly property color waveformPlayedColor: accentColor       // 波形已播放高亮色
+    readonly property color waveformPlayedColor: "#FFFFFF"         // 波形已播放高亮色 (纯白/中性高对比)
 
     // ==========================================
     // 新增：星级评分专用令牌 (Rating Tokens)
     // ==========================================
-    readonly property color ratingColor: accentColor               // 已选星级颜色
+    readonly property color ratingColor: "#FFC107"                 // 已选星级颜色 (温暖金黄琥珀色)
     readonly property color ratingUnselectedColor: "#40FFFFFF"     // 未选星级颜色
 
     // ==========================================

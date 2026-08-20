@@ -227,12 +227,12 @@ void SidebarQueueSwitchTest::queueEntriesRenderWithPlayingHighlight()
     QCOMPARE(title0->property("text").toString(), QStringLiteral("队列第一首"));
     QObject *artist0 = findItem(QStringLiteral("queueArtist0"));
     QCOMPARE(artist0->property("text").toString(), QStringLiteral("歌手甲"));
-    QCOMPARE(title0->property("color").value<QColor>(), QColor(QStringLiteral("#ff5c5c")));
+    QCOMPARE(title0->property("color").value<QColor>(), QColor(QStringLiteral("#5B9DFF")));
 
     QObject *title1 = findItem(QStringLiteral("queueTitle1"));
     QVERIFY2(title1 != nullptr, "queue delegate title 1 missing");
     QCOMPARE(title1->property("text").toString(), QStringLiteral("Queue Two"));
-    QVERIFY(title1->property("color").value<QColor>() != QColor(QStringLiteral("#ff5c5c")));
+    QVERIFY(title1->property("color").value<QColor>() != QColor(QStringLiteral("#5B9DFF")));
 }
 
 void SidebarQueueSwitchTest::queueContextMenuItemVisibleOnlyInQueueContext()
@@ -264,7 +264,7 @@ void SidebarQueueSwitchTest::queueContextMenuItemVisibleOnlyInQueueContext()
     // 切回文件夹视图，文件夹条目右键 → 菜单中"从队列移除"隐藏
     clickSwitch(QStringLiteral("folderViewButton"));
     QCOMPARE(sidebar->property("queueViewActive").toBool(), false);
-    QVERIFY(!qobject_cast<QQuickItem *>(removeFromQueueItem)->isVisible());
+    QTRY_VERIFY(!qobject_cast<QQuickItem *>(removeFromQueueItem)->isVisible());
 }
 
 QTEST_MAIN(SidebarQueueSwitchTest)

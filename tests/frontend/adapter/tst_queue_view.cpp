@@ -133,7 +133,7 @@ void QueueViewTest::entriesRenderTitleArtistAndPlayingHighlight()
     QCOMPARE(artist0->property("text").toString(), QStringLiteral("歌手甲"));
 
     // 当前播放曲目高亮（accent 色标题），非播放项为普通文本色
-    const QColor accent = QColor(QStringLiteral("#ff5c5c"));
+    const QColor accent = QColor(QStringLiteral("#5B9DFF"));
     const QColor titleColor0 = title0->property("color").value<QColor>();
     QCOMPARE(titleColor0, accent);
 

@@ -17,7 +17,6 @@ Window {
     property double lastClosedAt: 0
     property int lastHeight: 0
     property int anchoredX: 0
-    property bool restoringX: false
 
     readonly property int arrowSize: 12
     readonly property int arrowOffset: 12
@@ -26,22 +25,10 @@ Window {
     width: menuWidth + contentPadding * 2
     height: pageStack.implicitHeight + contentPadding * 2 + arrowOffset
 
+    property bool isPositioning: false
+
     Behavior on height {
         NumberAnimation { duration: Theme.animationFast; easing.type: Theme.easingDecelerate }
-    }
-
-    onHeightChanged: {
-        if (visible && arrowDirection === "down" && lastHeight > 0)
-            y -= height - lastHeight;
-        lastHeight = height;
-    }
-
-    onXChanged: {
-        if (visible && !restoringX && x !== anchoredX) {
-            restoringX = true;
-            x = anchoredX;
-            restoringX = false;
-        }
     }
 
     function pushPage(title, pageComponent) {
@@ -211,6 +198,11 @@ Window {
         if (!targetItem || !targetItem.Window.window)
             return;
 
+        if (root.visible) {
+            root.visible = false;
+        }
+
+        root.isPositioning = true;
         // 显示前重置页面栈（替代 onVisibleChanged 中的重置）：
         // 窗口销毁过程中 visible 变化会触发绑定，此时 StackView 内部
         // 视图正在销毁，pop() 会访问已删除的过渡 item 导致崩溃（SEGV）。
@@ -218,8 +210,8 @@ Window {
 
         root.transientParent = targetItem.Window.window;
 
-        var topCenter = targetItem.mapToGlobal(targetItem.width / 2, 0);
-        var bottomCenter = targetItem.mapToGlobal(targetItem.width / 2, targetItem.height);
+        var topCenter = targetItem.mapToItem(null, targetItem.width / 2, 0);
+        var bottomCenter = targetItem.mapToItem(null, targetItem.width / 2, targetItem.height);
         root.anchoredX = Math.round(topCenter.x - root.width / 2);
         root.x = root.anchoredX;
         root.y = arrowDirection === "up"
@@ -228,23 +220,32 @@ Window {
         root.lastHeight = root.height;
         root.show();
         root.requestActivate();
+        root.x = root.anchoredX;
+        root.isPositioning = false;
     }
 
-    // 右键菜单定位（T14）：按全局坐标弹出（箭头向上，菜单出现在坐标下方 12px）。
+    // 右键菜单定位（T14）：按窗口场景坐标弹出（箭头向上，菜单出现在坐标下方 12px）。
     // 与 showAtTarget 同一套 anchoredX/transientParent 约束，只替换定位来源。
-    function showAtGlobal(globalX, globalY) {
+    function showAtGlobal(sceneX, sceneY) {
         if (!targetItem || !targetItem.Window.window)
             return;
 
+        if (root.visible) {
+            root.visible = false;
+        }
+
+        root.isPositioning = true;
         root.resetPage();
         root.transientParent = targetItem.Window.window;
 
-        root.anchoredX = Math.round(globalX - root.width / 2);
+        root.anchoredX = Math.round(sceneX - root.width / 2);
         root.x = root.anchoredX;
-        root.y = Math.round(globalY + 12);
+        root.y = Math.round(sceneY + 12);
         root.lastHeight = root.height;
         root.show();
         root.requestActivate();
+        root.x = root.anchoredX;
+        root.isPositioning = false;
     }
 
     function toggle() {

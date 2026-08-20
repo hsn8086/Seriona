@@ -892,7 +892,7 @@ Window {
                                         Layout.preferredWidth: 32
                                         Layout.preferredHeight: 32
                                         iconSize: 12
-                                        textColor: Theme.accentColor
+                                        textColor: Theme.textSecondary
                                         onClicked: {
                                             var list = [];
                                             for (var i = 0; i < settings.lyricDelimiters.length; i++) {
@@ -930,7 +930,7 @@ Window {
                                             State {
                                                 name: "error"
                                                 PropertyChanges {
-                                                    newDelimiterBg.border.color: Theme.accentColor
+                                                    newDelimiterBg.border.color: Theme.dangerColor
                                                 }
                                             }
                                         ]

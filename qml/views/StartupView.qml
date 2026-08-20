@@ -109,7 +109,7 @@ Item {
         Text {
             Layout.fillWidth: true
             text: root.scanMessage
-            color: root.scanError ? Theme.accentColor : Theme.textSecondary
+            color: root.scanError ? Theme.dangerColor : Theme.textSecondary
             font.pixelSize: Theme.fontBody
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap

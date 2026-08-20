@@ -161,7 +161,7 @@ Item {
         height: notificationColumn.implicitHeight + Theme.paddingLarge
         radius: height / 2
         color: root.toastSeverity === "error" ? Theme.toastErrorBg : root.toastSeverity === "warning" ? Theme.toastWarningBg : Theme.toastInfoBg
-        border.color: root.toastSeverity === "error" ? Theme.accentColor : root.toastSeverity === "warning" ? Theme.toastWarningBorder : Theme.hoverColor
+            border.color: root.toastSeverity === "error" ? Theme.dangerColor : root.toastSeverity === "warning" ? Theme.toastWarningBorder : Theme.hoverColor
         border.width: 1
         opacity: root.toastVisible ? 1.0 : 0.0
         visible: opacity > 0.0 || root.toastVisible
@@ -659,7 +659,7 @@ Item {
                 Rectangle {
                     width: progressSlider.visualPosition * parent.width
                     height: parent.height
-                    color: Theme.accentColor
+                    color: Theme.progressBarColor
                     radius: 2
                     opacity: 0.8
                 }

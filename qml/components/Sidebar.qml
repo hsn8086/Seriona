@@ -21,7 +21,7 @@ Item {
     // 不持久化（每次启动默认文件夹视图）；文件夹视图状态无损保留。
     property bool queueViewActive: false
     property int folderTransitionDirection: 0
-    readonly property bool hasOpenMenu: sidebarMenu.visible
+    readonly property bool hasOpenMenu: sidebarMenu.visible || trackContextMenu.isOpen
     readonly property ScrollBar verticalScrollBar: playlistView.ScrollBar.vertical
     readonly property bool scanRunning: libraryController.scanStatus === "running"
     readonly property bool scanError: libraryController.scanStatus === "error"
@@ -49,6 +49,7 @@ Item {
 
     function closeMenus() {
         sidebarMenu.close();
+        trackContextMenu.close();
     }
 
     function showUnsupportedFeedback(actionName) {
@@ -172,12 +173,6 @@ Item {
                                 buttonHeight: 20
                                 iconSize: 14
                                 enabled: libraryController.canGoBack
-                                opacity: enabled ? 1.0 : 0.3
-                                Behavior on opacity {
-                                    NumberAnimation {
-                                        duration: Theme.animationFast
-                                    }
-                                }
                                 onClicked: {
                                     root.closeMenus();
                                     root.folderTransitionDirection = -1;
@@ -587,7 +582,7 @@ Item {
                             anchors.fill: parent
                             acceptedButtons: Qt.RightButton
                             onClicked: (mouse) => {
-                                const global = delegate.mapToGlobal(mouse.x, mouse.y);
+                                const global = delegate.mapToItem(null, mouse.x, mouse.y);
                                 root.closeMenus();
                                 trackContextMenu.openForEntry({
                                     nodeId: delegate.nodeId,
@@ -641,7 +636,7 @@ Item {
                                 Layout.preferredWidth: 44
                                 Layout.preferredHeight: 44
                                 radius: 12
-                                color: delegate.isFolder ? Theme.accentColor : Theme.mainColor
+                                color: Theme.mainColor
                                 antialiasing: true
                                 layer.enabled: true
                                 layer.effect: OpacityMask {
@@ -677,7 +672,7 @@ Item {
                                 ColorOverlay {
                                     anchors.fill: folderThumbIcon
                                     source: folderThumbIcon
-                                    color: Theme.textOnAccent
+                                    color: Theme.accentColor
                                     visible: delegate.isFolder && !delegate.hasFolderArtwork
                                 }
 

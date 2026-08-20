@@ -14,8 +14,8 @@ Window {
     flags: Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     color: "transparent"
 
-    width: 380
-    height: 600
+    width: 420
+    height: 640
 
     required property AppFacade appFacade
     // Sidebar delegate 收集的条目数据（与 LibraryModel role 同源，不新增后端调用）
@@ -29,6 +29,7 @@ Window {
     readonly property string entryArtist: !!root.entryData && root.entryData.artist ? root.entryData.artist : ""
     readonly property string entryAlbum: !!root.entryData && root.entryData.album ? root.entryData.album : ""
     readonly property string entryArtwork: !!root.entryData && root.entryData.artworkSource ? root.entryData.artworkSource : ""
+    readonly property bool hasArtwork: root.entryArtwork.length > 0
     readonly property string formatText: {
         var parts = [];
         if (!!root.entryData && root.entryData.format && root.entryData.format.length > 0)
@@ -57,6 +58,7 @@ Window {
 
             // Title Bar
             Rectangle {
+                id: titleBar
                 Layout.fillWidth: true
                 Layout.preferredHeight: 48
                 color: "transparent"
@@ -80,6 +82,12 @@ Window {
                     textColor: Theme.textSecondary
                     onClicked: root.close()
                 }
+
+                MouseArea {
+                    anchors.fill: parent
+                    anchors.rightMargin: 48
+                    onPressed: root.startSystemMove()
+                }
             }
 
             Rectangle {
@@ -88,212 +96,268 @@ Window {
                 color: Theme.borderColor
             }
 
-            ColumnLayout {
+            // Scrollable Content Area
+            ScrollView {
+                id: scrollView
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.leftMargin: Theme.spacing24
-                Layout.rightMargin: Theme.spacing24
-                Layout.topMargin: Theme.spacing16
-                Layout.bottomMargin: Theme.spacing16
-                spacing: Theme.spacing12
+                clip: true
+                contentWidth: availableWidth
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                    width: Theme.scrollbarWidth
+                    background: Rectangle {
+                        color: "transparent"
+                    }
+                    contentItem: Rectangle {
+                        radius: Theme.radiusSmall
+                        color: parent.hovered ? Theme.scrollbarHoverColor : Theme.scrollbarColor
+                    }
+                }
 
-                // Cover
-                Rectangle {
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: 132
-                    Layout.preferredHeight: 132
-                    radius: Theme.radiusMedium
-                    color: root.isFolder ? Theme.accentColor : Theme.raisedSurfaceColor
-                    antialiasing: true
+                ColumnLayout {
+                    id: mainColumn
+                    width: scrollView.availableWidth
+                    spacing: Theme.spacing16
 
-                    Image {
-                        anchors.fill: parent
-                        anchors.margins: root.isFolder ? 26 : 0
-                        source: root.isFolder
-                            ? "qrc:/qt/qml/Seriona/qml/assets/folder.svg"
-                            : root.entryArtwork
-                        sourceSize: root.isFolder ? Qt.size(80, 80) : Qt.size(132, 132)
-                        fillMode: root.isFolder ? Image.PreserveAspectFit : Image.PreserveAspectCrop
-                        asynchronous: true
-                        visible: !root.isFolder && status === Image.Ready
+                    // Top Hero / Header Section
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: Theme.spacing24
+                        Layout.rightMargin: Theme.spacing24
+                        Layout.topMargin: Theme.spacing16
+                        spacing: Theme.spacing12
 
-                        layer.enabled: !root.isFolder
-                        layer.effect: OpacityMask {
-                            maskSource: Rectangle {
-                                width: 132
-                                height: 132
-                                radius: Theme.radiusMedium
+                        // Cover / Thumbnail Container
+                        Rectangle {
+                            id: coverContainer
+                            Layout.alignment: Qt.AlignHCenter
+                            Layout.preferredWidth: 140
+                            Layout.preferredHeight: 140
+                            radius: Theme.radiusMedium
+                            color: Theme.raisedSurfaceColor
+                            border.color: Theme.borderSubtle
+                            border.width: 1
+                            antialiasing: true
+
+                            // 1. Artwork image (works for both audio tracks and folders with resolved artwork)
+                            Image {
+                                id: artworkImage
+                                anchors.fill: parent
+                                source: root.entryArtwork
+                                sourceSize: Qt.size(280, 280)
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                                visible: root.hasArtwork && status === Image.Ready
+
+                                layer.enabled: true
+                                layer.effect: OpacityMask {
+                                    maskSource: Rectangle {
+                                        width: 140
+                                        height: 140
+                                        radius: Theme.radiusMedium
+                                    }
+                                }
                             }
-                        }
-                    }
 
-                    ColorOverlay {
-                        anchors.fill: parent
-                        anchors.margins: root.isFolder ? 26 : 0
-                        source: parent
-                        color: Theme.textOnAccent
-                        visible: root.isFolder
-                    }
+                            // 2. Folder SVG fallback (when isFolder is true and NO artwork is available)
+                            Image {
+                                id: folderIcon
+                                anchors.fill: parent
+                                anchors.margins: 32
+                                source: "qrc:/qt/qml/Seriona/qml/assets/folder.svg"
+                                sourceSize: Qt.size(80, 80)
+                                fillMode: Image.PreserveAspectFit
+                                visible: false
+                            }
 
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Theme.radiusMedium
-                        color: Theme.baseColor
-                        visible: !root.isFolder && root.entryArtwork.length === 0
+                            ColorOverlay {
+                                anchors.fill: folderIcon
+                                source: folderIcon
+                                color: Theme.accentColor
+                                visible: root.isFolder && (!root.hasArtwork || artworkImage.status !== Image.Ready)
+                            }
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: "♫"
-                            color: Theme.textOnAccent
-                            font.pixelSize: 40
-                        }
-                    }
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignHCenter
-                    text: root.isFolder
-                        ? root.entryName
-                        : root.entryTitle
-                    color: Theme.textPrimary
-                    font.pixelSize: Theme.fontSubtitle
-                    font.weight: Font.DemiBold
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignHCenter
-                    visible: !root.isFolder
-                    text: root.entryArtist.length > 0 && root.entryAlbum.length > 0
-                        ? root.entryArtist + " - " + root.entryAlbum
-                        : root.entryArtist + root.entryAlbum
-                    color: Theme.textSecondary
-                    font.pixelSize: Theme.fontCaption
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: Theme.borderSubtle
-                }
-
-                // 内容区可滚动（T14 修复 D）：长路径/高缩放下内容超高时纵向滚动，永不裁剪
-                ScrollView {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
-                    contentWidth: availableWidth
-                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-
-                    GridLayout {
-                        columns: 2
-                        columnSpacing: Theme.spacing16
-                        rowSpacing: Theme.spacing8
-
-                        Repeater {
-                            model: root.isFolder
-                                ? [
-                                    {label: qsTr("上级目录"), value: root.entryData && root.entryData.parentName ? root.entryData.parentName : ""},
-                                    {label: qsTr("包含歌曲"), value: root.entryData && root.entryData.songCount ? qsTr("%1 首").arg(root.entryData.songCount) : ""},
-                                    {label: qsTr("总时长"), value: root.entryData && root.entryData.duration ? root.entryData.duration : ""}
-                                  ]
-                                : [
-                                    {label: qsTr("艺术家"), value: root.entryArtist},
-                                    {label: qsTr("专辑"), value: root.entryAlbum},
-                                    {label: qsTr("年份"), value: root.entryData && root.entryData.year ? String(root.entryData.year) : "—"},
-                                    {label: qsTr("时长"), value: root.entryData && root.entryData.duration ? root.entryData.duration : ""},
-                                    {label: qsTr("格式"), value: root.formatText},
-                                    {label: qsTr("文件路径"), value: root.entryData && root.entryData.path ? root.entryData.path : ""},
-                                    {label: qsTr("播放次数"), value: qsTr("%1 次").arg(root.playCount)}
-                                  ]
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: Theme.spacing8
+                            // 3. Audio note fallback (when !isFolder and NO artwork is available)
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: Theme.radiusMedium
+                                color: Theme.baseColor
+                                visible: !root.isFolder && (!root.hasArtwork || artworkImage.status !== Image.Ready)
 
                                 Text {
-                                    Layout.preferredWidth: 88
-                                    text: modelData.label
-                                    color: Theme.detailLabelColor
-                                    font.pixelSize: Theme.fontCaption
+                                    anchors.centerIn: parent
+                                    text: "♫"
+                                    color: Theme.textOnAccent
+                                    font.pixelSize: 44
+                                }
+                            }
+                        }
+
+                        // Main Title (selectable/copyable or clean text)
+                        TextEdit {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignHCenter
+                            text: root.isFolder ? root.entryName : root.entryTitle
+                            color: Theme.textPrimary
+                            font.pixelSize: Theme.fontSubtitle
+                            font.weight: Font.DemiBold
+                            horizontalAlignment: Text.AlignHCenter
+                            readOnly: true
+                            selectByMouse: true
+                            selectedTextColor: Theme.textOnAccent
+                            selectionColor: Theme.accentColor
+                            wrapMode: TextEdit.Wrap
+                        }
+
+                        // Subtitle: Artist - Album (for tracks)
+                        TextEdit {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignHCenter
+                            visible: !root.isFolder && (root.entryArtist.length > 0 || root.entryAlbum.length > 0)
+                            text: root.entryArtist.length > 0 && root.entryAlbum.length > 0
+                                ? root.entryArtist + " · " + root.entryAlbum
+                                : root.entryArtist + root.entryAlbum
+                            color: Theme.textSecondary
+                            font.pixelSize: Theme.fontCaption
+                            horizontalAlignment: Text.AlignHCenter
+                            readOnly: true
+                            selectByMouse: true
+                            selectedTextColor: Theme.textOnAccent
+                            selectionColor: Theme.accentColor
+                            wrapMode: TextEdit.Wrap
+                        }
+
+                        // Rating Card Section (for tracks)
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: ratingLayout.implicitHeight + Theme.spacing16
+                            color: Theme.raisedSurfaceColor
+                            radius: Theme.radiusMedium
+                            border.color: Theme.borderSubtle
+                            border.width: 1
+                            visible: !root.isFolder
+
+                            ColumnLayout {
+                                id: ratingLayout
+                                anchors.fill: parent
+                                anchors.margins: Theme.spacing8
+                                spacing: Theme.spacing4
+
+                                Row {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    spacing: Theme.spacing8
+
+                                    Repeater {
+                                        model: 5
+
+                                        Text {
+                                            id: starIcon
+                                            text: "★"
+                                            color: (index + 1) <= root.rating ? Theme.ratingColor : Theme.ratingUnselectedColor
+                                            font.pixelSize: Theme.fontHeading
+                                            scale: starArea.pressed ? 1.25 : (starArea.containsMouse ? 1.15 : 1.0)
+
+                                            Behavior on scale {
+                                                NumberAnimation { duration: Theme.animationFast }
+                                            }
+                                            Behavior on color {
+                                                ColorAnimation { duration: Theme.animationFast }
+                                            }
+
+                                            MouseArea {
+                                                id: starArea
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: appFacade.trackStats.setRating(root.trackId, index + 1)
+                                            }
+                                        }
+                                    }
                                 }
 
                                 Text {
                                     Layout.fillWidth: true
-                                    text: modelData.value
-                                    color: Theme.detailValueColor
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: root.rating > 0 ? qsTr("%1 星").arg(root.rating) : qsTr("未评级 (点击星星评分)")
+                                    color: root.rating > 0 ? Theme.ratingColor : Theme.textDisabled
                                     font.pixelSize: Theme.fontCaption
-                                    wrapMode: Text.Wrap
-                                    elide: Text.ElideRight
-                                    maximumLineCount: 2
                                 }
                             }
                         }
                     }
-                }
 
-                // 星级（可点击编辑；0 = 未评级）
-                Item {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 28
-                    visible: !root.isFolder
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: qsTr("评分")
-                        color: Theme.textSecondary
-                        font.pixelSize: Theme.fontCaption
-                    }
-
-                    Row {
-                        anchors.centerIn: parent
+                    // Metadata Properties Section (Card List: Label on top, Value below with selectability)
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: Theme.spacing24
+                        Layout.rightMargin: Theme.spacing24
+                        Layout.bottomMargin: Theme.spacing24
                         spacing: Theme.spacing8
 
                         Repeater {
-                            model: 5
+                            model: root.isFolder
+                                ? [
+                                    {label: qsTr("上级目录"), value: root.entryData && root.entryData.parentName ? root.entryData.parentName : "—"},
+                                    {label: qsTr("包含歌曲"), value: root.entryData && root.entryData.songCount !== undefined ? qsTr("%1 首").arg(root.entryData.songCount) : "—"},
+                                    {label: qsTr("总时长"), value: root.entryData && root.entryData.duration ? root.entryData.duration : "—"},
+                                    {label: qsTr("文件夹路径"), value: root.entryData && root.entryData.path ? root.entryData.path : "—"}
+                                  ]
+                                : [
+                                    {label: qsTr("标题"), value: root.entryTitle.length > 0 ? root.entryTitle : "—"},
+                                    {label: qsTr("艺术家"), value: root.entryArtist.length > 0 ? root.entryArtist : "—"},
+                                    {label: qsTr("专辑"), value: root.entryAlbum.length > 0 ? root.entryAlbum : "—"},
+                                    {label: qsTr("年份"), value: root.entryData && root.entryData.year ? String(root.entryData.year) : "—"},
+                                    {label: qsTr("时长"), value: root.entryData && root.entryData.duration ? root.entryData.duration : "—"},
+                                    {label: qsTr("音频格式"), value: root.entryData && root.entryData.format ? root.entryData.format : "—"},
+                                    {label: qsTr("采样率"), value: root.entryData && root.entryData.sampleRate > 0 ? (root.entryData.sampleRate / 1000) + " kHz" : "—"},
+                                    {label: qsTr("位深度"), value: root.entryData && root.entryData.bitDepth > 0 ? root.entryData.bitDepth + " bit" : "—"},
+                                    {label: qsTr("规格组合"), value: root.formatText.length > 0 ? root.formatText : "—"},
+                                    {label: qsTr("播放次数"), value: qsTr("%1 次").arg(root.playCount)},
+                                    {label: qsTr("文件路径"), value: root.entryData && root.entryData.path ? root.entryData.path : "—"}
+                                  ]
 
-                            Text {
-                                id: starIcon
-                                text: "★"
-                                color: (index + 1) <= root.rating ? Theme.ratingColor : Theme.ratingUnselectedColor
-                                font.pixelSize: Theme.fontHeading
-                                scale: starArea.pressed ? 1.25 : (starArea.containsMouse ? 1.15 : 1.0)
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: itemColumn.implicitHeight + Theme.spacing12 * 2
+                                color: Theme.raisedSurfaceColor
+                                radius: Theme.radiusMedium
+                                border.color: Theme.borderSubtle
+                                border.width: 1
 
-                                Behavior on scale {
-                                    NumberAnimation { duration: Theme.animationFast }
-                                }
-                                Behavior on color {
-                                    ColorAnimation { duration: Theme.animationFast }
-                                }
+                                ColumnLayout {
+                                    id: itemColumn
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: Theme.spacing12
+                                    spacing: Theme.spacing4
 
-                                MouseArea {
-                                    id: starArea
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: appFacade.trackStats.setRating(root.trackId, index + 1)
+                                    Text {
+                                        text: modelData.label
+                                        color: Theme.detailLabelColor
+                                        font.pixelSize: Theme.fontCaption
+                                        font.weight: Font.Medium
+                                    }
+
+                                    TextEdit {
+                                        Layout.fillWidth: true
+                                        text: modelData.value
+                                        color: Theme.detailValueColor
+                                        font.pixelSize: Theme.fontBody
+                                        readOnly: true
+                                        selectByMouse: true
+                                        selectedTextColor: Theme.textOnAccent
+                                        selectionColor: Theme.accentColor
+                                        wrapMode: TextEdit.Wrap
+                                    }
                                 }
                             }
                         }
                     }
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignHCenter
-                    visible: !root.isFolder && root.rating === 0
-                    text: qsTr("未评级")
-                    color: Theme.textDisabled
-                    font.pixelSize: Theme.fontCaption
                 }
             }
         }
     }
 }
-

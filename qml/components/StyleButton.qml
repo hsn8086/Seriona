@@ -34,11 +34,11 @@ RoundButton {
         radius: control.buttonRadius
         width: control.width
         height: control.height
-        color: !control.enabled ? "transparent" : control.baseColor
+        color: !control.enabled ? Qt.rgba(1, 1, 1, 0.04) : control.baseColor
 
         // 边框/聚焦环视觉增强
-        border.width: (control.visualFocus && control.enabled) ? 1 : (control.checked ? 1 : 0)
-        border.color: control.visualFocus ? Theme.borderAccent : (control.checked ? Theme.borderColor : "transparent")
+        border.width: !control.enabled ? 1 : ((control.visualFocus && control.enabled) ? 1 : (control.checked ? 1 : 0))
+        border.color: !control.enabled ? Qt.rgba(1, 1, 1, 0.08) : (control.visualFocus ? Theme.borderAccent : (control.checked ? Theme.borderColor : "transparent"))
 
         Behavior on color {
             ColorAnimation { duration: Theme.animationFast }
@@ -54,7 +54,9 @@ RoundButton {
                 when: !control.enabled
                 PropertyChanges {
                     target: bgRect
-                    color: "transparent"
+                    color: Qt.rgba(1, 1, 1, 0.04)
+                    border.width: 1
+                    border.color: Qt.rgba(1, 1, 1, 0.08)
                 }
             },
             State {
@@ -83,7 +85,7 @@ RoundButton {
         anchors.centerIn: parent
         width: control.iconSize
         height: control.iconSize
-        opacity: control.enabled ? 1.0 : 0.45
+        opacity: control.enabled ? 1.0 : 0.7
 
         Behavior on opacity {
             NumberAnimation { duration: Theme.animationFast }
@@ -104,7 +106,7 @@ RoundButton {
         ColorOverlay {
             anchors.fill: iconImage
             source: iconImage
-            color: !control.enabled ? Theme.textDisabled : control.textColor
+            color: !control.enabled ? Qt.rgba(1, 1, 1, 0.35) : control.textColor
             visible: control.iconSource.toString() !== ""
 
             Behavior on color {

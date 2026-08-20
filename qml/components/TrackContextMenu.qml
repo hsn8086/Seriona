@@ -14,8 +14,14 @@ Item {
     // 文件夹视图右键时保持 false（由 Sidebar 绑定 queueViewActive）。
     property bool queueContext: false
 
+    readonly property bool isOpen: contextMenu.visible
+
     // Sidebar delegate 右键时收集的条目数据（LibraryModel role 同源 + 文件路径）
     property var entryData: ({})
+
+    function close() {
+        contextMenu.close();
+    }
 
     // 打开右键菜单：data 为条目数据对象；globalX/globalY 为鼠标全局坐标。
     function openForEntry(data, globalX, globalY) {
