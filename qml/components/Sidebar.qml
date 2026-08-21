@@ -400,6 +400,7 @@ Item {
                 color: "transparent"
 
                 Rectangle {
+                    id: tabSwitchContainer
                     anchors.centerIn: parent
                     width: 176
                     height: 30
@@ -408,28 +409,44 @@ Item {
                     border.color: Theme.borderSubtle
                     border.width: 1
 
+                    // 滑动指示胶囊（Sliding Pill Indicator）
+                    Rectangle {
+                        id: tabIndicator
+                        width: 82
+                        height: 26
+                        radius: 13
+                        y: 2
+                        x: root.queueViewActive ? 90 : 4
+                        color: Theme.hoverColor
+
+                        Behavior on x {
+                            NumberAnimation {
+                                duration: Theme.animationStandard
+                                easing.type: Easing.OutCubic
+                            }
+                        }
+                    }
+
                     Row {
                         anchors.centerIn: parent
                         spacing: 4
 
-                        Rectangle {
+                        Item {
                             id: folderViewButton
                             objectName: "folderViewButton"
                             width: 82
                             height: 30
-                            radius: 15
-                            color: !root.queueViewActive ? Theme.hoverColor : "transparent"
-
-                            Behavior on color {
-                                ColorAnimation {
-                                    duration: Theme.animationFast
-                                }
-                            }
 
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.queueViewActive = false
+                                onClicked: {
+                                    if (root.queueViewActive) {
+                                        root.folderTransitionDirection = -1;
+                                        root.queueViewActive = false;
+                                        folderTransitionResetTimer.restart();
+                                    }
+                                }
                             }
 
                             Text {
@@ -438,27 +455,30 @@ Item {
                                 color: !root.queueViewActive ? Theme.textPrimary : Theme.textSecondary
                                 font.pixelSize: Theme.fontCaption + 1
                                 font.weight: !root.queueViewActive ? Font.DemiBold : Font.Normal
+
+                                Behavior on color {
+                                    ColorAnimation { duration: Theme.animationFast }
+                                }
                             }
                         }
 
-                        Rectangle {
+                        Item {
                             id: queueViewButton
                             objectName: "queueViewButton"
                             width: 82
                             height: 30
-                            radius: 15
-                            color: root.queueViewActive ? Theme.hoverColor : "transparent"
-
-                            Behavior on color {
-                                ColorAnimation {
-                                    duration: Theme.animationFast
-                                }
-                            }
 
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.queueViewActive = true
+                                onClicked: {
+                                    if (!root.queueViewActive) {
+                                        root.folderTransitionDirection = 1;
+                                        root.queueViewActive = true;
+                                        queueView.rebuild();
+                                        folderTransitionResetTimer.restart();
+                                    }
+                                }
                             }
 
                             Text {
@@ -467,6 +487,10 @@ Item {
                                 color: root.queueViewActive ? Theme.textPrimary : Theme.textSecondary
                                 font.pixelSize: Theme.fontCaption + 1
                                 font.weight: root.queueViewActive ? Font.DemiBold : Font.Normal
+
+                                Behavior on color {
+                                    ColorAnimation { duration: Theme.animationFast }
+                                }
                             }
                         }
                     }
@@ -506,23 +530,58 @@ Item {
                     }
                 }
 
-                ListView {
-                    id: playlistView
+                Item {
+                    id: slidingTrack
+                    anchors.fill: parent
+                    transform: Translate {
+                        id: trackTranslate
+                        x: root.queueViewActive ? -playlistPanel.width : 0
+                        Behavior on x {
+                            NumberAnimation {
+                                duration: 250
+                                easing.type: Easing.OutCubic
+                            }
+                        }
+                    }
+
+                    Item {
+                        id: folderPage
+                        width: playlistPanel.width
+                        height: playlistPanel.height
+                        x: 0
+
+                        ListView {
+                            id: playlistView
                     objectName: "playlistView"
                     anchors.fill: parent
                     model: libraryController.model
                     visible: !root.queueViewActive
+                    opacity: 1.0
+                    transform: Translate {
+                        id: playlistTranslate
+                    }
                     spacing: 0
                     topMargin: Theme.paddingMedium + (scanBanner.visible ? scanBanner.height + 8 : 0)
                     bottomMargin: 80
                     clip: true
-                    reuseItems: true
+                    reuseItems: false
 
                     populate: Transition {
                         id: playlistPopulateTrans
                         SequentialAnimation {
-                            PauseAnimation {
-                                duration: Math.min(playlistPopulateTrans.ViewTransition.index, 20) * 30
+                            ParallelAnimation {
+                                NumberAnimation {
+                                    property: "x"
+                                    from: (root.folderTransitionDirection >= 0 ? 1 : -1) * playlistView.width
+                                    to: (root.folderTransitionDirection >= 0 ? 1 : -1) * playlistView.width
+                                    duration: Math.min(playlistPopulateTrans.ViewTransition.index, 20) * 30
+                                }
+                                NumberAnimation {
+                                    property: "opacity"
+                                    from: 0.0
+                                    to: 0.0
+                                    duration: Math.min(playlistPopulateTrans.ViewTransition.index, 20) * 30
+                                }
                             }
                             ParallelAnimation {
                                 NumberAnimation {
@@ -546,15 +605,21 @@ Item {
                     ScrollBar.vertical: ScrollBar {
                         id: playlistScrollBar
                         policy: ScrollBar.AsNeeded
-                        width: Theme.scrollbarWidth
+                        width: isHoveredOrPressed ? 10 : Theme.scrollbarWidth
+
+                        readonly property bool isHoveredOrPressed: playlistScrollBar.hovered || playlistScrollBar.pressed
+
+                        Behavior on width {
+                            NumberAnimation { duration: Theme.animationFast; easing.type: Easing.OutQuad }
+                        }
 
                         background: Rectangle {
                             color: "transparent"
                         }
 
                         contentItem: Rectangle {
-                            implicitWidth: Theme.scrollbarWidth
-                            radius: Theme.scrollbarWidth / 2
+                            implicitWidth: playlistScrollBar.width
+                            radius: width / 2
                             // 长列表（内容溢出）显示句柄，短列表/空列表隐藏
                             visible: playlistScrollBar.size < 1.0
                             color: playlistScrollBar.pressed ? Theme.pressedColor
@@ -881,42 +946,53 @@ Item {
                     visible: libraryController.visibleNodeCount === 0 && !root.queueViewActive
                 }
 
-                // 队列视图（T15）：展示临时队列，空队列显示引导文案；
-                // 移除/右键命令经信号上抛，由下方 onRemoveRequested/
-                // onContextMenuRequested 接 AppFacade 与 TrackContextMenu。
-                QueueView {
-                    id: queueView
-                    objectName: "queueListView"
-                    anchors.fill: parent
-                    visible: root.queueViewActive
-                    queueEntries: root.appFacade.playback.queueEntries
+                    }
 
-                    onRemoveRequested: (index) => root.appFacade.removeFromQueue(index)
+                    Item {
+                        id: queuePage
+                        width: playlistPanel.width
+                        height: playlistPanel.height
+                        x: playlistPanel.width
 
-                    onContextMenuRequested: (index, targetDelegate, mouseX, mouseY) => {
-                        const entry = root.appFacade.playback.queueEntries[index];
-                        if (!entry)
-                            return;
-                        root.closeMenus();
-                        trackContextMenu.openForEntry({
-                            nodeId: entry.nodeId,
-                            trackId: entry.trackId,
-                            isFolder: false,
-                            name: entry.title,
-                            title: entry.title,
-                            artist: entry.artist,
-                            album: "",
-                            parentName: "",
-                            songCount: 0,
-                            duration: "",
-                            format: "",
-                            sampleRate: 0,
-                            bitDepth: 0,
-                            artworkSource: "",
-                            year: 0,
-                            path: root.appFacade.filePathForNodeId(entry.nodeId),
-                            queueIndex: index
-                        }, targetDelegate, mouseX, mouseY);
+                        // 队列视图（T15）：展示临时队列，空队列显示引导文案；
+                        // 移除/右键命令经信号上抛，由下方 onRemoveRequested/
+                        // onContextMenuRequested 接 AppFacade 与 TrackContextMenu。
+                        QueueView {
+                            id: queueView
+                            objectName: "queueListView"
+                            anchors.fill: parent
+                            visible: root.queueViewActive
+                            transitionDirection: 0
+                            queueEntries: root.appFacade.playback.queueEntries
+
+                            onRemoveRequested: (index) => root.appFacade.removeFromQueue(index)
+
+                            onContextMenuRequested: (index, targetDelegate, mouseX, mouseY) => {
+                                const entry = root.appFacade.playback.queueEntries[index];
+                                if (!entry)
+                                    return;
+                                root.closeMenus();
+                                trackContextMenu.openForEntry({
+                                    nodeId: entry.nodeId,
+                                    trackId: entry.trackId,
+                                    isFolder: false,
+                                    name: entry.title,
+                                    title: entry.title,
+                                    artist: entry.artist,
+                                    album: "",
+                                    parentName: "",
+                                    songCount: 0,
+                                    duration: "",
+                                    format: "",
+                                    sampleRate: 0,
+                                    bitDepth: 0,
+                                    artworkSource: "",
+                                    year: 0,
+                                    path: root.appFacade.filePathForNodeId(entry.nodeId),
+                                    queueIndex: index
+                                }, targetDelegate, mouseX, mouseY);
+                            }
+                        }
                     }
                 }
             }

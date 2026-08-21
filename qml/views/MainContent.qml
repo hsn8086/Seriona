@@ -466,8 +466,19 @@ Item {
         populate: Transition {
             id: populateTrans
             SequentialAnimation {
-                PauseAnimation {
-                    duration: Math.min(populateTrans.ViewTransition.index, 25) * 35
+                ParallelAnimation {
+                    NumberAnimation {
+                        property: "x"
+                        from: (root.lyricsSwitchDirection >= 0 ? 1 : -1) * lyricsContainer.width
+                        to: (root.lyricsSwitchDirection >= 0 ? 1 : -1) * lyricsContainer.width
+                        duration: Math.min(populateTrans.ViewTransition.index, 25) * 35
+                    }
+                    NumberAnimation {
+                        property: "opacity"
+                        from: 0.0
+                        to: 0.0
+                        duration: Math.min(populateTrans.ViewTransition.index, 25) * 35
+                    }
                 }
                 ParallelAnimation {
                     NumberAnimation {
