@@ -518,6 +518,31 @@ Item {
                     clip: true
                     reuseItems: true
 
+                    populate: Transition {
+                        id: playlistPopulateTrans
+                        SequentialAnimation {
+                            PauseAnimation {
+                                duration: Math.min(playlistPopulateTrans.ViewTransition.index, 20) * 30
+                            }
+                            ParallelAnimation {
+                                NumberAnimation {
+                                    property: "x"
+                                    from: (root.folderTransitionDirection >= 0 ? 1 : -1) * playlistView.width
+                                    to: 0
+                                    duration: 220
+                                    easing.type: Easing.OutCubic
+                                }
+                                NumberAnimation {
+                                    property: "opacity"
+                                    from: 0.0
+                                    to: 1.0
+                                    duration: 220
+                                    easing.type: Easing.OutQuad
+                                }
+                            }
+                        }
+                    }
+
                     ScrollBar.vertical: ScrollBar {
                         id: playlistScrollBar
                         policy: ScrollBar.AsNeeded

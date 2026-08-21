@@ -21,13 +21,26 @@ Item {
     required property LibraryController libraryController
     readonly property bool hasOpenMenu: mainMenu.visible
 
-    readonly property bool scanRunning: libraryController.scanStatus === "running"
+    // 切换歌曲动画方向与状态追踪
+    // 1: 切换下一首 (当前歌词向左滑出，下一首从右滑入)
+    // -1: 切换上一首 (当前歌词向右滑出，上一首从左滑入)
+    property int lyricsSwitchDirection: 1
+    property int lyricsSwitchToken: 0
+
+    Connections {
+        target: root.playbackController
+
+        function onCurrentSongChanged() {
+            root.lyricsSwitchToken++;
+        }
+    }
+    readonly property bool scanRunning: root.libraryController ? (root.libraryController.scanStatus === "running") : false
     readonly property string scanToastTitle: qsTr("正在扫描曲库")
-    readonly property string scanToastMessage: libraryController.totalSongCount > 0
-        ? qsTr("正在扫描：%1 / %2").arg(libraryController.scannedSongCount).arg(libraryController.totalSongCount)
+    readonly property string scanToastMessage: root.libraryController && root.libraryController.totalSongCount > 0
+        ? qsTr("正在扫描：%1 / %2").arg(root.libraryController.scannedSongCount).arg(root.libraryController.totalSongCount)
         : qsTr("正在扫描曲库…")
-    readonly property real scanToastProgress: libraryController.totalSongCount > 0
-        ? Math.min(libraryController.scannedSongCount / libraryController.totalSongCount, 1.0)
+    readonly property real scanToastProgress: root.libraryController && root.libraryController.totalSongCount > 0
+        ? Math.min(root.libraryController.scannedSongCount / root.libraryController.totalSongCount, 1.0)
         : 0.0
 
     property bool isTogglingTranslation: false
@@ -219,7 +232,7 @@ Item {
                 width: parent.width
                 implicitHeight: 4
                 value: root.scanToastProgress
-                indeterminate: root.scanRunning && root.libraryController.totalSongCount === 0
+                indeterminate: root.scanRunning && root.libraryController ? (root.libraryController.totalSongCount === 0) : false
                 padding: 0
 
                 background: Rectangle {
@@ -450,6 +463,31 @@ Item {
         highlightRangeMode: ListView.StrictlyEnforceRange
         highlightMoveDuration: root.isTogglingTranslation ? 0 : 400
 
+        populate: Transition {
+            id: populateTrans
+            SequentialAnimation {
+                PauseAnimation {
+                    duration: Math.min(populateTrans.ViewTransition.index, 25) * 35
+                }
+                ParallelAnimation {
+                    NumberAnimation {
+                        property: "x"
+                        from: (root.lyricsSwitchDirection >= 0 ? 1 : -1) * lyricsContainer.width
+                        to: 0
+                        duration: 220
+                        easing.type: Easing.OutCubic
+                    }
+                    NumberAnimation {
+                        property: "opacity"
+                        from: 0.0
+                        to: 1.0
+                        duration: 220
+                        easing.type: Easing.OutQuad
+                    }
+                }
+            }
+        }
+
         Connections {
             target: lyricsState
             
@@ -556,6 +594,28 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    // 4.1 无歌词占位提示 (仅在 lyrics 状态且无歌词时显示)
+    Item {
+        id: noLyricsPlaceholder
+        anchors.fill: lyricsContainer
+        z: 11
+        visible: lyricsContainer.visible && (lyricsState.rowCount() === 0)
+        opacity: visible ? 1.0 : 0.0
+
+        Behavior on opacity {
+            NumberAnimation { duration: 250; easing.type: Easing.InOutQuad }
+        }
+
+        Text {
+            anchors.centerIn: parent
+            text: qsTr("无歌词")
+            color: Theme.secondaryTextColor
+            font.pixelSize: 24
+            font.weight: Font.Normal
+            opacity: 0.5
         }
     }
 
@@ -723,7 +783,10 @@ Item {
             anchors.rightMargin: 35
             iconSource: "qrc:/qt/qml/Seriona/qml/assets/prev.svg"
             textColor: Theme.textColor
-            onClicked: root.playbackController.skipPrevious()
+            onClicked: {
+                root.lyricsSwitchDirection = -1;
+                root.playbackController.skipPrevious();
+            }
             SharedToolTip {
                 text: qsTr("上一首")
             }
@@ -754,7 +817,10 @@ Item {
             anchors.leftMargin: 25
             iconSource: "qrc:/qt/qml/Seriona/qml/assets/next.svg"
             textColor: Theme.textColor
-            onClicked: root.playbackController.skipNext()
+            onClicked: {
+                root.lyricsSwitchDirection = 1;
+                root.playbackController.skipNext();
+            }
             SharedToolTip {
                 text: qsTr("下一首")
             }
