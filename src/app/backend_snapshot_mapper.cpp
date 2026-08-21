@@ -2,6 +2,7 @@
 
 #if SERIONA_HAS_BACKEND
 #include <QStringList>
+#include <QUrl>
 #include <QVariantMap>
 
 #include <algorithm>
@@ -385,9 +386,19 @@ QVariantList mapQueueEntries(
                 !lookup.song->title.empty() ? backendStringToQString(lookup.song->title)
                                             : backendStringToQString(entry.trackId));
             item.insert(QStringLiteral("artist"), backendStringToQString(lookup.song->artist));
+            const std::filesystem::path &artPath = lookup.song->thumbnailPath.has_value() && !lookup.song->thumbnailPath->empty()
+                ? *lookup.song->thumbnailPath
+                : (lookup.song->artworkPath.has_value() ? *lookup.song->artworkPath : std::filesystem::path{});
+            if (!artPath.empty()) {
+                item.insert(QStringLiteral("artworkSource"),
+                    QUrl::fromLocalFile(QString::fromStdString(artPath.string())).toString());
+            } else {
+                item.insert(QStringLiteral("artworkSource"), QString());
+            }
         } else {
             item.insert(QStringLiteral("title"), backendStringToQString(entry.trackId));
             item.insert(QStringLiteral("artist"), QString());
+            item.insert(QStringLiteral("artworkSource"), QString());
         }
         item.insert(QStringLiteral("isPlaying"),
             !playingTrackId.isEmpty() && playingTrackId == QString::fromStdString(entry.trackId));
