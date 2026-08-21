@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import Seriona
+import "menuRegistry.js" as MenuRegistry
 
 Window {
     id: root
@@ -194,9 +195,24 @@ Window {
         }
     }
 
+    // Wayland 下 xdg_popup 有 grab 链约束：同一时刻只允许一个 grabbing popup，
+    // 新 popup 的 parent 必须是当前 grab 链上的 popup。打开本菜单前先关闭
+    // 其他 BubbleMenu 实例，避免"Creating a popup with a parent which does not
+    // match the current topmost grabbing popup"警告、双菜单并存与定位错乱。
+    readonly property bool isBubbleMenu: true
+
+    Component.onCompleted: MenuRegistry.register(root)
+    Component.onDestruction: MenuRegistry.unregister(root)
+
+    function closeSiblingMenus() {
+        MenuRegistry.closeOthers(root);
+    }
+
     function showAtTarget() {
         if (!targetItem || !targetItem.Window.window)
             return;
+
+        root.closeSiblingMenus();
 
         if (root.visible) {
             root.visible = false;
@@ -210,8 +226,12 @@ Window {
 
         root.transientParent = targetItem.Window.window;
 
-        var topCenter = targetItem.mapToItem(null, targetItem.width / 2, 0);
-        var bottomCenter = targetItem.mapToItem(null, targetItem.width / 2, targetItem.height);
+        // 定位必须使用全局坐标（mapToGlobal）：Window.x/y 在 X11 是屏幕绝对坐标，
+        // 在 Wayland 由 Qt 换算为相对父窗口的 xdg_popup 坐标。
+        // 若传窗口场景坐标（mapToItem(null)），主窗口不在虚拟桌面原点时，
+        // popup 会被放到"场景坐标"对应的屏幕位置，甚至被合成器钳制到屏幕边缘（T14 双屏回归）。
+        var topCenter = targetItem.mapToGlobal(targetItem.width / 2, 0);
+        var bottomCenter = targetItem.mapToGlobal(targetItem.width / 2, targetItem.height);
         root.anchoredX = Math.round(topCenter.x - root.width / 2);
         root.x = root.anchoredX;
         root.y = arrowDirection === "up"
@@ -224,11 +244,15 @@ Window {
         root.isPositioning = false;
     }
 
-    // 右键菜单定位（T14）：按窗口场景坐标弹出（箭头向上，菜单出现在坐标下方 12px）。
+    // 右键菜单定位（T14）：按全局坐标弹出（箭头向上，菜单出现在坐标下方 12px）。
     // 与 showAtTarget 同一套 anchoredX/transientParent 约束，只替换定位来源。
-    function showAtGlobal(sceneX, sceneY) {
+    // 调用方必须传入全局坐标（mapToGlobal 结果）；传场景坐标会在主窗口
+    // 不在虚拟桌面原点时错位（Wayland 双屏回归，见 showAtTarget 注释）。
+    function showAtGlobal(globalX, globalY) {
         if (!targetItem || !targetItem.Window.window)
             return;
+
+        root.closeSiblingMenus();
 
         if (root.visible) {
             root.visible = false;
@@ -238,9 +262,9 @@ Window {
         root.resetPage();
         root.transientParent = targetItem.Window.window;
 
-        root.anchoredX = Math.round(sceneX - root.width / 2);
+        root.anchoredX = Math.round(globalX - root.width / 2);
         root.x = root.anchoredX;
-        root.y = Math.round(sceneY + 12);
+        root.y = Math.round(globalY + 12);
         root.lastHeight = root.height;
         root.show();
         root.requestActivate();

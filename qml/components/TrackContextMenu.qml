@@ -32,9 +32,11 @@ Item {
             var clickX = clickXOrGlobalY;
             var safeX = (clickX !== undefined && clickX >= 0 && clickX <= targetDelegate.width) ? clickX : targetDelegate.width / 2;
             var safeY = (clickY !== undefined && clickY >= 0 && clickY <= targetDelegate.height) ? clickY : targetDelegate.height / 2;
-            var scenePos = targetDelegate.mapToItem(null, safeX, safeY);
+            // 必须转全局坐标：BubbleMenu 按全局坐标定位（Wayland 双屏下
+            // 场景坐标会导致菜单错位并被合成器钳制到屏幕边缘）。
+            var globalPos = targetDelegate.mapToGlobal(safeX, safeY);
             contextMenu.targetItem = targetDelegate;
-            contextMenu.showAtGlobal(scenePos.x, scenePos.y);
+            contextMenu.showAtGlobal(globalPos.x, globalPos.y);
         } else {
             var globalX = targetDelegateOrGlobalX;
             var globalY = clickXOrGlobalY;

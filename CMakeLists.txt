@@ -180,6 +180,7 @@ set(SERIONA_QML_MODULE_FILES
     qml/Main.qml
     qml/theme/Theme.qml
     qml/components/BubbleMenu.qml
+    qml/components/menuRegistry.js
     qml/components/BubbleMenuItem.qml
     qml/components/BubbleSubMenuItem.qml
     qml/components/DynamicBackground.qml
