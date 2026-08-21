@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic
+import Qt5Compat.GraphicalEffects
 import Seriona
 
 // 临时播放队列视图（T15）：展示 PlaybackController.queueEntries 映射条目
@@ -17,6 +18,7 @@ Item {
     id: root
 
     required property var queueEntries
+    property int transitionDirection: 0
 
     signal removeRequested(int index)
     signal contextMenuRequested(int index, var targetDelegate, real mouseX, real mouseY)
@@ -47,6 +49,7 @@ Item {
                 title: entry.title,
                 artist: entry.artist,
                 isPlaying: entry.isPlaying,
+                artworkSource: entry.artworkSource || "",
                 rowIndex: i
             });
         }
@@ -67,6 +70,7 @@ Item {
             required property string artist
             required property bool isPlaying
             required property int rowIndex
+            property string artworkSource: ""
 
             objectName: "queueDelegate" + delegate.rowIndex
 
@@ -78,6 +82,36 @@ Item {
             rightPadding: Theme.spacing16
             Accessible.role: Accessible.ListItem
             Accessible.name: title
+
+            SequentialAnimation {
+                id: enterAnim
+                running: root.transitionDirection !== 0
+                PauseAnimation {
+                    duration: Math.min(delegate.rowIndex, 20) * 30
+                }
+                ParallelAnimation {
+                    NumberAnimation {
+                        target: delegateTranslate
+                        property: "x"
+                        to: 0
+                        duration: 220
+                        easing.type: Easing.OutCubic
+                    }
+                    NumberAnimation {
+                        target: delegate
+                        property: "opacity"
+                        to: 1.0
+                        duration: 220
+                        easing.type: Easing.OutQuad
+                    }
+                }
+            }
+
+            transform: Translate {
+                id: delegateTranslate
+                x: root.transitionDirection !== 0 ? (root.transitionDirection >= 0 ? 1 : -1) * root.width : 0
+            }
+            opacity: root.transitionDirection !== 0 ? 0.0 : 1.0
 
             // 右键菜单（T15）：仅接受右键，左键事件继续穿透给 ItemDelegate
             MouseArea {
@@ -109,9 +143,27 @@ Item {
                     radius: Theme.radiusSmall
                     color: delegate.isPlaying ? Theme.accentColor : Theme.raisedSurfaceColor
                     antialiasing: true
+                    layer.enabled: true
+                    layer.effect: OpacityMask {
+                        maskSource: Rectangle {
+                            width: 38
+                            height: 38
+                            radius: Theme.radiusSmall
+                        }
+                    }
 
                     Behavior on color {
                         ColorAnimation { duration: Theme.animationFast }
+                    }
+
+                    Image {
+                        id: queueThumbImage
+                        anchors.fill: parent
+                        source: delegate.artworkSource
+                        sourceSize: Qt.size(76, 76)
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        visible: delegate.artworkSource.length > 0 && status === Image.Ready
                     }
 
                     Text {
@@ -119,6 +171,7 @@ Item {
                         text: "♫"
                         color: delegate.isPlaying ? Theme.textOnAccent : Theme.textPrimary
                         font.pixelSize: Theme.fontSubtitle
+                        visible: !queueThumbImage.visible
                     }
                 }
 
@@ -180,6 +233,33 @@ Item {
         width: parent.width - Theme.spacing24 * 2
         spacing: Theme.spacing8
         visible: root.isEmpty
+
+        transform: Translate {
+            id: emptyStateTranslate
+            x: root.transitionDirection !== 0 ? (root.transitionDirection >= 0 ? 1 : -1) * root.width : 0
+        }
+        opacity: root.transitionDirection !== 0 ? 0.0 : 1.0
+
+        SequentialAnimation {
+            id: emptyEnterAnim
+            running: root.transitionDirection !== 0 && root.isEmpty
+            ParallelAnimation {
+                NumberAnimation {
+                    target: emptyStateTranslate
+                    property: "x"
+                    to: 0
+                    duration: 220
+                    easing.type: Easing.OutCubic
+                }
+                NumberAnimation {
+                    target: emptyState
+                    property: "opacity"
+                    to: 1.0
+                    duration: 220
+                    easing.type: Easing.OutQuad
+                }
+            }
+        }
 
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
