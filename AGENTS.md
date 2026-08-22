@@ -14,7 +14,7 @@
 - 顺序是 `cmake -B build`、`cmake --build build`、`ctest --test-dir build --output-on-failure`；应用为 `./build/appSeriona`。
 - `.clangd` 读取 `build/`，`.qmlls.ini` 则硬编码当前工作区 `build/` 的绝对路径；新 worktree 或移动目录后先修正该路径并配置构建目录，再运行语言服务诊断。
 - 聚焦一个 CTest：`ctest --test-dir build -R '^seriona_frontend_command_result_mapping$' --output-on-failure`。同一测试二进制中的单个 QTest case 直接作为参数传入，例如 `./build/seriona_frontend_library_sort_tests titleAscendingAndDescendingSortCurrentFolderProjection`（该目标依赖后端）。
-- `./scripts/verify-middle-layer.sh`（依赖 `rg`）会配置、构建、检查中间层/CMake 不变量并运行 `QT_QPA_PLATFORM=offscreen timeout 5s ./build/appSeriona`，预期退出码为 `124`；它要求 `docs/architecture/backend-integration-contract.md` 存在，但不会运行 CTest。可用 `SERIONA_BUILD_DIR` 覆盖构建目录。它是必要子集门禁而非穷举：QML 只查 17 选 12（漏 DynamicBackground/SortDialog/SortRuleRow/SettingsWindow/EqualizerWindow），测试目标只查 21 选 20（漏 `seriona_frontend_library_sort_tests`），新增文件仍须手动同步 CMakeLists。
+- `./scripts/verify-middle-layer.sh`（依赖 `rg`）会配置、构建、检查中间层/CMake 不变量并运行 `QT_QPA_PLATFORM=offscreen timeout 5s ./build/appSeriona`，预期退出码为 `124`；它要求 `docs/architecture/backend-integration-contract.md` 存在，但不会运行 CTest。可用 `SERIONA_BUILD_DIR` 覆盖构建目录。它是必要子集门禁而非穷举：QML 与测试目标只查固定子集（新增文件不会自动被查），新增文件仍须手动同步 CMakeLists（`SERIONA_QML_MODULE_FILES`、各 test 目标源列表）。
 - Smoke CLI：`./build/appSeriona --smoke-scenario=<name> --smoke-exit-ms=<ms>`；场景为 `startup`/`main-playback`/`lyrics`/`sidebar-tree`/`settings-menu`/`empty-library`。默认 1000 ms 后退出并写入 `.omo/evidence/smoke/smoke-<scenario>.log`；`--smoke-output-dir=<dir>` 可改目录。`Main.qml` 的 `smokeVisualStateJson()` 已定义但当前无调用方（为扩展预留），不要删除或自行接线。
 - 仓库没有独立的 lint、format、CI 或代码生成命令；QML/MOC/RCC 生成由 CMake/Qt 完成。CMake 只设 `CMAKE_CXX_STANDARD_REQUIRED ON`，未显式声明 `CMAKE_CXX_STANDARD`；标准由 Qt/后端传递（观测 `-std=c++23`），不要假设已声明某标准。
 - 接入后端时终端日志统一走 spdlog：Qt 消息（qDebug/QML `console.log`）重定向到 spdlog 默认 logger，`find_package(spdlog CONFIG REQUIRED)` 在配置期强制（与后端同源，mock-only 不要求）；smoke 调试日志仅 Debug 构建输出（`main.cpp` 注入 `smokeLoggingEnabled`，`NDEBUG` 下恒为 false），mock-only 下通知类日志不输出到终端。
@@ -36,7 +36,7 @@
 ## 后端集成（可选）
 - `SERIONA_BACKEND_SOURCE_DIR` 默认是相对仓库根目录的 `../Seriona_Backend`；设为 `""` 才会强制 mock-only。非空路径不存在时 CMake 从 `https://github.com/kaizen857/Seriona_Backend.git` 的 `main` 分支 FetchContent，抓取失败会配置失败，不会自动回退。
 - 接入后端时，前端链接后端的 control/audio/app 目标并定义 `SERIONA_HAS_BACKEND=1`；CMake 会关闭后端子树自身的 app/tests，再恢复前端的 `BUILD_TESTING`。
-- `BUILD_TESTING` 默认为 `ON`；启用测试时，mock-only 只注册 `seriona_frontend_command_result_mapping`、`seriona_frontend_snapshot_mapping`、`seriona_frontend_library_tree_mapping`、`seriona_frontend_settings_controller_tests`、`seriona_frontend_app_facade_smoke_mode`（设置控制器是纯 QML 面，无后端依赖），其余前端测试都要求后端目标。
+- `BUILD_TESTING` 默认为 `ON`；启用测试时，mock-only 只注册纯 QML 面的 7 个测试（`seriona_frontend_command_result_mapping`、`seriona_frontend_snapshot_mapping`、`seriona_frontend_library_tree_mapping`、`seriona_frontend_settings_controller_tests`、`seriona_frontend_track_stats_tests`、`seriona_frontend_about_overlay_tests`、`seriona_frontend_queue_view_tests`），其余前端测试都要求后端目标。
 - 离线运行验证脚本时，可用 `SERIONA_FETCHCONTENT_CATCH2_DIR` 和 `SERIONA_FETCHCONTENT_THREAD_POOL_DIR` 指向已有依赖源码。
 
 ## QML 与资源

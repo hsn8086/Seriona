@@ -315,3 +315,30 @@ contentY, contentHeight, firstVisibleIndex, firstVisibleNodeId
 ## 11. 设计文档影响
 
 本记录描述的是 Sidebar 内部实现和 bug 修复方案，不改变 Seriona 的整体模块边界、后端集成方式或长期架构。因此不更新 `DESIGN.md`；待方案实际落地后，只在实现改变整体导航架构时重新评估。
+
+## 12. B'' 重构落地记录（2026-08-22）
+
+### 结论：放弃"reset 后恢复滚动位置"路线
+
+早期方案（裸 contentY 恢复 → 全量 remove+insert → reset+锚点事务）经实测均无法恢复返回位置。综合调研（qtdeclarative 源码 + 多个 QTBUG + Plasma FolderView/Elisa/Vvave/Dolphin/PCManFM/Strawberry 源码）确认根因是机制性的：
+
+- `QQuickItemView` 对 reset 无任何位置保留契约：`regenerate() → setPosition(contentStartOffset())` 无条件归顶（所有 Qt 版本）。
+- `positionViewAtIndex` 对未实例化目标按平均高度估算（QTBUG-114346/132454）；`layout()` 的 `fixupPosition()` 会覆盖早期写入的 contentY；populate 过渡在 reset 后自动武装并与定位竞争。
+- Qt 唯一保留 contentY 的路径是**视图不换模型**（视图实例存活）。
+
+### B'' 架构：页面栈 + 每级独立投影模型
+
+- **模型层**（`src/app/library_folder_projection_model.{h,cpp}`，LibraryController 拥有）：
+  - `LibraryFolderProjectionModel`：每级文件夹一个独立投影（直接子级、过滤/排序与主模型一致，复用 `sortedProjectionNodeIds`）；监听主模型 `treeChanged` 全量重建（revision 递增）、`playingTrackIdChanged`/`focusedNodeIdChanged` 仅对投影内行发 dataChanged；`projectionModelForLevel(level)` 越界返回 nullptr，实例 CppOwnership 归 controller。
+  - 路径栈：`enterFolder` 压栈、`goBack` 弹栈并释放该级实例，前缀级实例跨导航复用；`folderStackDepth` = 已进入文件夹层数（根浏览=0）；`locateNodeInFolderStack(nodeId)` 跨级定位。
+  - `LibraryModel` 新增 `treeChanged`/`playingTrackIdChanged`/`focusedNodeIdChanged` 信号与 `rootNodeId`/`rootProjectionNodeIds` 等 const 访问器；主模型投影能力保留给搜索/曲库页（reset+revision 语义保留）。
+- **QML 层**（`qml/components/Sidebar.qml`）：
+  - 页面栈：根页/一级页常驻 + 二级动态页 + 独立搜索页，`visible` 切换不卸载；每级视图绑定各自投影模型实例 → 返回时 contentY 天然保留，**零恢复逻辑**。
+  - 显式导航动画：delegate 内嵌 `startNavSlideIn(step, direction)`（15ms×step 错落 + 220ms OutCubic 滑入），页面激活后对可见行触发，错落基准 = `indexAt(0, contentY+1)`（当前可见第一项，进入=0）——满足"从当前可见第一项开始逐条滑入"。
+  - 删除：`savedAnchors`/`captureAnchor`/`navPending`/`navStaggerBase`/`folderTransitionResetTimer`/populate·add stagger 全部移除；`scrollRequest` 当前页直接定位，跨级走 `locateNodeInFolderStack`。
+
+### 验证结果（B''）
+
+- 构建通过；ctest **137/137 通过**（新增 `tst_library_folder_projection_model`：每级投影内容/排序、revision 递增、树变化重建、播放/焦点同步、栈 API 与跨级定位；顺带修复基线失败的 `sidebar_queue_switch`）。
+- smoke：`startup` / `sidebar-tree` / `main-playback` 均退出码 0；`verify-middle-layer.sh` 通过。
+- **待执行**：第 8 节手动序列 1-6（真实窗口验证动画错落基准与返回位置保留）。

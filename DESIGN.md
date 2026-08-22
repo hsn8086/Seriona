@@ -115,8 +115,10 @@ Release 模式（`CMAKE_BUILD_TYPE=Release`）按编译器启用全量优化：G
 ### 5.3 曲库模块（`library_model.{h,cpp}`、`library_tree_store.{h,cpp}`）
 
 - **LibraryTreeStore**（非 QObject 纯容器）：以节点 id 为键保存整棵曲库树；`setSnapshot()` 一次重建（含悬空子节点剔除、孤儿回补、root 缺失回退到"无父节点集合"、`descendantTrackCount` 递归）。
-- **LibraryModel**（`QAbstractListModel`，`QML_UNCREATABLE`）：把树投影为扁平列表；18 个角色（type/name/title/artist/album/songCount/duration/…/artworkSource）；行⇄节点 id 映射；三种投影：根投影、当前文件夹投影（仅直接子级）、搜索投影（当前文件夹子树内只匹配歌曲，文件夹条目不出现；按标题10/歌手5/专辑3/文件名2 加权评分，完全/前缀/包含分别 ×10/×5/×1）；多规则稳定排序（搜索激活时按评分降序，清空恢复用户规则）。
+- **LibraryModel**（`QAbstractListModel`，`QML_UNCREATABLE`）：把树投影为扁平列表；18 个角色（type/name/title/artist/album/songCount/duration/…/artworkSource）；行⇄节点 id 映射；三种投影：根投影、当前文件夹投影（仅直接子级）、搜索投影（当前文件夹子树内只匹配歌曲，文件夹条目不出现；按标题10/歌手5/专辑3/文件名2 加权评分，完全/前缀/包含分别 ×10/×5/×1）；多规则稳定排序（搜索激活时按评分降序，清空恢复用户规则）；`projectionRevision` 在投影完整替换或快照更新后递增（完整替换用 reset 语义）。
+- **LibraryFolderProjectionModel**（`library_folder_projection_model.{h,cpp}`，非 QML_ELEMENT，归 LibraryController 所有）：B'' 每级文件夹独立投影模型。Sidebar 每个文件夹级别视图绑定各自实例，视图存活期间模型不被替换 → 滚动位置天然保留（Qt 无 reset 后恢复滚动位置的契约，故不做恢复，而是让视图不换模型）；数据为某文件夹的直接子级投影（过滤/排序规则与主模型投影一致，复用 `sortedProjectionNodeIds`）；监听主模型 `treeChanged` 全量重建（revision 递增）、`playingTrackIdChanged`/`focusedNodeIdChanged` 仅对投影内行发 `dataChanged`。主模型投影能力保留给搜索/曲库页等其他使用者。
 - **LibraryController**（定义于 `library_model.{h,cpp}`，`QML_ELEMENT`，**无独立文件**）：QML 可见门面。
+  - **文件夹路径栈（B''）**：每级文件夹一个投影模型实例；栈内 level 0 恒为根投影，`projectionModelForLevel(level)` 越界返回 nullptr（实例归 controller 所有，QML 只读绑定）；`enterFolder` 压栈（栈顶创建/复用实例）、`goBack` 弹栈并释放该级实例，前缀级实例跨导航复用；`folderStackDepth` = 已进入的文件夹层数（根浏览为 0）；`locateNodeInFolderStack(nodeId)` 从根逐级进入直到目标所在级（目标不在任何已建投影时进入其直接父级）。
   - **双游标分离**：`playingTrackId`（播放身份）与 `selectedBrowserNodeId`/`focusedNodeId`（浏览焦点）独立；`setPlayingTrackId` 仅当 `followCurrentlyPlaying=true` 才移动浏览游标；`locateCurrentSong()` 手动定位（切文件夹、清搜索、选中、发滚动请求），不发播放命令；浏览动作一律不污染播放身份。
   - **扫描状态机**：`scanStatus` ∈ pending/running/error/completed（终态由快照映射）；`scanProgress` 0-100 钳制；`libraryState` 派生为 backendUnavailable/empty/ready；`refresh()` 以 Full 模式重扫已存根；`clearSavedRootPath(msg)` 清根并上报错误消息（启动恢复失败时由 NavigationController 调用）。
   - **排序规则**：内存缓存按 `rootPath\nfolderNodeId` 键存；保存经 `FolderSortExecutor`（未注入则降级 `ApplyFolderSortRules` 命令）持久化到后端，`missingValuePolicy=Last`；搜索期间按相关性评分临时排序、不覆盖已存文件夹规则（搜索中应用排序规则为 no-op）；快照 reconcile 时按回退链恢复焦点/选中/文件夹与规则。

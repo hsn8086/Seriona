@@ -1,6 +1,7 @@
 #include "library_model.h"
 
 #include "backend_snapshot_mapper.h"
+#include "library_folder_projection_model.h"
 
 #include <QByteArray>
 #include <QDebug>
@@ -640,6 +641,31 @@ std::uint64_t LibraryModel::version() const
     return m_version;
 }
 
+int LibraryModel::projectionRevision() const
+{
+    return m_projectionRevision;
+}
+
+QString LibraryModel::rootNodeId() const
+{
+    return m_rootNodeId;
+}
+
+QVector<QString> LibraryModel::rootProjectionNodeIds() const
+{
+    return m_rootProjectionNodeIds;
+}
+
+QString LibraryModel::focusedNodeId() const
+{
+    return m_focusedNodeId;
+}
+
+QString LibraryModel::playingTrackId() const
+{
+    return m_playingTrackId;
+}
+
 bool LibraryModel::setFocusedNodeId(const QString &nodeId)
 {
     if (!nodeId.isEmpty() && !containsNodeId(nodeId)) {
@@ -661,6 +687,7 @@ bool LibraryModel::setFocusedNodeId(const QString &nodeId)
     if (nextRow >= 0) {
         changed = setEntryRoleFlag(nextRow, IsFocusedRole, true, true) || changed;
     }
+    emit focusedNodeIdChanged();
     return changed;
 }
 
@@ -683,6 +710,7 @@ bool LibraryModel::setPlayingTrackId(const QString &trackId)
     if (nextRow >= 0) {
         changed = setEntryRoleFlag(nextRow, IsPlayingRole, true, true) || changed;
     }
+    emit playingTrackIdChanged();
     return changed;
 }
 
@@ -692,6 +720,8 @@ void LibraryModel::applyBrowsingState(const QString &focusedNodeId,
                                       const QString &browserRootNodeId,
                                       const QVector<SortRule> &sortRules)
 {
+    const QString previousFocusedNodeId = m_focusedNodeId;
+    const QString previousPlayingTrackId = m_playingTrackId;
     m_focusedNodeId = containsNodeId(focusedNodeId) ? focusedNodeId : QString();
     m_playingTrackId = playingTrackId;
     const QString trimmedQuery = searchQuery.trimmed();
@@ -713,6 +743,15 @@ void LibraryModel::applyBrowsingState(const QString &focusedNodeId,
 
     projectionNodeIds = sortedProjectionNodeIds(std::move(projectionNodeIds), sortRules);
     setProjectionNodeIds(projectionNodeIds);
+
+    // 浏览状态重投影可能绕过 setFocusedNodeId / setPlayingTrackId（如快照对账回退），
+    // 身份实际变化时补发信号，让每级文件夹投影模型同步行内标记。
+    if (m_focusedNodeId != previousFocusedNodeId) {
+        emit focusedNodeIdChanged();
+    }
+    if (m_playingTrackId != previousPlayingTrackId) {
+        emit playingTrackIdChanged();
+    }
 }
 
 int LibraryModel::visibleNodeCount() const
@@ -858,23 +897,17 @@ void LibraryModel::setProjectionNodeIds(const QVector<QString> &nodeIds)
         projectedNodeIds.insert(nodeId);
     }
 
-    // 用结构性变更（remove+insert）替代 beginResetModel：reset 会把
-    // ListView 的滚动位置强制归零（regenerate → setPosition(top)）且重放
-    // populate 过渡，与"返回上级目录恢复滚动位置"冲突；结构性变更保留
-    // contentY，QML 侧在导航后同步恢复位置即可稳定生效。
-    const int oldCount = m_entries.size();
-    if (oldCount > 0) {
-        beginRemoveRows(QModelIndex(), 0, oldCount - 1);
-        m_entries.clear();
-        rebuildProjectionIndexes();
-        endRemoveRows();
-    }
-    if (!projectedEntries.isEmpty()) {
-        beginInsertRows(QModelIndex(), 0, projectedEntries.size() - 1);
-        m_entries = projectedEntries;
-        rebuildProjectionIndexes();
-        endInsertRows();
-    }
+    // 完整投影替换必须用 reset 语义：全量 remove+insert 会把完整替换伪装成
+    // 增量 change set，ListView 会按增量重新定位可见条目并保留旧滚动位置，
+    // 使"进入子文件夹从顶部开始"与"返回恢复锚点"都不可靠。reset 会重新生成
+    // delegate 并把视口推到内容起点（进入子文件夹的期望行为）；返回父文件夹
+    // 的锚点恢复由 QML 在 projectionRevisionChanged 信号后执行。
+    beginResetModel();
+    m_entries = projectedEntries;
+    rebuildProjectionIndexes();
+    endResetModel();
+    ++m_projectionRevision;
+    emit projectionRevisionChanged();
 }
 
 QVector<QString> LibraryModel::sortedProjectionNodeIds(QVector<QString> nodeIds, const QVector<SortRule> &sortRules) const
@@ -1035,6 +1068,9 @@ void LibraryModel::setPlaylistTreeSnapshot(const seriona::scanner::PlaylistTreeS
     rebuildProjectionIndexes();
     m_version = snapshot.version;
     endResetModel();
+    ++m_projectionRevision;
+    emit projectionRevisionChanged();
+    emit treeChanged();
 }
 #endif
 
@@ -1304,6 +1340,7 @@ void LibraryController::applyFolderSortSetting(const seriona::control::FolderSor
     if (m_searchQuery.trimmed().isEmpty() && rootPath == m_savedRootPath && folderNodeId == m_currentFolderNodeId) {
         m_sortRules = *rules;
         applyBrowsingState();
+        refreshCurrentFolderProjection();
         emit currentSortRulesChanged();
     }
 }
@@ -1346,6 +1383,7 @@ void LibraryController::enterFolder(const QString &nodeId)
     setSelectedBrowserNodeId(nodeId);
     restoreSortRulesForCurrentFolder();
     applyBrowsingState();
+    syncFolderStackToCurrentFolder();
 
     if (nameChanged) {
         emit currentFolderNameChanged();
@@ -1379,6 +1417,7 @@ void LibraryController::goBack()
                 requestScrollToNode(previousFolderNodeId);
             }
             applyBrowsingState();
+            syncFolderStackToCurrentFolder();
             emit currentFolderNameChanged();
             if (previousCanGoBack != canGoBack()) {
                 emit canGoBackChanged();
@@ -1697,6 +1736,128 @@ int LibraryController::rowForNodeId(const QString &nodeId) const
     return m_model.rowForNodeId(nodeId);
 }
 
+int LibraryController::folderStackDepth() const
+{
+    // 深度 = 已进入的文件夹层数：根浏览（栈内只有根投影）为 0，
+    // 与 QML 视图层级约定一致（0=根视图，1=第一级，…）。
+    return qMax(0, m_folderProjectionStack.size() - 1);
+}
+
+QObject *LibraryController::projectionModelForLevel(int level) const
+{
+    if (level < 0 || level >= m_folderProjectionStack.size()) {
+        return nullptr;
+    }
+    return m_folderProjectionStack.at(level);
+}
+
+void LibraryController::locateNodeInFolderStack(const QString &nodeId)
+{
+    const LibraryModel::Entry *entry = m_model.entryByNodeId(nodeId);
+    if (entry == nullptr) {
+        return;
+    }
+
+    // 目标所在级 = 目标直接父文件夹的投影级；父为空或为根节点 → 根浏览（栈内只有根）。
+    const QString rootNodeId = m_model.rootNodeId();
+    const QString parentNodeId = m_model.parentNodeId(nodeId);
+    const QString targetFolderNodeId = (!parentNodeId.isEmpty() && parentNodeId != rootNodeId) ? parentNodeId : QString();
+
+    if (m_currentFolderNodeId == targetFolderNodeId) {
+        return;
+    }
+
+    // 从根开始逐级进入：最终路径栈 [根, ..., 目标父级]，目标不在任何已建投影时进入其直接父级；
+    // enterFolder 内部的路径栈同步会复用既有前缀级实例。
+    if (!targetFolderNodeId.isEmpty()) {
+        enterFolder(targetFolderNodeId);
+    } else {
+        while (canGoBack()) {
+            goBack();
+        }
+    }
+}
+
+void LibraryController::syncFolderStackToCurrentFolder()
+{
+    QVector<QString> desiredChain;
+    desiredChain.append(QString());
+    if (!m_currentFolderNodeId.isEmpty()) {
+        const QVector<QString> chain = m_model.ancestorChainForNode(m_currentFolderNodeId);
+        const QString rootNodeId = m_model.rootNodeId();
+        for (auto it = chain.crbegin(); it != chain.crend(); ++it) {
+            if (*it == rootNodeId) {
+                continue;
+            }
+            desiredChain.append(*it);
+        }
+    }
+
+    const int previousDepth = m_folderProjectionStack.size();
+    qsizetype common = 0;
+    while (common < m_folderProjectionStack.size() && common < desiredChain.size()
+           && m_folderProjectionStack.at(common)->folderNodeId() == desiredChain.at(common)) {
+        ++common;
+    }
+    while (m_folderProjectionStack.size() > common) {
+        LibraryFolderProjectionModel *model = m_folderProjectionStack.takeLast();
+        model->deleteLater();
+    }
+    for (qsizetype level = common; level < desiredChain.size(); ++level) {
+        m_folderProjectionStack.append(createFolderProjection(desiredChain.at(level)));
+    }
+    if (m_folderProjectionStack.size() != previousDepth) {
+        emit folderStackDepthChanged();
+    }
+}
+
+LibraryFolderProjectionModel *LibraryController::createFolderProjection(const QString &folderNodeId)
+{
+    auto *projection = new LibraryFolderProjectionModel(this);
+    QQmlEngine::setObjectOwnership(projection, QQmlEngine::CppOwnership);
+    projection->setSource(&m_model, folderNodeId, sortRulesForProjectionLevel(folderNodeId));
+    return projection;
+}
+
+QVector<LibraryModel::SortRule> LibraryController::sortRulesForProjectionLevel(const QString &folderNodeId) const
+{
+    if (folderNodeId.isEmpty()) {
+        return {};
+    }
+    if (folderNodeId == m_currentFolderNodeId) {
+        return m_sortRules;
+    }
+    const QString key = folderSortKey(m_savedRootPath, folderNodeId);
+    const auto rulesIt = m_savedFolderSortRules.constFind(key);
+    return rulesIt == m_savedFolderSortRules.cend() ? QVector<LibraryModel::SortRule>{} : rulesIt.value();
+}
+
+void LibraryController::refreshCurrentFolderProjection()
+{
+    if (m_folderProjectionStack.isEmpty()) {
+        return;
+    }
+    LibraryFolderProjectionModel *top = m_folderProjectionStack.last();
+    if (top->folderNodeId().isEmpty()) {
+        return;
+    }
+    const QVector<LibraryModel::SortRule> rules = sortRulesForProjectionLevel(top->folderNodeId());
+    const QVector<LibraryModel::SortRule> currentRules = top->sortRules();
+    bool rulesUnchanged = currentRules.size() == rules.size();
+    if (rulesUnchanged) {
+        for (qsizetype i = 0; i < rules.size(); ++i) {
+            if (currentRules.at(i).field != rules.at(i).field || currentRules.at(i).order != rules.at(i).order) {
+                rulesUnchanged = false;
+                break;
+            }
+        }
+    }
+    if (rulesUnchanged) {
+        return;
+    }
+    top->setSource(&m_model, top->folderNodeId(), rules);
+}
+
 void LibraryController::applySortRules(const QVariantList &rules)
 {
     const std::optional<QVector<LibraryModel::SortRule>> parsedRules = sortRulesFromVariants(rules);
@@ -1710,6 +1871,7 @@ void LibraryController::applySortRules(const QVariantList &rules)
 
     m_sortRules = *parsedRules;
     emit currentSortRulesChanged();
+    refreshCurrentFolderProjection();
 
     if (m_currentFolderNodeId.isEmpty()) {
         setLastError(tr("请先进入文件夹后再保存排序规则"));
@@ -1921,6 +2083,7 @@ bool LibraryController::showNodeInBrowserProjection(const QString &nodeId)
     restoreSortRulesForCurrentFolder();
 
     applyBrowsingState();
+    syncFolderStackToCurrentFolder();
 
     if (searchChanged) {
         emit searchQueryChanged();
@@ -1985,6 +2148,7 @@ void LibraryController::reconcileBrowsingState(const QVector<QString> &focusedFa
     }
 
     applyBrowsingState();
+    syncFolderStackToCurrentFolder();
 
 	const QString firstVisibleNodeId = m_model.firstVisibleNodeId();
 	const QString rootNodeId = m_model.firstNodeId();

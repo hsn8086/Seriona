@@ -170,6 +170,8 @@ set(SERIONA_APP_LAYER_SOURCES
     src/app/lyrics_model.h
     src/app/library_model.cpp
     src/app/library_model.h
+    src/app/library_folder_projection_model.cpp
+    src/app/library_folder_projection_model.h
     src/app/library_tree_store.cpp
     src/app/library_tree_store.h
     src/app/track_stats_controller.cpp
@@ -428,6 +430,8 @@ if(BUILD_TESTING)
             tests/frontend/adapter/tst_library_tree_model.cpp
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
             src/app/backend_snapshot_mapper.cpp
@@ -445,10 +449,39 @@ if(BUILD_TESTING)
         add_test(NAME seriona_frontend_library_tree_model COMMAND seriona_frontend_library_tree_model_tests)
         add_test(NAME seriona_frontend_library_tree_invalid_child COMMAND seriona_frontend_library_tree_model_tests invalidChildNodeIdsAreSkipped)
 
+        add_executable(seriona_frontend_library_folder_projection_tests
+            tests/frontend/adapter/tst_library_folder_projection_model.cpp
+            src/app/library_model.cpp
+            src/app/library_model.h
+            src/app/library_folder_projection_model.cpp
+            src/app/library_folder_projection_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
+        )
+        target_include_directories(seriona_frontend_library_folder_projection_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_library_folder_projection_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_library_folder_projection_tests
+            PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET}
+        )
+        add_test(NAME seriona_frontend_library_folder_projection COMMAND seriona_frontend_library_folder_projection_tests)
+        add_test(NAME seriona_frontend_library_folder_projection_sorts COMMAND seriona_frontend_library_folder_projection_tests projectionSortsPerLevelRules)
+        add_test(NAME seriona_frontend_library_folder_projection_rebuild COMMAND seriona_frontend_library_folder_projection_tests treeChangeRebuildsProjection)
+        add_test(NAME seriona_frontend_library_folder_projection_sync COMMAND seriona_frontend_library_folder_projection_tests playingAndFocusSyncEmitDataChanged)
+        add_test(NAME seriona_frontend_library_folder_projection_stack COMMAND seriona_frontend_library_folder_projection_tests stackDepthAndProjectionLifecycle)
+        add_test(NAME seriona_frontend_library_folder_projection_locate COMMAND seriona_frontend_library_folder_projection_tests locateNodeInFolderStackNavigatesToTargetLevel)
+
         add_executable(seriona_frontend_library_sort_tests
             tests/frontend/adapter/tst_library_sort.cpp
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
             src/app/backend_snapshot_mapper.cpp
@@ -488,6 +521,8 @@ if(BUILD_TESTING)
             tests/frontend/adapter/tst_library_dual_cursor.cpp
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
             src/app/backend_snapshot_mapper.cpp
@@ -512,6 +547,8 @@ if(BUILD_TESTING)
             tests/frontend/adapter/tst_sidebar_local_browsing.cpp
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
             src/app/backend_snapshot_mapper.cpp
@@ -548,6 +585,8 @@ if(BUILD_TESTING)
             tests/frontend/adapter/tst_library_select_track.cpp
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
             src/app/backend_snapshot_mapper.cpp
@@ -576,6 +615,8 @@ add_test(NAME seriona_frontend_library_context_playback_hidden_no_command COMMAN
             tests/frontend/adapter/tst_library_scan_flow.cpp
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
             src/app/backend_snapshot_mapper.cpp
@@ -625,6 +666,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
         )
@@ -673,6 +716,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
         )
@@ -718,6 +763,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
         )
@@ -765,6 +812,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
         )
@@ -820,6 +869,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
         )
@@ -889,6 +940,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
         )
@@ -933,6 +986,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
         )
@@ -965,6 +1020,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
         )
@@ -1065,6 +1122,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/lyrics_model.h
             src/app/library_model.cpp
             src/app/library_model.h
+        src/app/library_folder_projection_model.cpp
+        src/app/library_folder_projection_model.h
             src/app/library_tree_store.cpp
             src/app/library_tree_store.h
         )

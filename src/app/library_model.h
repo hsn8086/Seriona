@@ -28,12 +28,14 @@
 
 namespace Seriona::App {
 
+class LibraryFolderProjectionModel;
+
 class LibraryModel : public QAbstractListModel
 {
     Q_OBJECT
     QML_ELEMENT
     QML_UNCREATABLE("LibraryModel is owned by LibraryController")
-
+    Q_PROPERTY(int projectionRevision READ projectionRevision NOTIFY projectionRevisionChanged)
 public:
     enum Role {
         TypeRole = Qt::UserRole + 1,
@@ -122,9 +124,32 @@ public:
     QString firstVisibleNodeId() const;
     QString firstVisibleMatchingNodeId() const;
     bool hasLibraryContent() const;
+    // 投影 revision：每次投影完整替换（setProjectionNodeIds）或快照更新
+    // （setPlaylistTreeSnapshot）完成后递增并发出 projectionRevisionChanged；
+    // QML 侧用它确认导航事务的投影已就绪。
+    int projectionRevision() const;
+    // 供每级文件夹投影模型（LibraryFolderProjectionModel）复用的只读访问器：
+    // 根节点 id、根投影（虚拟根直接子级）、当前焦点节点与当前播放曲目 id。
+    QString rootNodeId() const;
+    QVector<QString> rootProjectionNodeIds() const;
+    QString focusedNodeId() const;
+    QString playingTrackId() const;
+    // 投影排序（B'' 复用形式）：主模型投影与每级文件夹投影共用同一实现，
+    // 行为语义完全一致（现有排序测试已覆盖，不许改变）。
+    QVector<QString> sortedProjectionNodeIds(QVector<QString> nodeIds, const QVector<SortRule> &sortRules) const;
 #if SERIONA_HAS_BACKEND
     void setPlaylistTreeSnapshot(const seriona::scanner::PlaylistTreeSnapshot &snapshot);
 #endif
+
+signals:
+    void projectionRevisionChanged();
+    // 树重建完成（setPlaylistTreeSnapshot 末尾，endResetModel 与 revision 递增之后）发出；
+    // 每级文件夹投影模型监听它做全量重建。
+    void treeChanged();
+    // 播放/焦点身份变化（setPlayingTrackId / setFocusedNodeId 或浏览状态重投影时）
+    // 发出；每级文件夹投影模型监听它同步投影行的 IsPlaying / IsFocused role。
+    void playingTrackIdChanged();
+    void focusedNodeIdChanged();
 
 private:
     bool setEntryRoleFlag(int row, Role role, bool value, bool notify);
@@ -132,7 +157,6 @@ private:
     void rebuildEntryIndexes();
     void rebuildProjectionIndexes();
     void setProjectionNodeIds(const QVector<QString> &nodeIds);
-    QVector<QString> sortedProjectionNodeIds(QVector<QString> nodeIds, const QVector<SortRule> &sortRules) const;
     QVector<QString> searchProjectionNodeIds(const QString &searchQuery, const QString &subtreeRootNodeId);
 
     LibraryTreeStore m_treeStore;
@@ -149,6 +173,7 @@ private:
     QString m_focusedNodeId;
     QString m_playingTrackId;
     std::uint64_t m_version = 0;
+    int m_projectionRevision = 0;
 };
 
 class LibraryController : public QObject
@@ -174,6 +199,7 @@ class LibraryController : public QObject
     Q_PROPERTY(bool backendAvailable READ backendAvailable NOTIFY backendAvailableChanged)
     Q_PROPERTY(QString libraryState READ libraryState NOTIFY libraryStateChanged)
     Q_PROPERTY(QVariantList currentSortRules READ currentSortRules NOTIFY currentSortRulesChanged)
+    Q_PROPERTY(int folderStackDepth READ folderStackDepth NOTIFY folderStackDepthChanged)
     QML_ELEMENT
 
 public:
@@ -237,6 +263,11 @@ public:
     Q_INVOKABLE void selectBrowserNode(const QString &nodeId);
     Q_INVOKABLE int rowForNodeId(const QString &nodeId) const;
     Q_INVOKABLE void applySortRules(const QVariantList &rules);
+    // B'' 文件夹路径栈：每级一个独立投影模型实例（归 controller 所有，QML 只读绑定）。
+    // 栈内 level 0 恒为根投影；enterFolder 压栈 / goBack 弹栈并释放该级投影模型。
+    int folderStackDepth() const;
+    Q_INVOKABLE QObject *projectionModelForLevel(int level) const;
+    Q_INVOKABLE void locateNodeInFolderStack(const QString &nodeId);
 
 signals:
     void currentFolderNameChanged();
@@ -257,6 +288,7 @@ signals:
     void backendAvailableChanged();
     void libraryStateChanged();
     void currentSortRulesChanged();
+    void folderStackDepthChanged();
 
 private:
 #if SERIONA_HAS_BACKEND
@@ -287,6 +319,12 @@ private:
     void requestScrollToNode(const QString &nodeId);
     bool persistCurrentFolderSortRules(const QVector<LibraryModel::SortRule> &rules);
     QVariantList sortRuleVariantsFromModelRules(const QVector<LibraryModel::SortRule> &rules) const;
+    // B'' 文件夹路径栈维护：让栈与当前文件夹路径一致（前缀级复用既有实例，
+    // 超出目标深度的级释放，缺失的目标级新建），并在深度变化时发 folderStackDepthChanged。
+    void syncFolderStackToCurrentFolder();
+    LibraryFolderProjectionModel *createFolderProjection(const QString &folderNodeId);
+    QVector<LibraryModel::SortRule> sortRulesForProjectionLevel(const QString &folderNodeId) const;
+    void refreshCurrentFolderProjection();
 #if SERIONA_HAS_BACKEND
     std::optional<std::vector<seriona::control::FolderSortRule>> backendSortRulesFromModelRules(const QVector<LibraryModel::SortRule> &rules) const;
     std::optional<QVector<LibraryModel::SortRule>> modelSortRulesFromBackendRules(const std::vector<seriona::control::FolderSortRule> &rules) const;
@@ -313,6 +351,7 @@ private:
     QVector<LibraryModel::SortRule> m_sortRules;
     QHash<QString, QVector<LibraryModel::SortRule>> m_savedFolderSortRules;
     QString m_activeFolderSortKey;
+    QVector<LibraryFolderProjectionModel *> m_folderProjectionStack;
 #if SERIONA_HAS_BACKEND
     CommandExecutor m_commandExecutor;
     FolderSortExecutor m_folderSortExecutor;
