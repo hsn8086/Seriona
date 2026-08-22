@@ -18,7 +18,7 @@ Item {
             ? qsTr("正在扫描：%1 / %2").arg(libraryController.scannedSongCount).arg(libraryController.totalSongCount)
             : qsTr("正在扫描曲库…"))
         : scanError
-            ? (libraryController.lastError.length > 0 ? libraryController.lastError : qsTr("扫描失败，请重新选择文件夹"))
+            ? (libraryController.lastError.length > 0 ? libraryController.lastError : qsTr("曲库加载失败，请重试"))
             : qsTr("选择一个音乐文件夹开始构建曲库")
 
     Rectangle {
