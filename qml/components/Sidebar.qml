@@ -21,6 +21,9 @@ Item {
     // 不持久化（每次启动默认文件夹视图）；文件夹视图状态无损保留。
     property bool queueViewActive: false
     property int folderTransitionDirection: 0
+    // 各文件夹的滚动位置记忆（folderNodeId -> contentY）：进入前记录，
+    // 返回时恢复，避免回到列表最顶层。
+    property var savedScrollPositions: ({})
     readonly property bool hasOpenMenu: sidebarMenu.visible || trackContextMenu.isOpen
     readonly property ScrollBar verticalScrollBar: playlistView.ScrollBar.vertical
     readonly property bool scanRunning: libraryController.scanStatus === "running"
@@ -52,6 +55,13 @@ Item {
         trackContextMenu.close();
     }
 
+    // 非导航性模型变化（搜索、定位当前播放曲目等）禁用列表滑入动画：
+    // 仅"进入/退出文件夹/队列切换"这类用户主动导航保留滑入效果。
+    function disableListSlideAnimation() {
+        root.folderTransitionDirection = 0;
+        folderTransitionResetTimer.stop();
+    }
+
     function showUnsupportedFeedback(actionName) {
         root.appFacade.notifications.showUnsupportedAction(actionName);
         root.closeMenus();
@@ -69,8 +79,11 @@ Item {
         root.closeMenus();
         libraryController.selectBrowserNode(nodeId);
         if (isFolder) {
+            // 记录当前文件夹滚动位置供返回恢复；进入后子列表从顶部开始
+            root.savedScrollPositions[libraryController.currentFolderNodeId] = playlistView.contentY;
             root.folderTransitionDirection = 1;
             libraryController.enterFolder(nodeId);
+            playlistView.contentY = 0;
             folderTransitionResetTimer.restart();
             return;
         }
@@ -175,8 +188,14 @@ Item {
                                 enabled: libraryController.canGoBack
                                 onClicked: {
                                     root.closeMenus();
+                                    // 记录当前（子）文件夹滚动位置；返回后恢复父文件夹位置。
+                                    // 结构性变更下模型重建不再归零 contentY，同步恢复即可稳定生效。
+                                    root.savedScrollPositions[libraryController.currentFolderNodeId] = playlistView.contentY;
                                     root.folderTransitionDirection = -1;
                                     libraryController.goBack();
+                                    const saved = root.savedScrollPositions[libraryController.currentFolderNodeId];
+                                    if (saved !== undefined)
+                                        playlistView.contentY = saved;
                                     folderTransitionResetTimer.restart();
                                 }
                                 SharedToolTip {
@@ -201,6 +220,7 @@ Item {
                                     if (root.isSearching) {
                                         searchInput.forceActiveFocus();
                                     } else {
+                                        root.disableListSlideAnimation();
                                         libraryController.clearSearch();
                                     }
                                 }
@@ -347,8 +367,16 @@ Item {
                                     selectByMouse: true
                                     text: libraryController.searchQuery
                                     verticalAlignment: Text.AlignVCenter
-                                    onTextEdited: libraryController.searchQuery = text
-                                    onAccepted: libraryController.submitSearch()
+                                    onTextEdited: {
+                                        root.disableListSlideAnimation();
+                                        playlistView.contentY = 0;
+                                        libraryController.searchQuery = text
+                                    }
+                                    onAccepted: {
+                                        root.disableListSlideAnimation();
+                                        playlistView.contentY = 0;
+                                        libraryController.submitSearch()
+                                    }
                                 }
 
                                 Item {
@@ -377,7 +405,11 @@ Item {
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: libraryController.clearSearch()
+                                        onClicked: {
+                                            root.disableListSlideAnimation();
+                                            playlistView.contentY = 0;
+                                            libraryController.clearSearch()
+                                        }
                                     }
                                 }
                             }
@@ -566,34 +598,40 @@ Item {
                     clip: true
                     reuseItems: false
 
-                    populate: Transition {
-                        id: playlistPopulateTrans
+                    // 结构性变更插入新行时触发 add 过渡（进入/返回的逐条滑入动画）。
+                    // 阶梯按可见区域第一项起算（index - firstVisibleIndex），深处定位时
+                    // 从视口首项开始错落，而非从模型第 0 项。搜索/定位时 direction==0 门控为无动画。
+                    add: Transition {
+                        id: playlistAddTrans
                         SequentialAnimation {
                             ParallelAnimation {
                                 NumberAnimation {
                                     property: "x"
-                                    from: (root.folderTransitionDirection >= 0 ? 1 : -1) * playlistView.width
-                                    to: (root.folderTransitionDirection >= 0 ? 1 : -1) * playlistView.width
-                                    duration: Math.min(playlistPopulateTrans.ViewTransition.index, 20) * 30
+                                    from: root.folderTransitionDirection !== 0
+                                          ? (root.folderTransitionDirection >= 0 ? 1 : -1) * playlistView.width : 0
+                                    to: root.folderTransitionDirection !== 0
+                                        ? (root.folderTransitionDirection >= 0 ? 1 : -1) * playlistView.width : 0
+                                    duration: Math.min(Math.max(0, playlistAddTrans.ViewTransition.index - playlistView.indexAt(0, playlistView.contentY + 1)), 10) * 15
                                 }
                                 NumberAnimation {
                                     property: "opacity"
-                                    from: 0.0
-                                    to: 0.0
-                                    duration: Math.min(playlistPopulateTrans.ViewTransition.index, 20) * 30
+                                    from: root.folderTransitionDirection !== 0 ? 0.0 : 1.0
+                                    to: root.folderTransitionDirection !== 0 ? 0.0 : 1.0
+                                    duration: Math.min(Math.max(0, playlistAddTrans.ViewTransition.index - playlistView.indexAt(0, playlistView.contentY + 1)), 10) * 15
                                 }
                             }
                             ParallelAnimation {
                                 NumberAnimation {
                                     property: "x"
-                                    from: (root.folderTransitionDirection >= 0 ? 1 : -1) * playlistView.width
+                                    from: root.folderTransitionDirection !== 0
+                                          ? (root.folderTransitionDirection >= 0 ? 1 : -1) * playlistView.width : 0
                                     to: 0
                                     duration: 220
                                     easing.type: Easing.OutCubic
                                 }
                                 NumberAnimation {
                                     property: "opacity"
-                                    from: 0.0
+                                    from: root.folderTransitionDirection !== 0 ? 0.0 : 1.0
                                     to: 1.0
                                     duration: 220
                                     easing.type: Easing.OutQuad
@@ -929,9 +967,17 @@ Item {
                     target: libraryController
 
                     function onScrollRequestChanged() {
+                        // 返回导航（direction 非 0）：位置由 QML contentY 恢复处理，跳过定位；
+                        // 定位当前播放曲目（direction == 0）：延迟一帧定位到视口最上方，
+                        // 避免模型 reset 后立即定位导致视口空白（Qt 已知行为）。
+                        if (root.folderTransitionDirection !== 0)
+                            return;
                         const row = libraryController.rowForNodeId(libraryController.scrollRequest);
-                        if (row >= 0)
-                            playlistView.positionViewAtIndex(row, ListView.Contain);
+                        if (row >= 0) {
+                            Qt.callLater(() => {
+                                playlistView.positionViewAtIndex(row, ListView.Beginning);
+                            });
+                        }
                     }
                 }
 
@@ -1032,7 +1078,10 @@ Item {
             z: 10
             visible: !root.queueViewActive
 
-            onClicked: libraryController.locateCurrentSong()
+            onClicked: {
+                root.disableListSlideAnimation();
+                libraryController.locateCurrentSong()
+            }
 
             // Shadow for FAB
             layer.enabled: true
