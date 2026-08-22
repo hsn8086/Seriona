@@ -8,7 +8,7 @@
 [![C++](https://img.shields.io/badge/C%2B%2B-23-00599C?logo=c%2B%2B&logoColor=white)](https://en.cppreference.com/w/cpp/23)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](./LICENSE)
 
-[简介](#-简介) • [特性](#-特性一览) • [快速开始](#-快速开始) • [测试](#-测试) • [架构简述](#-架构简述) • [相关项目](#-相关项目) • [许可证](#-许可证)
+[简介](#-简介) • [界面预览](#-界面预览) • [特性](#-特性一览) • [快速开始](#-快速开始) • [测试](#-测试) • [架构简述](#-架构简述) • [许可证](#-许可证)
 
 </div>
 
@@ -21,6 +21,23 @@
 界面主打沉浸与流畅：无边框磨砂窗口、基于专辑封面实时取色的动态流光背景、可交互的音频波形进度条、精准对齐的双语滚动歌词，以及深入多层目录依然能完美保留滚动位置的页面栈式侧栏导航。
 
 项目采用**前后端解耦**架构，前端专注交互与视觉呈现，底层扫描与播放由 [Seriona_Backend](https://github.com/kaizen857/Seriona_Backend) 驱动，同时原生支持无后端的独立 **Mock 模式**，便于快速进行 UI 开发。
+
+---
+
+## 🖼️ 界面预览
+
+<div align="center">
+
+### 主播放界面
+<img src="./img/mainWindow.png" alt="主播放界面" width="85%" />
+
+<br/><br/>
+
+| 📂 侧栏多级曲库浏览 | 🎵 同步双语歌词视图 |
+| :---: | :---: |
+| <img src="./img/musicLists.png" alt="曲库列表与侧栏浏览" width="100%" /> | <img src="./img/Lyrics.png" alt="同步滚动歌词" width="100%" /> |
+
+</div>
 
 ---
 
