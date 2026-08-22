@@ -28,14 +28,9 @@
 
 <div align="center">
 
-### 主播放界面
-<img src="./img/mainWindow.png" alt="主播放界面" width="85%" />
-
-<br/><br/>
-
-| 📂 侧栏多级曲库浏览 | 🎵 同步双语歌词视图 |
-| :---: | :---: |
-| <img src="./img/musicLists.png" alt="曲库列表与侧栏浏览" width="100%" /> | <img src="./img/Lyrics.png" alt="同步滚动歌词" width="100%" /> |
+| 🎵 主播放界面 | 📂 侧栏多级曲库 | 📜 同步双语歌词 |
+| :---: | :---: | :---: |
+| <img src="./img/mainWindow.png" alt="主播放界面" width="300px" /> | <img src="./img/musicLists.png" alt="曲库列表与侧栏浏览" width="300px" /> | <img src="./img/Lyrics.png" alt="同步滚动歌词" width="300px" /> |
 
 </div>
 
