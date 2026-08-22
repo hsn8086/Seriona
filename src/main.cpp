@@ -1,6 +1,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
 #include <QQmlApplicationEngine>
 #include <QStringList>
 #include <QTimer>
@@ -171,6 +172,14 @@ int main(int argc, char *argv[])
         }
 
         app.setProperty("seriona.backendBridgeAutostartEnabled", false);
+
+        // smoke 进程隔离 QSettings：applicationSettings()（navigation/settings/
+        // trackStats 三处）读取 seriona.settingsFileForTests 后改用隔离 INI 文件，
+        // 防止扫描等链路把测试目录持久化进用户真实配置
+        // (~/.config/Seriona/Seriona.conf)，避免下次启动"恢复播放列表"读到已删除
+        // 的测试目录而失败。
+        app.setProperty("seriona.settingsFileForTests",
+                        QDir::tempPath() + QStringLiteral("/seriona-smoke-%1.ini").arg(smokeOptions.scenario));
 
         if (!writeSmokeLog(smokeOptions, &smokeError)) {
             std::cerr << smokeError.toStdString() << '\n';
