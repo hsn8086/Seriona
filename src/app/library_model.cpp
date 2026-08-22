@@ -858,10 +858,23 @@ void LibraryModel::setProjectionNodeIds(const QVector<QString> &nodeIds)
         projectedNodeIds.insert(nodeId);
     }
 
-    beginResetModel();
-    m_entries = projectedEntries;
-    rebuildProjectionIndexes();
-    endResetModel();
+    // 用结构性变更（remove+insert）替代 beginResetModel：reset 会把
+    // ListView 的滚动位置强制归零（regenerate → setPosition(top)）且重放
+    // populate 过渡，与"返回上级目录恢复滚动位置"冲突；结构性变更保留
+    // contentY，QML 侧在导航后同步恢复位置即可稳定生效。
+    const int oldCount = m_entries.size();
+    if (oldCount > 0) {
+        beginRemoveRows(QModelIndex(), 0, oldCount - 1);
+        m_entries.clear();
+        rebuildProjectionIndexes();
+        endRemoveRows();
+    }
+    if (!projectedEntries.isEmpty()) {
+        beginInsertRows(QModelIndex(), 0, projectedEntries.size() - 1);
+        m_entries = projectedEntries;
+        rebuildProjectionIndexes();
+        endInsertRows();
+    }
 }
 
 QVector<QString> LibraryModel::sortedProjectionNodeIds(QVector<QString> nodeIds, const QVector<SortRule> &sortRules) const
