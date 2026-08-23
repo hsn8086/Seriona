@@ -71,7 +71,7 @@ Release 模式（`CMAKE_BUILD_TYPE=Release`）按编译器启用全量优化：G
 ## 4. 目录结构
 
 ```
-├── CMakeLists.txt            # 全部构建逻辑（832 行，单文件）
+├── CMakeLists.txt            # 全部构建逻辑（1233 行，单文件）
 ├── src/
 │   ├── main.cpp              # 入口：QApplication、smoke CLI、加载 Seriona/Main
 │   ├── app/                  # 中间层（AppFacade、控制器、模型、桥接、工具）
@@ -83,7 +83,7 @@ Release 模式（`CMAKE_BUILD_TYPE=Release`）按编译器启用全量优化：G
 │   ├── windows/              # SettingsWindow、TrackDetailWindow、EqualizerWindow（设置/曲目详情/均衡器弹窗）
 │   ├── theme/Theme.qml       # singleton token
 │   └── assets/               # 25 个 SVG 图标 + MaterialIcons-Regular.ttf（QML 未引用）
-├── tests/frontend/adapter/   # 20 个 QTest 测试源
+├── tests/frontend/adapter/   # 28 个 QTest 测试源
 ├── scripts/verify-middle-layer.sh
 ├── docs/
 │   ├── architecture/backend-integration-contract.md   # 现行契约（verify 要求存在）
@@ -97,9 +97,9 @@ Release 模式（`CMAKE_BUILD_TYPE=Release`）按编译器启用全量优化：G
 
 组合根与快照投影中枢：
 
-- 按值持有 5 个控制器：`m_playback`、`m_library`（`LibraryController` 类型）、`m_lyrics`、`m_notifications`、`m_navigation`；以 `unique_ptr` 持有 `BackendBridge`（始终存在）与 `WaveformProvider`（仅 `SERIONA_HAS_BACKEND=1` 时编译）。
-- Q_PROPERTY 全部 `CONSTANT`：`layerName`（"Seriona C++ Middle Layer"）、`foundationReady`（恒 true）、`playback/library/lyrics/notifications/navigation`。
-- 构造时注入 4 个执行器（playback/library 命令、文件夹排序、扫描）并连接 2 类快照信号（playerSnapshotChanged/librarySnapshotChanged）+ 1 类域通知信号（domainNotificationQueued），另连接 `WaveformProvider::waveformReady`；`backendBridgeAutostartEnabled()` 读取 `QCoreApplication` 动态属性 `seriona.backendBridgeAutostartEnabled`（默认 true）决定是否自动 `BackendBridge::start()`。
+- 按值持有 7 个控制器：`m_playback`、`m_library`（`LibraryController` 类型）、`m_lyrics`、`m_notifications`、`m_navigation`、`m_settings`（`SettingsController`）、`m_trackStats`（`TrackStatsController`）；以 `unique_ptr` 持有 `BackendBridge`（始终存在）与 `WaveformProvider`（仅 `SERIONA_HAS_BACKEND=1` 时编译）。
+- Q_PROPERTY 全部 `CONSTANT`：`layerName`（"Seriona C++ Middle Layer"）、`foundationReady`（恒 true）、`playback/library/lyrics/notifications/navigation/settings/trackStats`。
+- 构造时注入 4 个执行器（playback/library 命令、文件夹排序、扫描），连接播放开始回调（`trackStarted` → `m_trackStats.recordPlayback` 自增播放计数）与 2 类快照信号（playerSnapshotChanged/librarySnapshotChanged）+ 1 类域通知信号（domainNotificationQueued），另连接 `WaveformProvider::waveformReady`；`backendBridgeAutostartEnabled()` 读取 `QCoreApplication` 动态属性 `seriona.backendBridgeAutostartEnabled`（默认 true）决定是否自动 `BackendBridge::start()`。
 - `shutdown()` 幂等；析构与 `QCoreApplication::aboutToQuit`（DirectConnection）均触发。
 - Q_INVOKABLE：`shutdown()`、`scanLibrary(QUrl)`、`restorePlaylistFromStartup()`；测试钩子：`backendBridgeStartedForTests()` 等。
 
@@ -115,7 +115,7 @@ Release 模式（`CMAKE_BUILD_TYPE=Release`）按编译器启用全量优化：G
 ### 5.3 曲库模块（`library_model.{h,cpp}`、`library_tree_store.{h,cpp}`）
 
 - **LibraryTreeStore**（非 QObject 纯容器）：以节点 id 为键保存整棵曲库树；`setSnapshot()` 一次重建（含悬空子节点剔除、孤儿回补、root 缺失回退到"无父节点集合"、`descendantTrackCount` 递归）。
-- **LibraryModel**（`QAbstractListModel`，`QML_UNCREATABLE`）：把树投影为扁平列表；18 个角色（type/name/title/artist/album/songCount/duration/…/artworkSource）；行⇄节点 id 映射；三种投影：根投影、当前文件夹投影（仅直接子级）、搜索投影（当前文件夹子树内只匹配歌曲，文件夹条目不出现；按标题10/歌手5/专辑3/文件名2 加权评分，完全/前缀/包含分别 ×10/×5/×1）；多规则稳定排序（搜索激活时按评分降序，清空恢复用户规则）；`projectionRevision` 在投影完整替换或快照更新后递增（完整替换用 reset 语义）。
+- **LibraryModel**（`QAbstractListModel`，`QML_UNCREATABLE`）：把树投影为扁平列表；19 个角色（type/name/title/artist/album/songCount/duration/…/artworkSource/year）；行⇄节点 id 映射；三种投影：根投影、当前文件夹投影（仅直接子级）、搜索投影（当前文件夹子树内只匹配歌曲，文件夹条目不出现；按标题10/歌手5/专辑3/文件名2 加权评分，完全/前缀/包含分别 ×10/×5/×1）；多规则稳定排序（搜索激活时按评分降序，清空恢复用户规则）；`projectionRevision` 在投影完整替换或快照更新后递增（完整替换用 reset 语义）。
 - **LibraryFolderProjectionModel**（`library_folder_projection_model.{h,cpp}`，非 QML_ELEMENT，归 LibraryController 所有）：按 folderNodeId 缓存的每级文件夹独立投影模型（`QString()` 根键恒为根投影）。每个 FolderPage 绑定各自模型实例，页面与模型都常驻不销毁 → 滚动位置零成本保留（Qt 无 reset 后恢复滚动位置的契约，故不做恢复，而是让视图与模型都不换）；数据为某文件夹的直接子级投影（过滤/排序规则与主模型投影一致，复用 `sortedProjectionNodeIds`）；监听主模型 `treeChanged` 原地自重建（`setSource`→`rebuildFromSource`，实例身份不变，revision 递增）、`playingTrackIdChanged`/`focusedNodeIdChanged` 仅对投影内行发 `dataChanged`。主模型投影能力保留给搜索/曲库页等其他使用者。
 - **LibraryController**（定义于 `library_model.{h,cpp}`，`QML_ELEMENT`，**无独立文件**）：QML 可见门面。
   - **文件夹导航与投影模型缓存**：投影模型按 folderNodeId 缓存（`projectionModelForNodeId(nodeId)` get-or-create，`QString()` 根键）；`enterFolder`/`goBack` 只修改当前文件夹、不销毁任何缓存模型；主树 `treeChanged` 时保留全部缓存模型原地自重建（实例身份不变），`projectionGeneration` 递增供测试与诊断，排序变更同样原地重建；`folderStackDepth` = 当前文件夹祖先链（`ancestorChainForNode`，从根向目标、排除根）的长度（根浏览为 0）；`locateNodeInFolderStack(nodeId)` 从根逐级进入直到目标所在级（目标不在任何已建投影时进入其直接父级）。
@@ -159,10 +159,10 @@ Release 模式（`CMAKE_BUILD_TYPE=Release`）按编译器启用全量优化：G
 ### 5.8 QML 视图层
 
 - **Main.qml**：360×720 无边框透明窗口（`OpacityMask` 圆角 24，最大化 0）；全局拖拽 + 标题栏 + 封面拖拽（`startSystemMove`）、八向缩放（`startSystemResize`，Maximized 时隐藏）；侧栏 dock（窗口宽 ≥ 800）/overlay 双模式；`smokeScenario` 初始属性在 `Component.onCompleted` 应用；关闭链路 `close() → onClosing → appFacade.shutdown()`。
-- **MainContent.qml**（1296 行）：播放/歌词双 state 共享元素迁移（400ms InOutCubic）；播放控制条、音量、进度（波形拖拽 seek、歌词态线性滑杆）、封面三层回退（全图 `coverArtworkSource` → 缩略图 `coverThumbnailSource` → 占位符"🎵"，逐层降级）、设置 BubbleMenu（歌词分隔符真实设置；淡入淡出/无缝/回放增益/均衡器→`showUnsupportedAction`；"设置"→`openSettingsRequested` 打开 SettingsWindow；"关于 Seriona"→AboutOverlay 真实关于界面；退出→真实关闭）、通知 toast（3200ms 自动隐藏）。
+- **MainContent.qml**（1372 行）：播放/歌词双 state 共享元素迁移（400ms InOutCubic）；播放控制条、音量、进度（波形拖拽 seek、歌词态线性滑杆）、封面三层回退（全图 `coverArtworkSource` → 缩略图 `coverThumbnailSource` → 占位符"🎵"，逐层降级）、设置 BubbleMenu（"设置"→`openSettingsRequested` 打开 SettingsWindow，歌词分隔符等真实设置项在窗口内；"均衡器"→`openEqualizerRequested` 打开 EqualizerWindow；"关于 Seriona"→AboutOverlay 真实关于界面；退出→真实关闭）、通知 toast（3200ms 自动隐藏）。
 - **StartupView.qml**：启动页；恢复播放列表、添加文件夹（`Qt.labs.platform.FolderDialog` → `appFacade.scanLibrary`）。
 - **Sidebar.qml**：曲库主交互面（树列表带滚动条、表头空白区可拖拽移动窗口、搜索、排序对话框入口、定位当前歌曲 FAB、扫描状态 banner）；delegate 右键菜单（`TrackContextMenu`：详情/下一首播放/删除，删除经 `ConfirmDeleteDialog` 确认）、顶部队列视图（`QueueView`：`PlayNextTrack`/`RemoveFromQueue`）、头部按钮悬停提示（`SharedToolTip`）。文件夹浏览采用 **StackView 页面栈 + FolderPage 实例缓存**：`folderStack` 承载第 1 层及更深文件夹，根视图 `playlistView` 常驻栈外（depth 0 时可见）；`folderPages` 按 folderNodeId 缓存 FolderPage 实例，push/pop 一律传实例、pop/clear 不销毁页面，每层滚动位置与动画状态零成本保留；导航配对调用固定"先栈后 controller"，controller 是导航状态唯一真源，幂等收敛处理器把栈镜像到 controller（重扫/定位等非配对路径自动收敛）；返回根视图时对视口可见 delegate 执行错落滑入。
-- 组件清单：`AboutOverlay`（关于弹层）、`BubbleMenu`（气泡菜单+子页 StackView）、`BubbleMenuItem/BubbleSubMenuItem`、`ConfirmDeleteDialog`（删除确认弹窗）、`DynamicBackground`（3 对角渐变背景）、`FolderPage`（每层文件夹页面：ListView + ScrollBar + 错落滑入动画，实例按 folderNodeId 缓存复用）、`PlaylistDelegate`（共享曲目行 delegate，Sidebar 各列表与 FolderPage 共用）、`MarqueeText`（溢出滚动）、`QueueView`（临时队列视图）、`SharedToolTip`（悬停提示，delay 500ms）、`StyleButton`、`TrackContextMenu`（曲目右键菜单）、`WaveformProgressBar`（数据切换先缩后弹动画）、`SortDialog/SortRuleRow`（最多 5 条规则）、`WindowControls`；`windows/` 下另有 `SettingsWindow`（设置：设备枚举/日志等级/采样率/位深，Direct 输出时采样率位深灰化）、`TrackDetailWindow`（曲目详情：年份/播放次数/星级）、`EqualizerWindow`。
+- 组件清单：`AboutOverlay`（关于弹层）、`BubbleMenu`（气泡菜单+子页 StackView）、`BubbleMenuItem/BubbleSubMenuItem`、`menuRegistry.js`（BubbleMenu 实例注册表，`.pragma library` 单例，多弹窗互斥）、`ConfirmDeleteDialog`（删除确认弹窗）、`DynamicBackground`（3 对角渐变背景）、`FolderPage`（每层文件夹页面：ListView + ScrollBar + 错落滑入动画，实例按 folderNodeId 缓存复用）、`PlaylistDelegate`（共享曲目行 delegate，Sidebar 各列表与 FolderPage 共用）、`MarqueeText`（溢出滚动）、`QueueView`（临时队列视图）、`SharedToolTip`（悬停提示，delay 500ms）、`StyleButton`、`TrackContextMenu`（曲目右键菜单）、`WaveformProgressBar`（数据切换先缩后弹动画）、`SortDialog/SortRuleRow`（最多 5 条规则）、`WindowControls`；`windows/` 下另有 `SettingsWindow`（设置：设备枚举/日志等级/采样率/位深，Direct 输出时采样率位深灰化）、`TrackDetailWindow`（曲目详情：年份/播放次数/星级）、`EqualizerWindow`。
 - **Theme.qml**：singleton token（颜色/尺寸/动画时长；`animationDuration` 150ms、`colorTransitionDuration` 500ms 等）。注意：`Theme.sidebarWidth` 与 Main.qml 内同名常量并存、`Theme.gradientColor0/1/2` 未见使用点（可能遗留）。
 
 ## 6. 模块关系与数据流
@@ -229,7 +229,7 @@ WindowControls.closeRequested / 设置菜单"退出" ──► requestApplicatio
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `BUILD_TESTING` | ON | mock-only 只注册 4 个测试；其余 16 个测试二进制要求后端 |
+| `BUILD_TESTING` | ON | mock-only 只注册 8 个测试；其余 20 个测试二进制要求后端 |
 | `SERIONA_BACKEND_SOURCE_DIR` | `../Seriona_Backend` | 空= mock-only；存在=本地引入；不存在=FetchContent GitHub main |
 | `CMAKE_BUILD_TYPE` | — | Release 触发 LTO/`-march=native` |
 | `SERIONA_FETCHCONTENT_CATCH2_DIR` / `SERIONA_FETCHCONTENT_THREAD_POOL_DIR` | — | 离线 configure 注入后端依赖源码 |
@@ -256,9 +256,9 @@ WindowControls.closeRequested / 设置菜单"退出" ──► requestApplicatio
 
 ## 10. 测试体系
 
-- 位置：`tests/frontend/adapter/`（20 个 `tst_*.cpp`，QTest）。
-- mock-only 注册 4 个：`seriona_frontend_command_result_mapping`、`seriona_frontend_snapshot_mapping`、`seriona_frontend_library_tree_mapping`、`seriona_frontend_app_facade_smoke_mode`（无后端时映射测试降级为占位用例，facade 用例 QSKIP）。
-- 后端模式另注册 16 个二进制（强制 `SERIONA_HAS_BACKEND=1`），覆盖：桥接线程/关闭、库模型投影、排序（16 个 CTest 用例）、双游标、侧栏浏览、选曲上下文、扫描流程、启动恢复、播放快照/命令、通知、波形、当前曲目、歌词、UI-only 策略、封面迁移（唯一加载真实 `MainContent.qml` 的集成测试，5940 行）。
+- 位置：`tests/frontend/adapter/`（28 个 `tst_*.cpp`，QTest）。
+- mock-only 注册 8 个：`seriona_frontend_command_result_mapping`、`seriona_frontend_snapshot_mapping`、`seriona_frontend_library_tree_mapping`、`seriona_frontend_settings_controller_tests`、`seriona_frontend_track_stats_tests`、`seriona_frontend_about_overlay_tests`、`seriona_frontend_queue_view_tests`、`seriona_frontend_app_facade_smoke_mode`（无后端时映射测试降级为占位用例，facade 用例 QSKIP）。
+- 后端模式另注册 20 个二进制（强制 `SERIONA_HAS_BACKEND=1`），覆盖：桥接线程/关闭、库模型投影、文件夹投影/排序（15 个 CTest 用例）、双游标、侧栏浏览/队列切换、选曲上下文、扫描流程、启动恢复、播放快照/命令、通知、波形、当前曲目、歌词、UI-only 策略、文件夹页面、曲目详情、封面迁移（唯一加载真实 `MainContent.qml` 的集成测试，5954 行）。
 - 测试缝（生产代码中为测试开出的接口）：`setScanExecutor`、`setPlaylistTreeSnapshot`、`applyPlayerStateSnapshot`、`BackendBridge::ControllerFactory`/`drainForTests`、`WaveformProvider::setGeneratorForTests`、AppFacade `*ForTests` 钩子、两个 QCoreApplication 属性。
 - fake 后端范式：测试内实现后端纯虚接口（`AudioPlaybackService`/`FileScannerService`/`MetadataSharingService`/`FolderSortSettingsStore`）经 `ControllerHarness` 组装。
 - 单用例运行：`./build/seriona_frontend_library_sort_tests titleAscendingAndDescendingSortCurrentFolderProjection`。
