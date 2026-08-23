@@ -204,11 +204,6 @@ void AppFacadeSmokeModeTest::trackSwitchIncrementsPlayCountThroughFacade()
 #if SERIONA_HAS_BACKEND
     QCoreApplication::instance()->setProperty("seriona.backendBridgeAutostartEnabled", false);
 
-    QTemporaryDir settingsDir;
-    QVERIFY(settingsDir.isValid());
-    QCoreApplication::instance()->setProperty("seriona.settingsFileForTests",
-                                              settingsDir.filePath(QStringLiteral("settings.ini")));
-
     Seriona::App::AppFacade facade;
     seriona::control::PlayerStateSnapshot first;
     first.currentTrack = seriona::control::TrackIdentity{};
@@ -231,7 +226,6 @@ void AppFacadeSmokeModeTest::trackSwitchIncrementsPlayCountThroughFacade()
     facade.applyPlayerSnapshotForTests(empty, seriona::control::LibraryStateSnapshot{});
     QCOMPARE(facade.trackStats()->playCountFor(QStringLiteral("track-d-id")), 1);
 
-    QCoreApplication::instance()->setProperty("seriona.settingsFileForTests", QVariant{});
     QCoreApplication::instance()->setProperty("seriona.backendBridgeAutostartEnabled", QVariant{});
 #else
     QSKIP("backend disabled");

@@ -1,7 +1,5 @@
 #include "settings_controller.h"
 
-#include <QCoreApplication>
-#include <QSettings>
 #include <QVariant>
 #include <QVariantMap>
 
@@ -9,7 +7,6 @@ namespace Seriona::App {
 
 namespace {
 
-constexpr auto kSettingsFileProperty = "seriona.settingsFileForTests";
 constexpr auto kOutputGroup = "output";
 constexpr auto kLyricsGroup = "lyrics";
 constexpr auto kLoggingGroup = "logging";
@@ -57,19 +54,6 @@ bool capabilitiesEqual(const QList<PlaybackDeviceCapabilities> &lhs, const QList
         }
     }
     return true;
-}
-
-QSettings applicationSettings()
-{
-    const QCoreApplication *application = QCoreApplication::instance();
-    if (application) {
-        const QString settingsFile = application->property(kSettingsFileProperty).toString();
-        if (!settingsFile.isEmpty()) {
-            return QSettings(settingsFile, QSettings::IniFormat);
-        }
-    }
-
-    return QSettings(QStringLiteral("Seriona"), QStringLiteral("Seriona"));
 }
 
 bool isValidOutputMode(int mode)
@@ -281,22 +265,36 @@ void SettingsController::setDefaults(
 
 void SettingsController::reloadFromSettings()
 {
-    QSettings settings = applicationSettings();
-    settings.beginGroup(QString::fromUtf8(kOutputGroup));
-    const int mode = settings.value(QString::fromUtf8(kOutputModeKey), kDefaultOutputMode).toInt();
-    const int sampleRate = settings.value(QString::fromUtf8(kSampleRateKey), kDefaultSampleRate).toInt();
-    const int sampleFormat = settings.value(QString::fromUtf8(kSampleFormatKey), kDefaultSampleFormat).toInt();
-    const int bufferDurationMs = settings.value(QString::fromUtf8(kBufferDurationMsKey), kDefaultBufferDurationMs).toInt();
-    const QString deviceId = settings.value(QString::fromUtf8(kPreferredDeviceIdKey)).toString();
-    settings.endGroup();
+    const int mode = m_settingsStorage.read(QString::fromUtf8(kOutputGroup),
+                                            QString::fromUtf8(kOutputModeKey),
+                                            kDefaultOutputMode)
+                         .toInt();
+    const int sampleRate = m_settingsStorage.read(QString::fromUtf8(kOutputGroup),
+                                                  QString::fromUtf8(kSampleRateKey),
+                                                  kDefaultSampleRate)
+                               .toInt();
+    const int sampleFormat = m_settingsStorage.read(QString::fromUtf8(kOutputGroup),
+                                                    QString::fromUtf8(kSampleFormatKey),
+                                                    kDefaultSampleFormat)
+                                 .toInt();
+    const int bufferDurationMs = m_settingsStorage.read(QString::fromUtf8(kOutputGroup),
+                                                        QString::fromUtf8(kBufferDurationMsKey),
+                                                        kDefaultBufferDurationMs)
+                                     .toInt();
+    const QString deviceId = m_settingsStorage.read(QString::fromUtf8(kOutputGroup),
+                                                    QString::fromUtf8(kPreferredDeviceIdKey),
+                                                    QString())
+                                 .toString();
 
-    settings.beginGroup(QString::fromUtf8(kLyricsGroup));
-    const QStringList delimiters = settings.value(QString::fromUtf8(kLyricsDelimitersKey), kDefaultLyricDelimiters).toStringList();
-    settings.endGroup();
+    const QStringList delimiters = m_settingsStorage.read(QString::fromUtf8(kLyricsGroup),
+                                                          QString::fromUtf8(kLyricsDelimitersKey),
+                                                          kDefaultLyricDelimiters)
+                                       .toStringList();
 
-    settings.beginGroup(QString::fromUtf8(kLoggingGroup));
-    const int logLevel = settings.value(QString::fromUtf8(kLogLevelKey), kDefaultLogLevel).toInt();
-    settings.endGroup();
+    const int logLevel = m_settingsStorage.read(QString::fromUtf8(kLoggingGroup),
+                                                QString::fromUtf8(kLogLevelKey),
+                                                kDefaultLogLevel)
+                             .toInt();
 
     setOutputModeInternal(mode);
     setSampleRateInternal(sampleRate);
@@ -506,13 +504,14 @@ void SettingsController::recordLastValidSnapshot()
     m_hasCommittedSnapshot = true;
 }
 
+void SettingsController::setSettingsStorageBackend(AppSettingsBackend backend)
+{
+    m_settingsStorage.setBackend(std::move(backend));
+}
+
 void SettingsController::persistValue(const char *group, const char *key, const QVariant &value)
 {
-    QSettings settings = applicationSettings();
-    settings.beginGroup(QString::fromUtf8(group));
-    settings.setValue(QString::fromUtf8(key), value);
-    settings.endGroup();
-    settings.sync();
+    m_settingsStorage.write(QString::fromUtf8(group), QString::fromUtf8(key), value);
 }
 
 void SettingsController::persistOutputValue(const char *key, const QVariant &value)

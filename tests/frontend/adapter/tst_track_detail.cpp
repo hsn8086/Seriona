@@ -14,7 +14,6 @@
 
 #include <QCoreApplication>
 #include <QObject>
-#include <QTemporaryDir>
 #include <QVariant>
 #include <QVariantMap>
 #include <QtTest/QTest>
@@ -24,32 +23,6 @@
 #include <optional>
 #include <string>
 #include <vector>
-
-namespace {
-
-constexpr auto kSettingsFileProperty = "seriona.settingsFileForTests";
-
-// 把 QSettings 指向临时文件，避免播放次数/星级测试污染用户真实配置
-// （与 tst_track_stats_controller.cpp 同模式）。
-class ScopedSettingsFile
-{
-public:
-    explicit ScopedSettingsFile(QTemporaryDir &dir)
-        : m_file(dir.filePath(QStringLiteral("track-detail.ini")))
-    {
-        QCoreApplication::instance()->setProperty(kSettingsFileProperty, m_file);
-    }
-
-    ~ScopedSettingsFile()
-    {
-        QCoreApplication::instance()->setProperty(kSettingsFileProperty, QVariant{});
-    }
-
-private:
-    QString m_file;
-};
-
-}
 
 #if SERIONA_HAS_BACKEND
 namespace {
@@ -186,10 +159,6 @@ private slots:
 void TrackDetailTest::trackDetailDataAssembledFromEntryAndStats()
 {
 #if SERIONA_HAS_BACKEND
-    QTemporaryDir settingsDir;
-    QVERIFY(settingsDir.isValid());
-    ScopedSettingsFile scopedSettings(settingsDir);
-
     Seriona::App::LibraryModel model;
     model.setPlaylistTreeSnapshot(makeSnapshot());
 

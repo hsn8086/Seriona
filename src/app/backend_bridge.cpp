@@ -7,6 +7,9 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QMetaObject>
 #include <QPair>
 #include <QList>
@@ -468,6 +471,47 @@ void BackendBridge::setLogLevel(int level)
         return;
     }
     seriona::app::setLogLevel(asEnum);
+}
+
+std::optional<QVariant> BackendBridge::getAppSetting(const QString &group, const QString &key, const QVariant &defaultValue)
+{
+    if (m_shuttingDown || !m_controller) {
+        return std::nullopt;
+    }
+    const std::optional<std::string> stored = m_controller->getAppSetting(toBackendString(group), toBackendString(key));
+    if (!stored.has_value() || stored->empty()) {
+        return std::nullopt;
+    }
+    const QByteArray utf8(stored->data(), static_cast<qsizetype>(stored->size()));
+    const QJsonDocument document = QJsonDocument::fromJson(utf8);
+    if (document.isObject()) {
+        return document.object().value(QStringLiteral("v")).toVariant();
+    }
+    return std::nullopt;
+}
+
+bool BackendBridge::setAppSetting(const QString &group, const QString &key, const QVariant &value)
+{
+    if (m_shuttingDown || !m_controller) {
+        return false;
+    }
+    const QJsonObject envelope{{QStringLiteral("v"), QJsonValue::fromVariant(value)}};
+    const QByteArray utf8 = QJsonDocument(envelope).toJson(QJsonDocument::Compact);
+    const seriona::control::MediaControllerCommandResult result =
+        m_controller->setAppSetting(toBackendString(group),
+                                    toBackendString(key),
+                                    std::string(utf8.constData(), static_cast<std::size_t>(utf8.size())));
+    return result.accepted;
+}
+
+bool BackendBridge::removeAppSetting(const QString &group, const QString &key)
+{
+    if (m_shuttingDown || !m_controller) {
+        return false;
+    }
+    const seriona::control::MediaControllerCommandResult result =
+        m_controller->removeAppSetting(toBackendString(group), toBackendString(key));
+    return result.accepted;
 }
 
 const seriona::control::PlayerStateSnapshot &BackendBridge::playerSnapshot() const

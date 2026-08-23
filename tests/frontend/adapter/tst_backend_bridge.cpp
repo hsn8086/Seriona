@@ -13,7 +13,6 @@
 #include <QObject>
 #include <QSignalSpy>
 #include <QTemporaryDir>
-#include <QTemporaryFile>
 #include <QThread>
 #include <QVariantList>
 #include <QVariantMap>
@@ -972,11 +971,6 @@ void BackendBridgeTest::enumeratePlaybackDevicesMapsDeviceIds()
 
 void BackendBridgeTest::settingsPushOnStart()
 {
-    QTemporaryFile settingsFile;
-    QVERIFY(settingsFile.open());
-    settingsFile.close();
-    QCoreApplication::instance()->setProperty("seriona.settingsFileForTests", settingsFile.fileName());
-
     ControllerHarness harness;
     Seriona::App::BackendBridge bridge(harness.factory(true));
     Seriona::App::SettingsController settings;
@@ -1002,8 +996,6 @@ void BackendBridgeTest::settingsPushOnStart()
     // shutdown 的 startedChanged（started()==false）不得再次推送
     bridge.shutdown();
     QCOMPARE(pushCount, 1);
-
-    QCoreApplication::instance()->setProperty("seriona.settingsFileForTests", QVariant{});
 }
 
 QTEST_GUILESS_MAIN(BackendBridgeTest)

@@ -1,10 +1,10 @@
 #include "app_facade.h"
 
+#include "app_settings_storage.h"
 #include "seriona/control/control_contracts.h"
 
-#include <QCoreApplication>
 #include <QFileInfo>
-#include <QSettings>
+#include <QHash>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QUrl>
@@ -16,12 +16,17 @@
 
 namespace {
 constexpr auto kBackendBridgeAutostartProperty = "seriona.backendBridgeAutostartEnabled";
-constexpr auto kSettingsFileProperty = "seriona.settingsFileForTests";
-constexpr auto kLastLibraryRootKey = "library/lastScanRoot";
+constexpr auto kLastLibraryRootGroup = "library";
+constexpr auto kLastLibraryRootKey = "lastScanRoot";
 
 using Seriona::App::AppFacade;
 using seriona::control::MediaControllerCommandResult;
 using seriona::control::MediaControllerErrorCode;
+
+QString storageKey(const QString &group, const QString &key)
+{
+    return group + QLatin1Char('\x1f') + key;
+}
 
 MediaControllerCommandResult acceptedResult()
 {
@@ -70,35 +75,51 @@ private:
     void writeSavedRoot(const QString &rootPath);
     bool hasSavedRoot() const;
     QString savedRoot() const;
+    Seriona::App::AppSettingsBackend testBackend();
 
-    std::unique_ptr<QTemporaryDir> m_settingsDir;
-    QString m_settingsFile;
+    QHash<QString, QVariant> m_store;
 };
 
 void StartupRestoreTest::init()
 {
     QCoreApplication::instance()->setProperty(kBackendBridgeAutostartProperty, false);
-
-    m_settingsDir = std::make_unique<QTemporaryDir>();
-    QVERIFY(m_settingsDir->isValid());
-    m_settingsFile = m_settingsDir->filePath(QStringLiteral("settings.ini"));
-    QCoreApplication::instance()->setProperty(kSettingsFileProperty, m_settingsFile);
-
-    QSettings settings(m_settingsFile, QSettings::IniFormat);
-    settings.clear();
-    settings.sync();
+    m_store.clear();
 }
 
 void StartupRestoreTest::cleanup()
 {
-    QSettings settings(m_settingsFile, QSettings::IniFormat);
-    settings.clear();
-    settings.sync();
-
-    QCoreApplication::instance()->setProperty(kSettingsFileProperty, QVariant{});
     QCoreApplication::instance()->setProperty(kBackendBridgeAutostartProperty, QVariant{});
-    m_settingsFile.clear();
-    m_settingsDir.reset();
+    m_store.clear();
+}
+
+Seriona::App::AppSettingsBackend StartupRestoreTest::testBackend()
+{
+    return Seriona::App::AppSettingsBackend{
+        .read = [this](const QString &group, const QString &key, const QVariant &defaultValue) -> std::optional<QVariant> {
+            return m_store.value(storageKey(group, key), defaultValue);
+        },
+        .write = [this](const QString &group, const QString &key, const QVariant &value) {
+            m_store.insert(storageKey(group, key), value);
+        },
+        .remove = [this](const QString &group, const QString &key) {
+            m_store.remove(storageKey(group, key));
+        },
+    };
+}
+
+void StartupRestoreTest::writeSavedRoot(const QString &rootPath)
+{
+    m_store.insert(storageKey(kLastLibraryRootGroup, kLastLibraryRootKey), rootPath);
+}
+
+bool StartupRestoreTest::hasSavedRoot() const
+{
+    return m_store.contains(storageKey(kLastLibraryRootGroup, kLastLibraryRootKey));
+}
+
+QString StartupRestoreTest::savedRoot() const
+{
+    return m_store.value(storageKey(kLastLibraryRootGroup, kLastLibraryRootKey)).toString();
 }
 
 void StartupRestoreTest::scanLibraryPersistsRootForStartupRestore()
@@ -108,6 +129,7 @@ void StartupRestoreTest::scanLibraryPersistsRootForStartupRestore()
     const QString canonicalRoot = QFileInfo(musicDir.path()).absoluteFilePath();
 
     AppFacade facade;
+    facade.navigation()->setSettingsStorageBackend(testBackend());
     ScanRecorder recorder;
     facade.library()->setScanExecutor([&recorder](const QString &rootPath, seriona::scanner::ScanMode mode) {
         return recorder.record(rootPath, mode);
@@ -130,6 +152,7 @@ void StartupRestoreTest::restoreSavedRootScansAndEntersMainShell()
     writeSavedRoot(canonicalRoot);
 
     AppFacade facade;
+    facade.navigation()->setSettingsStorageBackend(testBackend());
     ScanRecorder recorder;
     facade.library()->setScanExecutor([&recorder](const QString &rootPath, seriona::scanner::ScanMode mode) {
         return recorder.record(rootPath, mode);
@@ -150,6 +173,7 @@ void StartupRestoreTest::restoreSavedRootScansAndEntersMainShell()
     writeSavedRoot(rejectedRoot);
 
     AppFacade rejectedFacade;
+    rejectedFacade.navigation()->setSettingsStorageBackend(testBackend());
     ScanRecorder rejectedRecorder;
     rejectedRecorder.result = rejectedResult("startup restore scan rejected");
     rejectedFacade.library()->setScanExecutor([&rejectedRecorder](const QString &rootPath, seriona::scanner::ScanMode mode) {
@@ -198,6 +222,7 @@ void StartupRestoreTest::missingSavedRoot()
     }
 
     AppFacade facade;
+    facade.navigation()->setSettingsStorageBackend(testBackend());
     ScanRecorder recorder;
     facade.library()->setScanExecutor([&recorder](const QString &rootPath, seriona::scanner::ScanMode mode) {
         return recorder.record(rootPath, mode);
@@ -215,25 +240,6 @@ void StartupRestoreTest::missingSavedRoot()
     QCOMPARE(facade.library()->scanStatus(), QStringLiteral("error"));
     QVERIFY(facade.library()->lastError().contains(messageFragment));
     QCOMPARE(hasSavedRoot(), false);
-}
-
-void StartupRestoreTest::writeSavedRoot(const QString &rootPath)
-{
-    QSettings settings(m_settingsFile, QSettings::IniFormat);
-    settings.setValue(kLastLibraryRootKey, rootPath);
-    settings.sync();
-}
-
-bool StartupRestoreTest::hasSavedRoot() const
-{
-    QSettings settings(m_settingsFile, QSettings::IniFormat);
-    return settings.contains(kLastLibraryRootKey);
-}
-
-QString StartupRestoreTest::savedRoot() const
-{
-    QSettings settings(m_settingsFile, QSettings::IniFormat);
-    return settings.value(kLastLibraryRootKey).toString();
 }
 
 QTEST_GUILESS_MAIN(StartupRestoreTest)

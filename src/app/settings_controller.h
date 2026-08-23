@@ -1,5 +1,7 @@
 #pragma once
 
+#include "app_settings_storage.h"
+
 #include <QObject>
 #include <QQmlEngine>
 #include <QString>
@@ -24,7 +26,8 @@ struct PlaybackDeviceCapabilities {
     QList<int> sampleRates{};
 };
 
-// 输出设置控制器：QSettings 持久化 + 后端 ConfigureOutput 透传。
+// 输出设置控制器：应用设置存储（默认内存，注入后经后端键值存储）持久化 +
+// 后端 ConfigureOutput 透传。
 // 本类为纯 QML 面，不依赖后端头文件/宏；与后端通信经 AppFacade 注入的 executor
 // （BackendBridge::submitConfigureOutput / enumeratePlaybackDeviceCapabilities）。
 //
@@ -104,7 +107,11 @@ public:
     // 后端协商结果落地：只更新属性（含 NOTIFY），不持久化、不推送。
     void setDefaults(int outputMode, int sampleRate, int bufferDurationMs, const QString &preferredDeviceId);
 
-    // QSettings 读取 → 属性（不推送）。
+    // 设置存储后端注入（AppFacade 接入后端时注入 BackendBridge 实现；
+    // 不注入时回退内存存储）。
+    void setSettingsStorageBackend(AppSettingsBackend backend);
+
+    // 应用设置读取 → 属性（不推送）。
     Q_INVOKABLE void reloadFromSettings();
     // 组装当前属性并提交后端 ConfigureOutput 命令。
     Q_INVOKABLE void apply();
@@ -168,6 +175,7 @@ private:
     QList<PlaybackDeviceCapabilities> m_deviceCapabilities;
     bool m_hasCommittedSnapshot = false;
     QTimer m_debounceTimer;
+    AppSettingsStorage m_settingsStorage;
     ApplyOutputConfigExecutor m_applyOutputConfigExecutor;
     EnumerateDevicesExecutor m_enumerateDevicesExecutor;
     LogLevelExecutor m_logLevelExecutor;

@@ -19,6 +19,7 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <optional>
 #endif
 
 namespace Seriona::App {
@@ -69,6 +70,12 @@ public:
     QList<QPair<QString, QString>> enumeratePlaybackDevices();
     QList<PlaybackDeviceCapabilities> enumeratePlaybackDeviceCapabilities();
     void setLogLevel(int level);
+    // 前端应用设置读写（QVariant ↔ JSON 字符串经后端 app_settings 表持久化）；
+    // 读取返回 nullopt 表示后端不可用/未存储（由 AppSettingsStorage 回退内存缓存），
+    // 写入/删除失败返回 false。
+    std::optional<QVariant> getAppSetting(const QString &group, const QString &key, const QVariant &defaultValue);
+    bool setAppSetting(const QString &group, const QString &key, const QVariant &value);
+    bool removeAppSetting(const QString &group, const QString &key);
     const seriona::control::PlayerStateSnapshot &playerSnapshot() const;
     const seriona::control::LibraryStateSnapshot &librarySnapshot() const;
     const std::deque<seriona::control::ControlDomainNotification> &notifications() const;

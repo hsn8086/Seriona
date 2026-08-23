@@ -1,19 +1,22 @@
 #include "settings_controller.h"
 
-#include <QCoreApplication>
-#include <QSettings>
+#include "app_settings_storage.h"
+
+#include <QHash>
 #include <QSignalSpy>
-#include <QTemporaryDir>
 #include <QVariant>
 #include <QtTest/QTest>
 
 #include <memory>
-#include <utility>
 
 namespace {
 
-constexpr auto kSettingsFileProperty = "seriona.settingsFileForTests";
 constexpr auto kOutputGroup = "output";
+
+QString storageKey(const QString &group, const QString &key)
+{
+    return group + QLatin1Char('\x1f') + key;
+}
 
 } // namespace
 
@@ -49,31 +52,52 @@ private slots:
     void logLevelPushAndDefense();
 
 private:
-    std::unique_ptr<QTemporaryDir> m_settingsDir;
-    QString m_settingsFile;
+    Seriona::App::AppSettingsBackend testBackend();
+    QVariant storedValue(const QString &group, const QString &key, const QVariant &defaultValue = QVariant()) const;
+    bool storedContains(const QString &group, const QString &key) const;
+    void removeStored(const QString &group, const QString &key);
+
+    QHash<QString, QVariant> m_store;
 };
+
+Seriona::App::AppSettingsBackend SettingsControllerTest::testBackend()
+{
+    return Seriona::App::AppSettingsBackend{
+        .read = [this](const QString &group, const QString &key, const QVariant &defaultValue) -> std::optional<QVariant> {
+            return m_store.value(storageKey(group, key), defaultValue);
+        },
+        .write = [this](const QString &group, const QString &key, const QVariant &value) {
+            m_store.insert(storageKey(group, key), value);
+        },
+        .remove = [this](const QString &group, const QString &key) {
+            m_store.remove(storageKey(group, key));
+        },
+    };
+}
+
+QVariant SettingsControllerTest::storedValue(const QString &group, const QString &key, const QVariant &defaultValue) const
+{
+    return m_store.value(storageKey(group, key), defaultValue);
+}
+
+bool SettingsControllerTest::storedContains(const QString &group, const QString &key) const
+{
+    return m_store.contains(storageKey(group, key));
+}
+
+void SettingsControllerTest::removeStored(const QString &group, const QString &key)
+{
+    m_store.remove(storageKey(group, key));
+}
 
 void SettingsControllerTest::init()
 {
-    m_settingsDir = std::make_unique<QTemporaryDir>();
-    QVERIFY(m_settingsDir->isValid());
-    m_settingsFile = m_settingsDir->filePath(QStringLiteral("settings.ini"));
-    QCoreApplication::instance()->setProperty(kSettingsFileProperty, m_settingsFile);
-
-    QSettings settings(m_settingsFile, QSettings::IniFormat);
-    settings.clear();
-    settings.sync();
+    m_store.clear();
 }
 
 void SettingsControllerTest::cleanup()
 {
-    QSettings settings(m_settingsFile, QSettings::IniFormat);
-    settings.clear();
-    settings.sync();
-
-    QCoreApplication::instance()->setProperty(kSettingsFileProperty, QVariant{});
-    m_settingsFile.clear();
-    m_settingsDir.reset();
+    m_store.clear();
 }
 
 void SettingsControllerTest::defaults()
@@ -95,6 +119,7 @@ void SettingsControllerTest::defaults()
 void SettingsControllerTest::propertySettersPersistAndNotify()
 {
     Seriona::App::SettingsController settings;
+    settings.setSettingsStorageBackend(testBackend());
     QSignalSpy modeSpy(&settings, &Seriona::App::SettingsController::outputModeChanged);
     QSignalSpy rateSpy(&settings, &Seriona::App::SettingsController::sampleRateChanged);
     QSignalSpy formatSpy(&settings, &Seriona::App::SettingsController::sampleFormatChanged);
@@ -133,22 +158,18 @@ void SettingsControllerTest::propertySettersPersistAndNotify()
     QCOMPARE(formatSpy.count(), 1);
     QCOMPARE(delimiterSpy.count(), 1);
 
-    QSettings stored(m_settingsFile, QSettings::IniFormat);
-    stored.beginGroup(QString::fromUtf8(kOutputGroup));
-    QCOMPARE(stored.value(QStringLiteral("outputMode")).toInt(), 1);
-    QCOMPARE(stored.value(QStringLiteral("sampleRate")).toInt(), 96000);
-    QCOMPARE(stored.value(QStringLiteral("sampleFormat")).toInt(), 2);
-    QCOMPARE(stored.value(QStringLiteral("bufferDurationMs")).toInt(), 500);
-    QCOMPARE(stored.value(QStringLiteral("preferredDeviceId")).toString(), QStringLiteral("dev-1"));
-    stored.endGroup();
-    stored.beginGroup(QStringLiteral("lyrics"));
-    QCOMPARE(stored.value(QStringLiteral("delimiters")).toStringList(), expectedDelimiters);
-    stored.endGroup();
+    QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("outputMode")).toInt(), 1);
+    QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("sampleRate")).toInt(), 96000);
+    QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("sampleFormat")).toInt(), 2);
+    QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("bufferDurationMs")).toInt(), 500);
+    QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("preferredDeviceId")).toString(), QStringLiteral("dev-1"));
+    QCOMPARE(storedValue(QStringLiteral("lyrics"), QStringLiteral("delimiters")).toStringList(), expectedDelimiters);
 }
 
 void SettingsControllerTest::invalidValuesRejected()
 {
     Seriona::App::SettingsController settings;
+    settings.setSettingsStorageBackend(testBackend());
 
     settings.setOutputMode(7);
     QCOMPARE(settings.outputMode(), 0);
@@ -188,18 +209,15 @@ void SettingsControllerTest::invalidValuesRejected()
     QCOMPARE(settings.sampleFormat(), 4);
     QCOMPARE(settings.bufferDurationMs(), 1000);
 
-    // 非法值不写入 QSettings
+    // 非法值不写入存储
     settings.setOutputMode(7);
     settings.setSampleRate(100);
     settings.setSampleFormat(3);
     settings.setBufferDurationMs(2000);
-    QSettings stored(m_settingsFile, QSettings::IniFormat);
-    stored.beginGroup(QString::fromUtf8(kOutputGroup));
-    QCOMPARE(stored.value(QStringLiteral("outputMode")).toInt(), 1);
-    QCOMPARE(stored.value(QStringLiteral("sampleRate")).toInt(), 768000);
-    QCOMPARE(stored.value(QStringLiteral("sampleFormat")).toInt(), 4);
-    QCOMPARE(stored.value(QStringLiteral("bufferDurationMs")).toInt(), 1000);
-    stored.endGroup();
+    QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("outputMode")).toInt(), 1);
+    QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("sampleRate")).toInt(), 768000);
+    QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("sampleFormat")).toInt(), 4);
+    QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("bufferDurationMs")).toInt(), 1000);
 }
 
 void SettingsControllerTest::applyAssemblesPayload()
@@ -273,6 +291,7 @@ void SettingsControllerTest::persistenceRoundTrip()
 {
     {
         Seriona::App::SettingsController writer;
+        writer.setSettingsStorageBackend(testBackend());
         writer.setOutputMode(1);
         writer.setSampleRate(192000);
         writer.setBufferDurationMs(800);
@@ -280,6 +299,7 @@ void SettingsControllerTest::persistenceRoundTrip()
     }
 
     Seriona::App::SettingsController reader;
+    reader.setSettingsStorageBackend(testBackend());
     int pushes = 0;
     reader.setApplyOutputConfigExecutor(
         [&pushes](int, int, int, int, const QString &) {
@@ -298,6 +318,7 @@ void SettingsControllerTest::persistenceRoundTrip()
 void SettingsControllerTest::setDefaultsLandsPropertiesWithoutPersistenceOrPush()
 {
     Seriona::App::SettingsController settings;
+    settings.setSettingsStorageBackend(testBackend());
     int pushes = 0;
     settings.setApplyOutputConfigExecutor(
         [&pushes](int, int, int, int, const QString &) {
@@ -312,11 +333,8 @@ void SettingsControllerTest::setDefaultsLandsPropertiesWithoutPersistenceOrPush(
     QCOMPARE(settings.preferredDeviceId(), QStringLiteral("dev-4"));
     QCOMPARE(pushes, 0);
 
-    QSettings stored(m_settingsFile, QSettings::IniFormat);
-    stored.beginGroup(QString::fromUtf8(kOutputGroup));
-    QVERIFY(!stored.contains(QStringLiteral("outputMode")));
-    QVERIFY(!stored.contains(QStringLiteral("sampleRate")));
-    stored.endGroup();
+    QVERIFY(!storedContains(QStringLiteral("output"), QStringLiteral("outputMode")));
+    QVERIFY(!storedContains(QStringLiteral("output"), QStringLiteral("sampleRate")));
 }
 
 void SettingsControllerTest::enumerateDevicesUpdatesList()
@@ -528,24 +546,23 @@ void SettingsControllerTest::logLevelPersistRoundTrip()
 {
     {
         Seriona::App::SettingsController writer;
+        writer.setSettingsStorageBackend(testBackend());
         writer.setLogLevel(1); // debug
         QCOMPARE(writer.logLevel(), 1);
     }
 
     // 持久化键位于 logging 组，值为写入的枚举 int
-    QSettings stored(m_settingsFile, QSettings::IniFormat);
-    stored.beginGroup(QStringLiteral("logging"));
-    QCOMPARE(stored.value(QStringLiteral("logLevel")).toInt(), 1);
-    stored.endGroup();
+    QCOMPARE(storedValue(QStringLiteral("logging"), QStringLiteral("logLevel")).toInt(), 1);
 
     Seriona::App::SettingsController reader;
+    reader.setSettingsStorageBackend(testBackend());
     reader.reloadFromSettings();
     QCOMPARE(reader.logLevel(), 1);
 
     // 未写入时默认 info
-    stored.remove(QStringLiteral("logging/logLevel"));
-    stored.sync();
+    removeStored(QStringLiteral("logging"), QStringLiteral("logLevel"));
     Seriona::App::SettingsController defaultReader;
+    defaultReader.setSettingsStorageBackend(testBackend());
     defaultReader.reloadFromSettings();
     QCOMPARE(defaultReader.logLevel(), 2);
 }
@@ -579,6 +596,7 @@ void SettingsControllerTest::logLevelMapping()
 void SettingsControllerTest::logLevelPushAndDefense()
 {
     Seriona::App::SettingsController settings;
+    settings.setSettingsStorageBackend(testBackend());
     QList<int> pushed;
     settings.setLogLevelExecutor([&pushed](int level) {
         pushed.append(level);
@@ -602,23 +620,15 @@ void SettingsControllerTest::logLevelPushAndDefense()
     QCOMPARE(settings.logLevel(), 4);
     QCOMPARE(pushed.size(), 2);
 
-    // 拒绝不写 QSettings
-    QSettings stored(m_settingsFile, QSettings::IniFormat);
-    stored.beginGroup(QStringLiteral("logging"));
-    QCOMPARE(stored.value(QStringLiteral("logLevel")).toInt(), 4);
-    stored.endGroup();
+    // 拒绝不写入存储
+    QCOMPARE(storedValue(QStringLiteral("logging"), QStringLiteral("logLevel")).toInt(), 4);
 
     // applyLogLevel：推送当前值，不持久化（启动路径：reload 后同步后端）
-    QSettings preApply(m_settingsFile, QSettings::IniFormat);
-    preApply.remove(QStringLiteral("logging/logLevel"));
-    preApply.sync();
+    removeStored(QStringLiteral("logging"), QStringLiteral("logLevel"));
     settings.applyLogLevel();
     QCOMPARE(pushed.size(), 3);
     QCOMPARE(pushed.at(2), 4);
-    QSettings postApply(m_settingsFile, QSettings::IniFormat);
-    postApply.beginGroup(QStringLiteral("logging"));
-    QVERIFY(!postApply.contains(QStringLiteral("logLevel")));
-    postApply.endGroup();
+    QVERIFY(!storedContains(QStringLiteral("logging"), QStringLiteral("logLevel")));
 
     // 无 executor（mock-only）时 setter/applyLogLevel 无副作用
     Seriona::App::SettingsController mockController;
@@ -626,13 +636,10 @@ void SettingsControllerTest::logLevelPushAndDefense()
     mockController.applyLogLevel();
     QCOMPARE(mockController.logLevel(), 3);
 
-    // reload 防御：设置文件中的非法值回退默认
-    QSettings corrupt(m_settingsFile, QSettings::IniFormat);
-    corrupt.beginGroup(QStringLiteral("logging"));
-    corrupt.setValue(QStringLiteral("logLevel"), 42);
-    corrupt.endGroup();
-    corrupt.sync();
+    // reload 防御：存储中的非法值回退默认
+    m_store.insert(storageKey(QStringLiteral("logging"), QStringLiteral("logLevel")), 42);
     Seriona::App::SettingsController corruptReader;
+    corruptReader.setSettingsStorageBackend(testBackend());
     corruptReader.reloadFromSettings();
     QCOMPARE(corruptReader.logLevel(), 2);
 }
@@ -642,21 +649,25 @@ void SettingsControllerTest::lyricDelimitersPersistRoundTrip()
     const QStringList delimiters{QStringLiteral(" / "), QStringLiteral(" | "), QStringLiteral(" - ")};
     {
         Seriona::App::SettingsController writer;
+        writer.setSettingsStorageBackend(testBackend());
         writer.setLyricDelimiters(delimiters);
         QCOMPARE(writer.lyricDelimiters(), delimiters);
     }
 
     Seriona::App::SettingsController reader;
+    reader.setSettingsStorageBackend(testBackend());
     reader.reloadFromSettings();
     QCOMPARE(reader.lyricDelimiters(), delimiters);
 
     // 空列表语义：合法（清空后歌词不切分），持久化并重读一致，不得崩溃
     {
         Seriona::App::SettingsController emptyWriter;
+        emptyWriter.setSettingsStorageBackend(testBackend());
         emptyWriter.setLyricDelimiters({});
         QVERIFY(emptyWriter.lyricDelimiters().isEmpty());
     }
     Seriona::App::SettingsController emptyReader;
+    emptyReader.setSettingsStorageBackend(testBackend());
     emptyReader.reloadFromSettings();
     QVERIFY(emptyReader.lyricDelimiters().isEmpty());
 }
@@ -665,19 +676,20 @@ void SettingsControllerTest::sampleFormatPersistRoundTrip()
 {
     {
         Seriona::App::SettingsController writer;
+        writer.setSettingsStorageBackend(testBackend());
         writer.setSampleFormat(4);
         QCOMPARE(writer.sampleFormat(), 4);
     }
 
     Seriona::App::SettingsController reader;
+    reader.setSettingsStorageBackend(testBackend());
     reader.reloadFromSettings();
     QCOMPARE(reader.sampleFormat(), 4);
 
     // 未写入时默认 0
-    QSettings stored(m_settingsFile, QSettings::IniFormat);
-    stored.remove(QStringLiteral("output/sampleFormat"));
-    stored.sync();
+    removeStored(QStringLiteral("output"), QStringLiteral("sampleFormat"));
     Seriona::App::SettingsController defaultReader;
+    defaultReader.setSettingsStorageBackend(testBackend());
     defaultReader.reloadFromSettings();
     QCOMPARE(defaultReader.sampleFormat(), 0);
 }
@@ -711,6 +723,7 @@ void SettingsControllerTest::applyIncludesSampleFormat()
 void SettingsControllerTest::rollbackRejectedOutputConfigRestoresSnapshot()
 {
     Seriona::App::SettingsController settings;
+    settings.setSettingsStorageBackend(testBackend());
     int pushes = 0;
     settings.setApplyOutputConfigExecutor(
         [&pushes](int, int, int, int, const QString &) {
@@ -739,13 +752,10 @@ void SettingsControllerTest::rollbackRejectedOutputConfigRestoresSnapshot()
     // 回退本身不推送
     QCOMPARE(pushes, 2);
 
-    // 回退不持久化：QSettings 保持 setter 写入的值
-    QSettings stored(m_settingsFile, QSettings::IniFormat);
-    stored.beginGroup(QString::fromUtf8(kOutputGroup));
-    QCOMPARE(stored.value(QStringLiteral("outputMode")).toInt(), 1);
-    QCOMPARE(stored.value(QStringLiteral("sampleFormat")).toInt(), 2);
-    QCOMPARE(stored.value(QStringLiteral("bufferDurationMs")).toInt(), 500);
-    stored.endGroup();
+    // 回退不持久化：存储保持 setter 写入的值
+    QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("outputMode")).toInt(), 1);
+    QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("sampleFormat")).toInt(), 2);
+    QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("bufferDurationMs")).toInt(), 500);
 }
 
 void SettingsControllerTest::startupPushSequence()

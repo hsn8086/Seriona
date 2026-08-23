@@ -76,6 +76,8 @@ required_app_layer_sources=(
     src/app/navigation_controller.h
     src/app/settings_controller.cpp
     src/app/settings_controller.h
+    src/app/app_settings_storage.cpp
+    src/app/app_settings_storage.h
     src/app/backend_snapshot_mapper.cpp
     src/app/backend_snapshot_mapper.h
     src/app/backend_command_adapter.cpp

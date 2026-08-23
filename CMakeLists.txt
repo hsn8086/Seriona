@@ -156,6 +156,8 @@ set(SERIONA_APP_LAYER_SOURCES
     src/app/navigation_controller.h
     src/app/settings_controller.cpp
     src/app/settings_controller.h
+    src/app/app_settings_storage.cpp
+    src/app/app_settings_storage.h
     src/app/backend_snapshot_mapper.cpp
     src/app/backend_snapshot_mapper.h
     src/app/backend_command_adapter.cpp
@@ -331,6 +333,8 @@ if(BUILD_TESTING)
     add_executable(seriona_frontend_settings_controller_tests
         tests/frontend/adapter/tst_settings_controller.cpp
         src/app/settings_controller.cpp
+        src/app/app_settings_storage.cpp
+        src/app/app_settings_storage.h
         src/app/settings_controller.h
     )
     target_include_directories(seriona_frontend_settings_controller_tests
@@ -367,6 +371,8 @@ if(BUILD_TESTING)
     add_executable(seriona_frontend_track_stats_tests
         tests/frontend/adapter/tst_track_stats_controller.cpp
         src/app/track_stats_controller.cpp
+        src/app/app_settings_storage.cpp
+        src/app/app_settings_storage.h
         src/app/track_stats_controller.h
     )
     target_include_directories(seriona_frontend_track_stats_tests
@@ -643,6 +649,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_executable(seriona_frontend_app_facade_smoke_mode
             tests/frontend/adapter/tst_app_facade_smoke_mode.cpp
             src/app/app_facade.cpp
+            src/app/app_settings_storage.cpp
+            src/app/app_settings_storage.h
             src/app/track_stats_controller.cpp
             src/app/track_stats_controller.h
             src/app/app_facade.h
@@ -693,6 +701,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_executable(seriona_frontend_startup_restore_tests
             tests/frontend/adapter/tst_startup_restore.cpp
             src/app/app_facade.cpp
+            src/app/app_settings_storage.cpp
+            src/app/app_settings_storage.h
             src/app/track_stats_controller.cpp
             src/app/track_stats_controller.h
             src/app/app_facade.h
@@ -740,6 +750,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_executable(seriona_frontend_playback_snapshot_tests
             tests/frontend/adapter/tst_playback_snapshot_mapping.cpp
             src/app/app_facade.cpp
+            src/app/app_settings_storage.cpp
+            src/app/app_settings_storage.h
             src/app/track_stats_controller.cpp
             src/app/track_stats_controller.h
             src/app/app_facade.h
@@ -789,6 +801,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_executable(seriona_frontend_sidebar_queue_tests
             tests/frontend/adapter/tst_sidebar_queue_switch.cpp
             src/app/app_facade.cpp
+            src/app/app_settings_storage.cpp
+            src/app/app_settings_storage.h
             src/app/track_stats_controller.cpp
             src/app/track_stats_controller.h
             src/app/app_facade.h
@@ -977,6 +991,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_executable(seriona_frontend_waveform_worker_tests
             tests/frontend/adapter/tst_waveform_worker.cpp
             src/app/app_facade.cpp
+            src/app/app_settings_storage.cpp
+            src/app/app_settings_storage.h
             src/app/track_stats_controller.cpp
             src/app/track_stats_controller.h
             src/app/app_facade.h
@@ -1023,6 +1039,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_executable(seriona_frontend_current_track_lookup_tests
             tests/frontend/adapter/tst_current_track_lookup.cpp
             src/app/app_facade.cpp
+            src/app/app_settings_storage.cpp
+            src/app/app_settings_storage.h
             src/app/track_stats_controller.cpp
             src/app/track_stats_controller.h
             src/app/app_facade.h
@@ -1125,6 +1143,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             src/app/backend_bridge.cpp
             src/app/backend_bridge.h
             src/app/settings_controller.cpp
+            src/app/app_settings_storage.cpp
+            src/app/app_settings_storage.h
             src/app/settings_controller.h
             src/app/backend_command_adapter.cpp
             src/app/backend_command_adapter.h
@@ -1159,6 +1179,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_executable(seriona_frontend_track_detail_tests
             tests/frontend/adapter/tst_track_detail.cpp
             src/app/app_facade.cpp
+            src/app/app_settings_storage.cpp
+            src/app/app_settings_storage.h
             src/app/track_stats_controller.cpp
             src/app/track_stats_controller.h
             src/app/app_facade.h

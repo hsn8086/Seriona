@@ -1,34 +1,14 @@
 #include "track_stats_controller.h"
 
-#include <QCoreApplication>
-#include <QSettings>
-
 #include <algorithm>
 
 namespace Seriona::App {
 
 namespace {
 
-constexpr auto kSettingsFileProperty = "seriona.settingsFileForTests";
 constexpr auto kTrackStatsGroup = "trackStats";
 constexpr auto kPlayCountKeyPrefix = "playCount/";
 constexpr auto kRatingKeyPrefix = "rating/";
-
-// 与 settings_controller 相同模式：测试可经
-// QCoreApplication::property("seriona.settingsFileForTests") 注入临时文件；
-// 未注入时落到用户级 QSettings（"Seriona/Seriona"）。
-QSettings applicationSettings()
-{
-    const QCoreApplication *application = QCoreApplication::instance();
-    if (application) {
-        const QString settingsFile = application->property(kSettingsFileProperty).toString();
-        if (!settingsFile.isEmpty()) {
-            return QSettings(settingsFile, QSettings::IniFormat);
-        }
-    }
-
-    return QSettings(QStringLiteral("Seriona"), QStringLiteral("Seriona"));
-}
 
 QString playCountKey(const QString &trackId)
 {
@@ -47,16 +27,21 @@ TrackStatsController::TrackStatsController(QObject *parent)
 {
 }
 
+void TrackStatsController::setSettingsStorageBackend(AppSettingsBackend backend)
+{
+    m_settingsStorage.setBackend(std::move(backend));
+}
+
 int TrackStatsController::playCountFor(const QString &trackId) const
 {
     if (!validTrackId(trackId)) {
         return 0;
     }
 
-    QSettings settings = applicationSettings();
-    settings.beginGroup(QString::fromLatin1(kTrackStatsGroup));
-    const int count = settings.value(playCountKey(trackId), 0).toInt();
-    settings.endGroup();
+    const int count = m_settingsStorage.read(QString::fromLatin1(kTrackStatsGroup),
+                                             playCountKey(trackId),
+                                             0)
+                          .toInt();
     return std::max(count, 0);
 }
 
@@ -66,13 +51,8 @@ void TrackStatsController::recordPlayback(const QString &trackId)
         return;
     }
 
-    QSettings settings = applicationSettings();
-    settings.beginGroup(QString::fromLatin1(kTrackStatsGroup));
     const int count = playCountFor(trackId) + 1;
-    settings.setValue(playCountKey(trackId), count);
-    settings.endGroup();
-    settings.sync();
-
+    m_settingsStorage.write(QString::fromLatin1(kTrackStatsGroup), playCountKey(trackId), count);
     emit playCountChanged(trackId, count);
 }
 
@@ -82,10 +62,10 @@ int TrackStatsController::ratingFor(const QString &trackId) const
         return 0;
     }
 
-    QSettings settings = applicationSettings();
-    settings.beginGroup(QString::fromLatin1(kTrackStatsGroup));
-    const int rating = settings.value(ratingKey(trackId), 0).toInt();
-    settings.endGroup();
+    const int rating = m_settingsStorage.read(QString::fromLatin1(kTrackStatsGroup),
+                                              ratingKey(trackId),
+                                              0)
+                           .toInt();
     return std::clamp(rating, 0, 5);
 }
 
@@ -97,15 +77,11 @@ void TrackStatsController::setRating(const QString &trackId, int rating)
 
     const int clamped = std::clamp(rating, 0, 5);
 
-    QSettings settings = applicationSettings();
-    settings.beginGroup(QString::fromLatin1(kTrackStatsGroup));
     if (clamped == 0) {
-        settings.remove(ratingKey(trackId));
+        m_settingsStorage.remove(QString::fromLatin1(kTrackStatsGroup), ratingKey(trackId));
     } else {
-        settings.setValue(ratingKey(trackId), clamped);
+        m_settingsStorage.write(QString::fromLatin1(kTrackStatsGroup), ratingKey(trackId), clamped);
     }
-    settings.endGroup();
-    settings.sync();
 
     emit ratingChanged(trackId, clamped);
 }

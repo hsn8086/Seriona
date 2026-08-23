@@ -137,6 +137,22 @@ AppFacade::AppFacade(QObject *parent)
     m_settings.setLogLevelExecutor([this](int level) {
         return m_backendBridge->setLogLevel(level);
     });
+    // 应用设置存储：接入后端时经 BackendBridge → MediaController 键值存储；
+    // mock-only 不注入，各控制器回退内存存储（进程内有效）。
+    const AppSettingsBackend settingsBackend{
+        .read = [this](const QString &group, const QString &key, const QVariant &defaultValue) {
+            return m_backendBridge->getAppSetting(group, key, defaultValue);
+        },
+        .write = [this](const QString &group, const QString &key, const QVariant &value) {
+            m_backendBridge->setAppSetting(group, key, value);
+        },
+        .remove = [this](const QString &group, const QString &key) {
+            m_backendBridge->removeAppSetting(group, key);
+        },
+    };
+    m_settings.setSettingsStorageBackend(settingsBackend);
+    m_navigation.setSettingsStorageBackend(settingsBackend);
+    m_trackStats.setSettingsStorageBackend(settingsBackend);
     // 启动路径：bridge 就绪（startedChanged 且 started() 为真）后推送一次持久化配置；
     // shutdown 也会发 startedChanged（started()==false），必须跳过。
     connect(m_backendBridge.get(), &BackendBridge::startedChanged, this, [this] {

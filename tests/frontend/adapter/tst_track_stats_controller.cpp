@@ -1,51 +1,29 @@
 #include "track_stats_controller.h"
 
-#include <QCoreApplication>
+#include "app_settings_storage.h"
+
+#include <QHash>
 #include <QObject>
-#include <QSettings>
 #include <QSignalSpy>
-#include <QTemporaryDir>
 #include <QVariant>
 #include <QtTest/QTest>
 
-#include <utility>
-
 namespace {
 
-constexpr auto kSettingsFileProperty = "seriona.settingsFileForTests";
-
-// 把 QSettings 指向临时文件，避免测试污染用户真实配置（与
-// tst_settings_controller.cpp 同模式）。
-class ScopedSettingsFile
+QString storageKey(const QString &group, const QString &key)
 {
-public:
-    explicit ScopedSettingsFile(QTemporaryDir &dir)
-        : m_file(dir.filePath(QStringLiteral("track-stats.ini")))
-    {
-        QCoreApplication::instance()->setProperty(kSettingsFileProperty, m_file);
-    }
-
-    ~ScopedSettingsFile()
-    {
-        QCoreApplication::instance()->setProperty(kSettingsFileProperty, QVariant{});
-    }
-
-    const QString &file() const
-    {
-        return m_file;
-    }
-
-private:
-    QString m_file;
-};
-
+    return group + QLatin1Char('\x1f') + key;
 }
+
+} // namespace
 
 class TrackStatsControllerTest : public QObject
 {
     Q_OBJECT
 
 private slots:
+    void init();
+    void cleanup();
     void defaultsAreZeroAndUnrated();
     void recordPlaybackIncrementsPerTrack();
     void recordPlaybackEmitsSignalWithTrackAndCount();
@@ -53,14 +31,46 @@ private slots:
     void ratingEmitsSignal();
     void persistenceRoundTripAcrossControllerInstances();
     void emptyTrackIdIgnored();
+
+private:
+    Seriona::App::AppSettingsBackend testBackend();
+    QVariant storedValue(const QString &group, const QString &key, const QVariant &defaultValue = QVariant()) const;
+
+    QHash<QString, QVariant> m_store;
 };
+
+void TrackStatsControllerTest::init()
+{
+    m_store.clear();
+}
+
+void TrackStatsControllerTest::cleanup()
+{
+    m_store.clear();
+}
+
+Seriona::App::AppSettingsBackend TrackStatsControllerTest::testBackend()
+{
+    return Seriona::App::AppSettingsBackend{
+        .read = [this](const QString &group, const QString &key, const QVariant &defaultValue) -> std::optional<QVariant> {
+            return m_store.value(storageKey(group, key), defaultValue);
+        },
+        .write = [this](const QString &group, const QString &key, const QVariant &value) {
+            m_store.insert(storageKey(group, key), value);
+        },
+        .remove = [this](const QString &group, const QString &key) {
+            m_store.remove(storageKey(group, key));
+        },
+    };
+}
+
+QVariant TrackStatsControllerTest::storedValue(const QString &group, const QString &key, const QVariant &defaultValue) const
+{
+    return m_store.value(storageKey(group, key), defaultValue);
+}
 
 void TrackStatsControllerTest::defaultsAreZeroAndUnrated()
 {
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
-    ScopedSettingsFile settings(dir);
-
     Seriona::App::TrackStatsController controller;
     QCOMPARE(controller.playCountFor(QStringLiteral("track-a")), 0);
     QCOMPARE(controller.ratingFor(QStringLiteral("track-a")), 0);
@@ -68,10 +78,6 @@ void TrackStatsControllerTest::defaultsAreZeroAndUnrated()
 
 void TrackStatsControllerTest::recordPlaybackIncrementsPerTrack()
 {
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
-    ScopedSettingsFile settings(dir);
-
     Seriona::App::TrackStatsController controller;
     controller.recordPlayback(QStringLiteral("track-a"));
     controller.recordPlayback(QStringLiteral("track-a"));
@@ -85,10 +91,6 @@ void TrackStatsControllerTest::recordPlaybackIncrementsPerTrack()
 
 void TrackStatsControllerTest::recordPlaybackEmitsSignalWithTrackAndCount()
 {
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
-    ScopedSettingsFile settings(dir);
-
     Seriona::App::TrackStatsController controller;
     QSignalSpy spy(&controller, &Seriona::App::TrackStatsController::playCountChanged);
 
@@ -107,10 +109,6 @@ void TrackStatsControllerTest::recordPlaybackEmitsSignalWithTrackAndCount()
 
 void TrackStatsControllerTest::ratingRoundTripAndClamping()
 {
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
-    ScopedSettingsFile settings(dir);
-
     Seriona::App::TrackStatsController controller;
     controller.setRating(QStringLiteral("track-a"), 4);
     QCOMPARE(controller.ratingFor(QStringLiteral("track-a")), 4);
@@ -129,10 +127,6 @@ void TrackStatsControllerTest::ratingRoundTripAndClamping()
 
 void TrackStatsControllerTest::ratingEmitsSignal()
 {
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
-    ScopedSettingsFile settings(dir);
-
     Seriona::App::TrackStatsController controller;
     QSignalSpy spy(&controller, &Seriona::App::TrackStatsController::ratingChanged);
 
@@ -148,19 +142,17 @@ void TrackStatsControllerTest::ratingEmitsSignal()
 
 void TrackStatsControllerTest::persistenceRoundTripAcrossControllerInstances()
 {
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
     {
-        ScopedSettingsFile settings(dir);
         Seriona::App::TrackStatsController writer;
+        writer.setSettingsStorageBackend(testBackend());
         writer.recordPlayback(QStringLiteral("track-a"));
         writer.recordPlayback(QStringLiteral("track-a"));
         writer.setRating(QStringLiteral("track-b"), 5);
     }
 
-    // 新实例（同一 QSettings 文件）应读到持久化的值
-    ScopedSettingsFile settings(dir);
+    // 新实例（同一 backend）应读到持久化的值
     Seriona::App::TrackStatsController reader;
+    reader.setSettingsStorageBackend(testBackend());
     QCOMPARE(reader.playCountFor(QStringLiteral("track-a")), 2);
     QCOMPARE(reader.ratingFor(QStringLiteral("track-b")), 5);
     QCOMPARE(reader.playCountFor(QStringLiteral("track-b")), 0);
@@ -169,11 +161,8 @@ void TrackStatsControllerTest::persistenceRoundTripAcrossControllerInstances()
 
 void TrackStatsControllerTest::emptyTrackIdIgnored()
 {
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
-    ScopedSettingsFile settings(dir);
-
     Seriona::App::TrackStatsController controller;
+    controller.setSettingsStorageBackend(testBackend());
     QSignalSpy playSpy(&controller, &Seriona::App::TrackStatsController::playCountChanged);
     QSignalSpy ratingSpy(&controller, &Seriona::App::TrackStatsController::ratingChanged);
 
@@ -184,8 +173,7 @@ void TrackStatsControllerTest::emptyTrackIdIgnored()
     QCOMPARE(ratingSpy.count(), 0);
 
     // 空 trackId 不产生任何持久化键
-    QSettings stored(settings.file(), QSettings::IniFormat);
-    QCOMPARE(stored.childGroups().size(), 0);
+    QVERIFY(m_store.isEmpty());
 }
 
 QTEST_GUILESS_MAIN(TrackStatsControllerTest)

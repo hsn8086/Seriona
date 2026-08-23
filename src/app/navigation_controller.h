@@ -1,5 +1,7 @@
 #pragma once
 
+#include "app_settings_storage.h"
+
 #include <QObject>
 #include <QQmlEngine>
 #include <QString>
@@ -38,6 +40,10 @@ public:
     bool scanLibrary(LibraryController &library, const QUrl &rootUrl);
     bool restorePlaylistFromStartup(LibraryController &library, const StartupScanInvoker &scanLibrary);
 
+    // 设置存储后端注入（AppFacade 接入后端时注入 BackendBridge 实现；
+    // 不注入时回退内存存储）。
+    void setSettingsStorageBackend(AppSettingsBackend backend);
+
     Q_INVOKABLE void restorePlaylistFromStartup();
     Q_INVOKABLE void addFolderFromStartup();
     Q_INVOKABLE void showPlaybackView();
@@ -64,6 +70,7 @@ private:
     bool m_sidebarOpen = false;
     bool m_startupScreenVisible = true;
     bool m_manualSidebarToggle = false;
+    AppSettingsStorage m_settingsStorage;
 };
 
 }

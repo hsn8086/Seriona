@@ -2,50 +2,15 @@
 
 #include "library_model.h"
 
-#include <QCoreApplication>
 #include <QFileInfo>
-#include <QSettings>
 #include <QVariant>
 
 namespace Seriona::App {
 
 namespace {
 
-constexpr auto kSettingsFileProperty = "seriona.settingsFileForTests";
-constexpr auto kLastLibraryRootKey = "library/lastScanRoot";
-
-QSettings applicationSettings()
-{
-    const QCoreApplication *application = QCoreApplication::instance();
-    if (application) {
-        const QString settingsFile = application->property(kSettingsFileProperty).toString();
-        if (!settingsFile.isEmpty()) {
-            return QSettings(settingsFile, QSettings::IniFormat);
-        }
-    }
-
-    return QSettings(QStringLiteral("Seriona"), QStringLiteral("Seriona"));
-}
-
-QString savedLibraryRootPath()
-{
-    QSettings settings = applicationSettings();
-    return settings.value(QString::fromUtf8(kLastLibraryRootKey)).toString();
-}
-
-void persistLibraryRootPath(const QString &rootPath)
-{
-    QSettings settings = applicationSettings();
-    settings.setValue(QString::fromUtf8(kLastLibraryRootKey), rootPath);
-    settings.sync();
-}
-
-void clearLibraryRootPath()
-{
-    QSettings settings = applicationSettings();
-    settings.remove(QString::fromUtf8(kLastLibraryRootKey));
-    settings.sync();
-}
+constexpr auto kLastLibraryRootGroup = "library";
+constexpr auto kLastLibraryRootKey = "lastScanRoot";
 
 }
 
@@ -92,7 +57,9 @@ bool NavigationController::scanLibrary(LibraryController &library, const QUrl &r
 
     const QString rootPath = library.savedRootPath();
     if (!rootPath.isEmpty()) {
-        persistLibraryRootPath(rootPath);
+        m_settingsStorage.write(QString::fromUtf8(kLastLibraryRootGroup),
+                                QString::fromUtf8(kLastLibraryRootKey),
+                                rootPath);
     }
     return true;
 }
@@ -101,16 +68,21 @@ bool NavigationController::restorePlaylistFromStartup(
     LibraryController &library,
     const StartupScanInvoker &scanLibrary)
 {
-    const QString rootPath = savedLibraryRootPath();
+    const QString rootPath = m_settingsStorage.read(QString::fromUtf8(kLastLibraryRootGroup),
+                                                    QString::fromUtf8(kLastLibraryRootKey),
+                                                    QString())
+                                 .toString();
     if (rootPath.isEmpty()) {
-        clearLibraryRootPath();
+        m_settingsStorage.remove(QString::fromUtf8(kLastLibraryRootGroup),
+                                 QString::fromUtf8(kLastLibraryRootKey));
         library.clearSavedRootPath(tr("请先添加音乐文件夹"));
         return false;
     }
 
     const QFileInfo rootInfo(rootPath);
     if (!rootInfo.isDir()) {
-        clearLibraryRootPath();
+        m_settingsStorage.remove(QString::fromUtf8(kLastLibraryRootGroup),
+                                 QString::fromUtf8(kLastLibraryRootKey));
         library.clearSavedRootPath(tr("上次曲库文件夹不可用，请重新选择文件夹"));
         return false;
     }
@@ -121,6 +93,11 @@ bool NavigationController::restorePlaylistFromStartup(
 
     restorePlaylistFromStartup();
     return true;
+}
+
+void NavigationController::setSettingsStorageBackend(AppSettingsBackend backend)
+{
+    m_settingsStorage.setBackend(std::move(backend));
 }
 
 void NavigationController::restorePlaylistFromStartup()
