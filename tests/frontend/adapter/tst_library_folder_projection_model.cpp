@@ -279,40 +279,37 @@ void LibraryFolderProjectionModelTest::projectionContentsPerFolderLevel()
     LibraryController controller;
     controller.setPlaylistTreeSnapshot(makeProjectedTreeSnapshot());
 
-    // 栈初始：只有根投影（level 0），投影 rootProjectionNodeIds。
+    // 栈初始：只有根投影（folderNodeId 为空），投影 rootProjectionNodeIds。
     QCOMPARE(controller.folderStackDepth(), 0);
-    auto *level0 = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(0));
-    QVERIFY(level0 != nullptr);
-    QVERIFY(controller.projectionModelForLevel(1) == nullptr);
-    QVERIFY(controller.projectionModelForLevel(-1) == nullptr);
-    QVERIFY(level0->folderNodeId().isEmpty());
-    expectProjection(level0, {QStringLiteral("album-a"), QStringLiteral("track-c")});
-    QCOMPARE(level0->data(level0->index(0, 0), LibraryModel::NameRole).toString(), QStringLiteral("Album A"));
-    QCOMPARE(level0->data(level0->index(0, 0), LibraryModel::ParentNameRole).toString(), QStringLiteral("Library"));
-    QCOMPARE(level0->data(level0->index(0, 0), LibraryModel::SongCountRole).toInt(), 2);
-    QCOMPARE(level0->data(level0->index(0, 0), LibraryModel::IsFolderRole).toBool(), true);
+    auto *rootProj = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QString()));
+    QVERIFY(rootProj != nullptr);
+    QVERIFY(rootProj->folderNodeId().isEmpty());
+    expectProjection(rootProj, {QStringLiteral("album-a"), QStringLiteral("track-c")});
+    QCOMPARE(rootProj->data(rootProj->index(0, 0), LibraryModel::NameRole).toString(), QStringLiteral("Album A"));
+    QCOMPARE(rootProj->data(rootProj->index(0, 0), LibraryModel::ParentNameRole).toString(), QStringLiteral("Library"));
+    QCOMPARE(rootProj->data(rootProj->index(0, 0), LibraryModel::SongCountRole).toInt(), 2);
+    QCOMPARE(rootProj->data(rootProj->index(0, 0), LibraryModel::IsFolderRole).toBool(), true);
 
-    // 进入 album-a：level 1 出现其直接子级投影，level 0 不变。
+    // 进入 album-a：获取 album-a 投影，根投影不变。
     controller.enterFolder(QStringLiteral("album-a"));
     QCOMPARE(controller.folderStackDepth(), 1);
-    auto *level0AfterEnter = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(0));
-    auto *level1 = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(1));
-    QVERIFY(level0AfterEnter == level0);
-    QVERIFY(level1 != nullptr);
-    QCOMPARE(level1->folderNodeId(), QStringLiteral("album-a"));
-    expectProjection(level1, {QStringLiteral("track-a"), QStringLiteral("track-b")});
-    expectProjection(level0, {QStringLiteral("album-a"), QStringLiteral("track-c")});
-    QCOMPARE(level1->data(level1->index(1, 0), LibraryModel::TitleRole).toString(), QStringLiteral("Song B"));
-    QCOMPARE(level1->data(level1->index(1, 0), LibraryModel::ArtistRole).toString(), QStringLiteral("Artist B"));
-    QCOMPARE(level1->data(level1->index(1, 0), LibraryModel::IsFolderRole).toBool(), false);
+    auto *rootProjAfterEnter = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QString()));
+    auto *albumAProj = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("album-a")));
+    QVERIFY(rootProjAfterEnter == rootProj);
+    QVERIFY(albumAProj != nullptr);
+    QCOMPARE(albumAProj->folderNodeId(), QStringLiteral("album-a"));
+    expectProjection(albumAProj, {QStringLiteral("track-a"), QStringLiteral("track-b")});
+    expectProjection(rootProj, {QStringLiteral("album-a"), QStringLiteral("track-c")});
+    QCOMPARE(albumAProj->data(albumAProj->index(1, 0), LibraryModel::TitleRole).toString(), QStringLiteral("Song B"));
+    QCOMPARE(albumAProj->data(albumAProj->index(1, 0), LibraryModel::ArtistRole).toString(), QStringLiteral("Artist B"));
+    QCOMPARE(albumAProj->data(albumAProj->index(1, 0), LibraryModel::IsFolderRole).toBool(), false);
 
-    // 返回：level 1 释放（越界返回 nullptr），level 0 实例与内容保持。
+    // 返回：根实例与内容保持，album-a 实例保留在缓存中。
     controller.goBack();
     QCOMPARE(controller.folderStackDepth(), 0);
-    auto *level0AfterBack = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(0));
-    QVERIFY(level0AfterBack == level0);
-    QVERIFY(controller.projectionModelForLevel(1) == nullptr);
-    expectProjection(level0, {QStringLiteral("album-a"), QStringLiteral("track-c")});
+    auto *rootProjAfterBack = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QString()));
+    QVERIFY(rootProjAfterBack == rootProj);
+    expectProjection(rootProj, {QStringLiteral("album-a"), QStringLiteral("track-c")});
 }
 
 void LibraryFolderProjectionModelTest::projectionSortsPerLevelRules()
@@ -325,20 +322,20 @@ void LibraryFolderProjectionModelTest::projectionSortsPerLevelRules()
     controller.setPlaylistTreeSnapshot(makeSortableSnapshot());
 
     controller.enterFolder(QStringLiteral("folder-jazz"));
-    auto *level1 = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(1));
-    QVERIFY(level1 != nullptr);
-    expectProjection(level1, {QStringLiteral("track-folder-b"), QStringLiteral("track-folder-a"), QStringLiteral("track-folder-c")});
+    auto *jazzProj = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("folder-jazz")));
+    QVERIFY(jazzProj != nullptr);
+    expectProjection(jazzProj, {QStringLiteral("track-folder-b"), QStringLiteral("track-folder-a"), QStringLiteral("track-folder-c")});
 
     // 排序规则应用到当前文件夹投影（与主模型投影同语义）。
     controller.applySortRules(sortRules({{QStringLiteral("title"), QStringLiteral("asc")}}));
-    expectProjection(level1, {QStringLiteral("track-folder-a"), QStringLiteral("track-folder-b"), QStringLiteral("track-folder-c")});
+    expectProjection(jazzProj, {QStringLiteral("track-folder-a"), QStringLiteral("track-folder-b"), QStringLiteral("track-folder-c")});
 
     controller.applySortRules(sortRules({{QStringLiteral("title"), QStringLiteral("desc")}}));
-    expectProjection(level1, {QStringLiteral("track-folder-c"), QStringLiteral("track-folder-b"), QStringLiteral("track-folder-a")});
+    expectProjection(jazzProj, {QStringLiteral("track-folder-c"), QStringLiteral("track-folder-b"), QStringLiteral("track-folder-a")});
 
     // 父级投影不受子级排序影响。
-    auto *level0 = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(0));
-    expectProjection(level0, {QStringLiteral("folder-jazz"), QStringLiteral("track-root")});
+    auto *rootProj = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QString()));
+    expectProjection(rootProj, {QStringLiteral("folder-jazz"), QStringLiteral("track-root")});
 }
 
 void LibraryFolderProjectionModelTest::revisionAdvancesOnRebuild()
@@ -369,22 +366,22 @@ void LibraryFolderProjectionModelTest::treeChangeRebuildsProjection()
     controller.setPlaylistTreeSnapshot(makeProjectedTreeSnapshot());
     controller.enterFolder(QStringLiteral("album-a"));
 
-    auto *level0 = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(0));
-    auto *level1 = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(1));
-    QVERIFY(level0 != nullptr);
-    QVERIFY(level1 != nullptr);
-    expectProjection(level1, {QStringLiteral("track-a"), QStringLiteral("track-b")});
+    auto *rootProj = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QString()));
+    auto *albumAProj = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("album-a")));
+    QVERIFY(rootProj != nullptr);
+    QVERIFY(albumAProj != nullptr);
+    expectProjection(albumAProj, {QStringLiteral("track-a"), QStringLiteral("track-b")});
 
     // 树重建：所有已建投影全量重建（实例保持，内容更新）。
     controller.setPlaylistTreeSnapshot(makeProjectedTreeSnapshotV2());
-    expectProjection(level1, {QStringLiteral("track-x"), QStringLiteral("track-y")});
-    expectProjection(level0, {QStringLiteral("album-a"), QStringLiteral("track-c")});
+    expectProjection(albumAProj, {QStringLiteral("track-x"), QStringLiteral("track-y")});
+    expectProjection(rootProj, {QStringLiteral("album-a"), QStringLiteral("track-c")});
     QCOMPARE(controller.folderStackDepth(), 1);
 
     // 对账后当前文件夹仍为 album-a，返回行为一致。
     controller.goBack();
     QCOMPARE(controller.folderStackDepth(), 0);
-    expectProjection(level0, {QStringLiteral("album-a"), QStringLiteral("track-c")});
+    expectProjection(rootProj, {QStringLiteral("album-a"), QStringLiteral("track-c")});
 }
 
 void LibraryFolderProjectionModelTest::playingAndFocusSyncEmitDataChanged()
@@ -393,59 +390,59 @@ void LibraryFolderProjectionModelTest::playingAndFocusSyncEmitDataChanged()
     controller.setPlaylistTreeSnapshot(makeProjectedTreeSnapshot());
     controller.enterFolder(QStringLiteral("album-a"));
 
-    auto *level0 = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(0));
-    auto *level1 = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(1));
-    QVERIFY(level0 != nullptr);
-    QVERIFY(level1 != nullptr);
-    QSignalSpy level1Spy(level1, &QAbstractItemModel::dataChanged);
-    QSignalSpy level0Spy(level0, &QAbstractItemModel::dataChanged);
+    auto *rootProj = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QString()));
+    auto *albumAProj = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("album-a")));
+    QVERIFY(rootProj != nullptr);
+    QVERIFY(albumAProj != nullptr);
+    QSignalSpy albumASpy(albumAProj, &QAbstractItemModel::dataChanged);
+    QSignalSpy rootSpy(rootProj, &QAbstractItemModel::dataChanged);
 
     // 播放身份变化：仅投影内存在的行发 dataChanged（IsPlaying role）。
     controller.setPlayingTrackId(QStringLiteral("track-a-id"));
-    QCOMPARE(level1Spy.count(), 1);
-    const QList<QVariant> playingArguments = level1Spy.takeFirst();
+    QCOMPARE(albumASpy.count(), 1);
+    const QList<QVariant> playingArguments = albumASpy.takeFirst();
     QCOMPARE(playingArguments.at(0).value<QModelIndex>().row(), 0);
     QCOMPARE(playingArguments.at(1).value<QModelIndex>().row(), 0);
     QCOMPARE(playingArguments.at(2).value<QList<int>>(), QList<int>{LibraryModel::IsPlayingRole});
-    QCOMPARE(level1->data(level1->index(0, 0), LibraryModel::IsPlayingRole).toBool(), true);
-    QCOMPARE(level1->data(level1->index(1, 0), LibraryModel::IsPlayingRole).toBool(), false);
-    QCOMPARE(level0Spy.count(), 0);
+    QCOMPARE(albumAProj->data(albumAProj->index(0, 0), LibraryModel::IsPlayingRole).toBool(), true);
+    QCOMPARE(albumAProj->data(albumAProj->index(1, 0), LibraryModel::IsPlayingRole).toBool(), false);
+    QCOMPARE(rootSpy.count(), 0);
 
     // 播放切到 level 1 外的曲目：level 1 不再发，level 0 对自身行发。
     controller.setPlayingTrackId(QStringLiteral("track-c-id"));
-    QCOMPARE(level1Spy.count(), 1);
-    const QList<QVariant> clearedArguments = level1Spy.takeFirst();
+    QCOMPARE(albumASpy.count(), 1);
+    const QList<QVariant> clearedArguments = albumASpy.takeFirst();
     QCOMPARE(clearedArguments.at(0).value<QModelIndex>().row(), 0);
     QCOMPARE(clearedArguments.at(2).value<QList<int>>(), QList<int>{LibraryModel::IsPlayingRole});
-    QCOMPARE(level1->data(level1->index(0, 0), LibraryModel::IsPlayingRole).toBool(), false);
-    QCOMPARE(level0Spy.count(), 1);
-    const QList<QVariant> level0Arguments = level0Spy.takeFirst();
-    QCOMPARE(level0Arguments.at(0).value<QModelIndex>().row(), 1);
-    QCOMPARE(level0->data(level0->index(1, 0), LibraryModel::IsPlayingRole).toBool(), true);
-    QCOMPARE(level0->data(level0->index(0, 0), LibraryModel::IsPlayingRole).toBool(), false);
+    QCOMPARE(albumAProj->data(albumAProj->index(0, 0), LibraryModel::IsPlayingRole).toBool(), false);
+    QCOMPARE(rootSpy.count(), 1);
+    const QList<QVariant> rootArguments = rootSpy.takeFirst();
+    QCOMPARE(rootArguments.at(0).value<QModelIndex>().row(), 1);
+    QCOMPARE(rootProj->data(rootProj->index(1, 0), LibraryModel::IsPlayingRole).toBool(), true);
+    QCOMPARE(rootProj->data(rootProj->index(0, 0), LibraryModel::IsPlayingRole).toBool(), false);
 
     // 焦点身份变化：仅投影内存在的行发 dataChanged（IsFocused role）。
     controller.setFocusedNodeId(QStringLiteral("track-b"));
-    QCOMPARE(level1Spy.count(), 1);
-    const QList<QVariant> focusedArguments = level1Spy.takeFirst();
+    QCOMPARE(albumASpy.count(), 1);
+    const QList<QVariant> focusedArguments = albumASpy.takeFirst();
     QCOMPARE(focusedArguments.at(0).value<QModelIndex>().row(), 1);
     QCOMPARE(focusedArguments.at(2).value<QList<int>>(), QList<int>{LibraryModel::IsFocusedRole});
-    QCOMPARE(level1->data(level1->index(1, 0), LibraryModel::IsFocusedRole).toBool(), true);
+    QCOMPARE(albumAProj->data(albumAProj->index(1, 0), LibraryModel::IsFocusedRole).toBool(), true);
     // level 0 同步清除其投影内 album-a 的焦点标记（仅投影内存在的行）。
-    QCOMPARE(level0Spy.count(), 1);
-    const QList<QVariant> level0FocusCleared = level0Spy.takeFirst();
-    QCOMPARE(level0FocusCleared.at(0).value<QModelIndex>().row(), 0);
-    QCOMPARE(level0FocusCleared.at(2).value<QList<int>>(), QList<int>{LibraryModel::IsFocusedRole});
-    QCOMPARE(level0->data(level0->index(0, 0), LibraryModel::IsFocusedRole).toBool(), false);
+    QCOMPARE(rootSpy.count(), 1);
+    const QList<QVariant> rootFocusCleared = rootSpy.takeFirst();
+    QCOMPARE(rootFocusCleared.at(0).value<QModelIndex>().row(), 0);
+    QCOMPARE(rootFocusCleared.at(2).value<QList<int>>(), QList<int>{LibraryModel::IsFocusedRole});
+    QCOMPARE(rootProj->data(rootProj->index(0, 0), LibraryModel::IsFocusedRole).toBool(), false);
 
     // 焦点移到 level 1 外的节点：level 1 清标记，level 0 对自身行发。
     controller.setFocusedNodeId(QStringLiteral("album-a"));
-    QCOMPARE(level1Spy.count(), 1);
-    const QList<QVariant> focusClearedArguments = level1Spy.takeFirst();
+    QCOMPARE(albumASpy.count(), 1);
+    const QList<QVariant> focusClearedArguments = albumASpy.takeFirst();
     QCOMPARE(focusClearedArguments.at(0).value<QModelIndex>().row(), 1);
-    QCOMPARE(level1->data(level1->index(1, 0), LibraryModel::IsFocusedRole).toBool(), false);
-    QCOMPARE(level0Spy.count(), 1);
-    QCOMPARE(level0->data(level0->index(0, 0), LibraryModel::IsFocusedRole).toBool(), true);
+    QCOMPARE(albumAProj->data(albumAProj->index(1, 0), LibraryModel::IsFocusedRole).toBool(), false);
+    QCOMPARE(rootSpy.count(), 1);
+    QCOMPARE(rootProj->data(rootProj->index(0, 0), LibraryModel::IsFocusedRole).toBool(), true);
 }
 
 void LibraryFolderProjectionModelTest::stackDepthAndProjectionLifecycle()
@@ -453,49 +450,47 @@ void LibraryFolderProjectionModelTest::stackDepthAndProjectionLifecycle()
     LibraryController controller;
     controller.setPlaylistTreeSnapshot(makeNestedTreeSnapshot());
 
-    QObject *rootProjection = controller.projectionModelForLevel(0);
+    QObject *rootProjection = controller.projectionModelForNodeId(QString());
     QVERIFY(rootProjection != nullptr);
     QCOMPARE(controller.folderStackDepth(), 0);
 
     controller.enterFolder(QStringLiteral("folder-a"));
     QCOMPARE(controller.folderStackDepth(), 1);
-    QVERIFY(controller.projectionModelForLevel(0) == rootProjection);
-    auto *level1First = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(1));
-    QVERIFY(level1First != nullptr);
-    expectProjection(level1First, {QStringLiteral("folder-b"), QStringLiteral("track-a1")});
+    QVERIFY(controller.projectionModelForNodeId(QString()) == rootProjection);
+    auto *folderAProj = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("folder-a")));
+    QVERIFY(folderAProj != nullptr);
+    expectProjection(folderAProj, {QStringLiteral("folder-b"), QStringLiteral("track-a1")});
 
     controller.enterFolder(QStringLiteral("folder-b"));
     QCOMPARE(controller.folderStackDepth(), 2);
-    QVERIFY(controller.projectionModelForLevel(0) == rootProjection);
-    QVERIFY(controller.projectionModelForLevel(1) == level1First);
-    auto *level2 = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(2));
-    QVERIFY(level2 != nullptr);
-    expectProjection(level2, {QStringLiteral("folder-c"), QStringLiteral("track-b1")});
+    QVERIFY(controller.projectionModelForNodeId(QString()) == rootProjection);
+    QVERIFY(controller.projectionModelForNodeId(QStringLiteral("folder-a")) == folderAProj);
+    auto *folderBProj = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("folder-b")));
+    QVERIFY(folderBProj != nullptr);
+    expectProjection(folderBProj, {QStringLiteral("folder-c"), QStringLiteral("track-b1")});
 
-    // 返回：level 2 越界返回 nullptr（别名按当前祖先链映射），
-    // 但实例保留在缓存中（下方重入断言验证复用）；前缀级实例不变。
+    // 返回：实例保留在缓存中（下方重入断言验证复用）；前缀级实例不变。
     controller.goBack();
     QCOMPARE(controller.folderStackDepth(), 1);
-    QVERIFY(controller.projectionModelForLevel(0) == rootProjection);
-    QVERIFY(controller.projectionModelForLevel(1) == level1First);
-    QVERIFY(controller.projectionModelForLevel(2) == nullptr);
+    QVERIFY(controller.projectionModelForNodeId(QString()) == rootProjection);
+    QVERIFY(controller.projectionModelForNodeId(QStringLiteral("folder-a")) == folderAProj);
 
     // 再次进入同级目录：复用同一缓存实例（缓存化语义：goBack 不再释放模型，
     // 重入 get-or-create 命中既有实例，视图滚动位置保留的前提）。
     controller.enterFolder(QStringLiteral("folder-b"));
     QCOMPARE(controller.folderStackDepth(), 2);
-    QVERIFY(controller.projectionModelForLevel(0) == rootProjection);
-    QVERIFY(controller.projectionModelForLevel(1) == level1First);
-    auto *level2Reentered = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(2));
-    QVERIFY(level2Reentered != nullptr);
-    QVERIFY(level2Reentered == level2);
-    expectProjection(level2Reentered, {QStringLiteral("folder-c"), QStringLiteral("track-b1")});
+    QVERIFY(controller.projectionModelForNodeId(QString()) == rootProjection);
+    QVERIFY(controller.projectionModelForNodeId(QStringLiteral("folder-a")) == folderAProj);
+    auto *folderBReentered = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("folder-b")));
+    QVERIFY(folderBReentered != nullptr);
+    QVERIFY(folderBReentered == folderBProj);
+    expectProjection(folderBReentered, {QStringLiteral("folder-c"), QStringLiteral("track-b1")});
 
     controller.goBack();
     controller.goBack();
     QCOMPARE(controller.folderStackDepth(), 0);
-    QVERIFY(controller.projectionModelForLevel(0) == rootProjection);
-    expectProjection(qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(0)),
+    QVERIFY(controller.projectionModelForNodeId(QString()) == rootProjection);
+    expectProjection(qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QString())),
                      {QStringLiteral("folder-a"), QStringLiteral("track-root")});
 }
 
@@ -507,11 +502,11 @@ void LibraryFolderProjectionModelTest::locateNodeInFolderStackNavigatesToTargetL
     // 深层曲目：从根逐级进入直到其直接父级，目标进入顶层投影（中间级逐级入栈）。
     controller.locateNodeInFolderStack(QStringLiteral("track-b1"));
     QCOMPARE(controller.folderStackDepth(), 2);
-    auto *midLevel = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(1));
+    auto *midLevel = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("folder-a")));
     QVERIFY(midLevel != nullptr);
     QCOMPARE(midLevel->folderNodeId(), QStringLiteral("folder-a"));
     expectProjection(midLevel, {QStringLiteral("folder-b"), QStringLiteral("track-a1")});
-    auto *top = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(2));
+    auto *top = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("folder-b")));
     QVERIFY(top != nullptr);
     QCOMPARE(top->folderNodeId(), QStringLiteral("folder-b"));
     expectProjection(top, {QStringLiteral("folder-c"), QStringLiteral("track-b1")});
@@ -520,19 +515,19 @@ void LibraryFolderProjectionModelTest::locateNodeInFolderStackNavigatesToTargetL
     const int depthBefore = controller.folderStackDepth();
     controller.locateNodeInFolderStack(QStringLiteral("folder-c"));
     QCOMPARE(controller.folderStackDepth(), depthBefore);
-    QCOMPARE(controller.projectionModelForLevel(2), top);
+    QCOMPARE(controller.projectionModelForNodeId(QStringLiteral("folder-b")), top);
 
     // 根直属目标（父为根节点）：回到根浏览，目标在根投影。
     controller.locateNodeInFolderStack(QStringLiteral("track-root"));
     QCOMPARE(controller.folderStackDepth(), 0);
-    auto *rootProjection = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(0));
+    auto *rootProjection = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QString()));
     QVERIFY(rootProjection != nullptr);
     expectProjection(rootProjection, {QStringLiteral("folder-a"), QStringLiteral("track-root")});
 
     // 文件夹目标：进入其直接父级（目标显示在父级投影中）。
     controller.locateNodeInFolderStack(QStringLiteral("folder-b"));
     QCOMPARE(controller.folderStackDepth(), 1);
-    auto *folderTop = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(1));
+    auto *folderTop = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("folder-a")));
     QVERIFY(folderTop != nullptr);
     QCOMPARE(folderTop->folderNodeId(), QStringLiteral("folder-a"));
     expectProjection(folderTop, {QStringLiteral("folder-b"), QStringLiteral("track-a1")});
@@ -542,7 +537,7 @@ void LibraryFolderProjectionModelTest::locateNodeInFolderStackNavigatesToTargetL
     QCOMPARE(controller.folderStackDepth(), 3);
     controller.locateNodeInFolderStack(QStringLiteral("track-a1"));
     QCOMPARE(controller.folderStackDepth(), 1);
-    auto *shallowTop = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(1));
+    auto *shallowTop = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("folder-a")));
     QVERIFY(shallowTop != nullptr);
     QCOMPARE(shallowTop->folderNodeId(), QStringLiteral("folder-a"));
 

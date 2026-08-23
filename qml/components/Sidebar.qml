@@ -21,22 +21,32 @@ Item {
     // 不持久化（每次启动默认文件夹视图）；文件夹视图状态无损保留。
     property bool queueViewActive: false
 
-    // 当前激活的文件夹层级（B'' 架构：0=根目录，1=第一级子文件夹，2=第二级及更深）
-    readonly property int currentFolderDepth: (libraryController.folderStackDepth !== undefined)
-        ? libraryController.folderStackDepth
-        : (libraryController.canGoBack ? 1 : 0)
+    // 页面缓存与动画抑制
+    property var folderPages: ({})
+    property bool suppressNavAnimation: false
+    // 下一次页面激活的动画方向（1=进入/push，-1=返回/pop）：
+    // 由配对导航路径（activateNode/handleBackClicked）在栈操作前置位，
+    // onCurrentItemChanged 同步消费——返回时新 currentItem 的错落动画向左滑入。
+    property int pendingNavDirection: 1
 
-    // 当前激活的文件夹视图（每级独立 ListView 页面实例）
-    readonly property ListView activeFolderView: {
-        if (currentFolderDepth === 0)
-            return playlistView;
-        if (currentFolderDepth === 1)
-            return page1View;
-        return page2View;
-    }
+    // 宿主代理对象供 PlaylistDelegate / FolderPage 注入
+    readonly property var contextMenuHost: ({
+        isOpen: trackContextMenu.isOpen,
+        close: function() {
+            trackContextMenu.close();
+        },
+        openForEntry: function(entry, targetDelegate, mouseX, mouseY) {
+            var fullEntry = Object.assign({}, entry, {
+                path: root.appFacade.filePathForNodeId(entry.nodeId)
+            });
+            trackContextMenu.openForEntry(fullEntry, targetDelegate, mouseX, mouseY);
+        }
+    })
 
-    // 当前激活的列表视图（文件夹页或搜索页）
-    readonly property ListView activeListView: root.isSearching ? searchView : activeFolderView
+    // 当前激活的列表视图（搜索页、StackView 当前页或根目录页）
+    readonly property ListView activeListView: root.isSearching
+        ? searchView
+        : (folderStack.currentItem ? folderStack.currentItem.listView : playlistView)
 
     readonly property bool hasOpenMenu: sidebarMenu.visible || trackContextMenu.isOpen
     readonly property ScrollBar verticalScrollBar: playlistView.ScrollBar.vertical
@@ -64,19 +74,13 @@ Item {
             closeMenus();
     }
 
+    Component.onCompleted: {
+        playlistView.model = libraryController.projectionModelForNodeId("");
+    }
+
     function closeMenus() {
         sidebarMenu.close();
         trackContextMenu.close();
-    }
-
-    // 获取指定深度的文件夹投影模型（B'' 架构契约）
-    function getModelForLevel(level) {
-        if (typeof libraryController.projectionModelForLevel === "function") {
-            var m = libraryController.projectionModelForLevel(level);
-            if (m)
-                return m;
-        }
-        return level === 0 ? libraryController.model : null;
     }
 
     // 查询节点在指定视图模型中的行号
@@ -89,47 +93,6 @@ Item {
         return libraryController.rowForNodeId(nodeId);
     }
 
-    // 触发当前激活页面的显式滑入导航动画。
-    // 防闪烁：先在同一 JS 栈内把目标页隐藏（opacity=0），再在 callLater 中
-    // 设置 delegate 动画初值并启动动画，最后恢复显示——渲染帧看到的直接是
-    // 动画初始状态，不会先显示一帧"正常位置"再闪到屏幕外。
-    function playNavAnimationForActivePage(direction) {
-        if (direction === 0)
-            return;
-        var view = root.activeFolderView;
-        if (!view)
-            return;
-        view.opacity = 0;
-        Qt.callLater(() => {
-            root.triggerPageSlideAnimation(view, direction);
-            view.opacity = 1;
-        });
-    }
-
-    // 显式导航动画：错落基准 = 切换后视口中可见的第一项
-    function triggerPageSlideAnimation(listView, direction) {
-        if (!listView || direction === 0 || listView.count === 0)
-            return;
-
-        listView.forceLayout();
-        var firstVisible = 0;
-        if (direction === -1) {
-            var idx = listView.indexAt(0, listView.contentY + 1);
-            firstVisible = idx >= 0 ? idx : 0;
-        }
-
-        var visibleRowCount = Math.ceil(listView.height / 72) + 3;
-        var endIndex = Math.min(listView.count - 1, firstVisible + visibleRowCount);
-
-        for (var i = firstVisible; i <= endIndex; ++i) {
-            var item = listView.itemAtIndex(i);
-            if (item && typeof item.startNavSlideIn === "function") {
-                var step = i - firstVisible;
-                item.startNavSlideIn(step, direction);
-            }
-        }
-    }
-
     function showUnsupportedFeedback(actionName) {
         root.appFacade.notifications.showUnsupportedAction(actionName);
         root.closeMenus();
@@ -140,6 +103,47 @@ Item {
         return currentRules.length > 0 ? currentRules : [{field: "filename", order: "asc"}];
     }
 
+    function getOrCreateFolderPage(nodeId) {
+        if (folderPages[nodeId]) {
+            return folderPages[nodeId];
+        }
+        var pageComponent = Qt.createComponent("FolderPage.qml");
+        if (pageComponent.status !== Component.Ready) {
+            console.error("Failed to create FolderPage component:", pageComponent.errorString());
+            return null;
+        }
+        var model = libraryController.projectionModelForNodeId(nodeId);
+        var page = pageComponent.createObject(folderStack, {
+            folderNodeId: nodeId,
+            projectionModel: model,
+            activateNodeHandler: root.activateNode,
+            closeMenusHandler: root.closeMenus,
+            contextMenuHost: root.contextMenuHost
+        });
+        folderPages[nodeId] = page;
+        return page;
+    }
+
+    function triggerRootViewSlideIn(direction) {
+        if (!playlistView || direction === 0 || playlistView.count === 0)
+            return;
+        playlistView.forceLayout();
+        var firstVisible = 0;
+        if (direction === -1) {
+            var idx = playlistView.indexAt(0, playlistView.contentY + 1);
+            firstVisible = idx >= 0 ? idx : 0;
+        }
+        var visibleRowCount = Math.ceil(playlistView.height / 72) + 3;
+        var endIndex = Math.min(playlistView.count - 1, firstVisible + visibleRowCount);
+        for (var i = firstVisible; i <= endIndex; ++i) {
+            var item = playlistView.itemAtIndex(i);
+            if (item && typeof item.startNavSlideIn === "function") {
+                var step = i - firstVisible;
+                item.startNavSlideIn(step, direction);
+            }
+        }
+    }
+
     function activateNode(nodeId, isFolder) {
         if (nodeId.length === 0)
             return;
@@ -147,12 +151,220 @@ Item {
         root.closeMenus();
         libraryController.selectBrowserNode(nodeId);
         if (isFolder) {
+            if (folderStack.busy) {
+                console.warn("Navigation ignored: folderStack is busy");
+                return;
+            }
+            root.pendingNavDirection = 1;
+            var page = getOrCreateFolderPage(nodeId);
+            if (!page)
+                return;
+            folderStack.push(page);
             libraryController.enterFolder(nodeId);
-            root.playNavAnimationForActivePage(1);
+
+            // 配对零信号 no-op 自愈（若 enterFolder 失败或节点已被移除未实际进入）
+            if (libraryController.currentFolderNodeId !== nodeId) {
+                console.warn("Self-healing enterFolder: controller node did not change to", nodeId);
+                if (folderStack.depth > 1) {
+                    folderStack.pop();
+                } else {
+                    folderStack.clear();
+                }
+            }
             return;
         }
 
         libraryController.playItem(nodeId);
+    }
+
+    function handleBackClicked() {
+        if (!libraryController.canGoBack)
+            return;
+        if (folderStack.busy) {
+            console.warn("Back navigation ignored: folderStack is busy");
+            return;
+        }
+
+        root.closeMenus();
+        var wasDepth = folderStack.depth;
+        root.pendingNavDirection = -1;
+        if (wasDepth > 1) {
+            folderStack.pop();
+        } else {
+            folderStack.clear();
+            if (!root.suppressNavAnimation) {
+                triggerRootViewSlideIn(-1);
+            }
+        }
+        libraryController.goBack();
+
+        // 配对零信号自愈（若 goBack 未使深度减少）
+        if (libraryController.folderStackDepth >= wasDepth) {
+            console.warn("Self-healing goBack: controller depth did not decrease");
+            reconcileStackToController();
+        }
+    }
+
+    // 幂等收敛处理器
+    function reconcileStackToController() {
+        if (folderStack.busy) {
+            return;
+        }
+
+        var ctrlDepth = libraryController.folderStackDepth;
+        var stackDepth = folderStack.depth;
+        var targetNodeId = libraryController.currentFolderNodeId;
+        var targetChain = libraryController.ancestorChainForNode(targetNodeId);
+
+        // 判断当前栈是否已与目标链完全一致
+        var isAligned = false;
+        if (ctrlDepth === stackDepth) {
+            if (ctrlDepth === 0) {
+                isAligned = true;
+            } else if (folderStack.currentItem && folderStack.currentItem.folderNodeId === targetNodeId) {
+                isAligned = true;
+                for (var i = 0; i < stackDepth; ++i) {
+                    var item = folderStack.get(i);
+                    if (!item || item.folderNodeId !== targetChain[i]) {
+                        isAligned = false;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (isAligned) {
+            root.suppressNavAnimation = false;
+            return;
+        }
+
+        // 不一致需收敛：统一设置抑制标志
+        root.suppressNavAnimation = true;
+
+        // 链对齐循环
+        while (true) {
+            ctrlDepth = libraryController.folderStackDepth;
+            stackDepth = folderStack.depth;
+            targetChain = libraryController.ancestorChainForNode(libraryController.currentFolderNodeId);
+
+            if (ctrlDepth === 0) {
+                if (folderStack.depth > 0) {
+                    folderStack.clear(StackView.Immediate);
+                }
+                break;
+            }
+
+            // 1. stackDepth > ctrlDepth
+            if (stackDepth > ctrlDepth) {
+                if (ctrlDepth === 0) {
+                    folderStack.clear(StackView.Immediate);
+                } else {
+                    while (folderStack.depth > ctrlDepth) {
+                        if (folderStack.depth > 1) {
+                            folderStack.pop(null, StackView.Immediate);
+                        } else {
+                            folderStack.clear(StackView.Immediate);
+                            break;
+                        }
+                    }
+                }
+                stackDepth = folderStack.depth;
+            }
+
+            // 检查公共前缀分歧
+            var mismatchIndex = -1;
+            for (var j = 0; j < stackDepth && j < ctrlDepth; ++j) {
+                var stackItem = folderStack.get(j);
+                if (!stackItem || stackItem.folderNodeId !== targetChain[j]) {
+                    mismatchIndex = j;
+                    break;
+                }
+            }
+
+            if (mismatchIndex >= 0) {
+                // 有分歧：pop 到公共前缀深度 mismatchIndex
+                if (mismatchIndex === 0) {
+                    folderStack.clear(StackView.Immediate);
+                } else {
+                    while (folderStack.depth > mismatchIndex) {
+                        if (folderStack.depth > 1) {
+                            folderStack.pop(null, StackView.Immediate);
+                        } else {
+                            folderStack.clear(StackView.Immediate);
+                            break;
+                        }
+                    }
+                }
+                stackDepth = folderStack.depth;
+            }
+
+            // 补齐缺失层级
+            for (var k = stackDepth; k < ctrlDepth; ++k) {
+                var missingNodeId = targetChain[k];
+                var page = getOrCreateFolderPage(missingNodeId);
+                if (page) {
+                    folderStack.push(page, StackView.Immediate);
+                }
+            }
+
+            break;
+        }
+
+        // 收敛完成判定
+        ctrlDepth = libraryController.folderStackDepth;
+        stackDepth = folderStack.depth;
+        targetNodeId = libraryController.currentFolderNodeId;
+
+        if (stackDepth === ctrlDepth) {
+            if (ctrlDepth === 0) {
+                if (targetNodeId === "") {
+                    root.suppressNavAnimation = false;
+                }
+            } else if (folderStack.currentItem && folderStack.currentItem.folderNodeId === targetNodeId) {
+                root.suppressNavAnimation = false;
+            }
+        }
+    }
+
+    Connections {
+        target: libraryController
+
+        function onFolderStackDepthChanged() {
+            root.reconcileStackToController();
+        }
+
+        function onCurrentFolderNodeIdChanged() {
+            root.reconcileStackToController();
+        }
+    }
+
+    Connections {
+        target: folderStack
+
+        function onBusyChanged() {
+            if (!folderStack.busy) {
+                root.reconcileStackToController();
+            }
+        }
+
+        function onCurrentItemChanged() {
+            var item = folderStack.currentItem;
+            // 复位全部缓存页（含 pop 离栈页）的激活标记：重入已访问目录时
+            // isActive 置位有变化 → onIsActiveChanged 触发 → 错落动画重新播放
+            // （视觉需求 4；只遍历栈内页面会漏掉离栈缓存页，其 isActive 保持
+            // true 导致再次 push 重入时置位无变化、动画不播）。
+            for (var key in root.folderPages) {
+                var page = root.folderPages[key];
+                if (page && page !== item) {
+                    page.isActive = false;
+                }
+            }
+            if (item) {
+                item.animationSuppressed = root.suppressNavAnimation;
+                item.navDirection = root.pendingNavDirection;
+                item.isActive = true;
+            }
+        }
     }
 
     RectangularGlow {
@@ -243,11 +455,7 @@ Item {
                                 buttonHeight: 20
                                 iconSize: 14
                                 enabled: libraryController.canGoBack
-                                onClicked: {
-                                    root.closeMenus();
-                                    libraryController.goBack();
-                                    root.playNavAnimationForActivePage(-1);
-                                }
+                                onClicked: root.handleBackClicked()
                                 SharedToolTip {
                                     text: qsTr("返回")
                                 }
@@ -629,14 +837,17 @@ Item {
                             id: playlistView
                             objectName: "playlistView"
                             anchors.fill: parent
-                            model: root.getModelForLevel(0)
-                            visible: !root.queueViewActive && !root.isSearching && root.currentFolderDepth === 0
+                            visible: !root.queueViewActive && !root.isSearching && folderStack.depth === 0
                             spacing: 0
                             topMargin: Theme.paddingMedium + (scanBanner.visible ? scanBanner.height + 8 : 0)
                             bottomMargin: 80
                             clip: true
                             reuseItems: false
-                            delegate: playlistDelegate
+                            delegate: PlaylistDelegate {
+                                activateNodeHandler: root.activateNode
+                                closeMenusHandler: root.closeMenus
+                                contextMenuHost: root.contextMenuHost
+                            }
 
                             ScrollBar.vertical: ScrollBar {
                                 id: playlistScrollBar
@@ -669,89 +880,79 @@ Item {
                             }
                         }
 
-                        // 1级文件夹列表视图（常驻）
-                        ListView {
-                            id: page1View
-                            objectName: "page1View"
+                        // 第 1 层及更深层文件夹列表（StackView 页面栈承载）
+                        StackView {
+                            id: folderStack
+                            objectName: "folderStack"
                             anchors.fill: parent
-                            // model 绑定必须依赖带 NOTIFY 的 currentFolderDepth：getModelForLevel()
-                            // 是函数调用，QML 无法追踪其返回值变化，仅依赖它会在组件创建时求值
-                            // 一次（当时栈只有根 → null）而永不更新，导致进入一级文件夹后列表为空。
-                            model: root.currentFolderDepth >= 1 ? root.getModelForLevel(1) : null
-                            visible: !root.queueViewActive && !root.isSearching && root.currentFolderDepth === 1
-                            spacing: 0
-                            topMargin: Theme.paddingMedium + (scanBanner.visible ? scanBanner.height + 8 : 0)
-                            bottomMargin: 80
-                            clip: true
-                            reuseItems: false
-                            delegate: playlistDelegate
+                            visible: !root.queueViewActive && !root.isSearching
+                            // depth 0 时空栈禁用输入：不拦截下方 playlistView 的点击
+                            // （计划 :142 规格）；enabled 不影响 pop 过渡动画可见性
+                            enabled: folderStack.depth > 0
+                            z: 2
 
-                            ScrollBar.vertical: ScrollBar {
-                                id: page1ScrollBar
-                                policy: ScrollBar.AsNeeded
-                                width: (page1ScrollBar.hovered || page1ScrollBar.pressed) ? 10 : Theme.scrollbarWidth
-
-                                Behavior on width {
-                                    NumberAnimation { duration: Theme.animationFast; easing.type: Easing.OutQuad }
+                            pushEnter: Transition {
+                                PropertyAnimation {
+                                    property: "x"
+                                    from: folderStack.width
+                                    to: 0
+                                    duration: 220
+                                    easing.type: Easing.OutCubic
                                 }
-
-                                background: Rectangle {
-                                    color: "transparent"
-                                }
-
-                                contentItem: Rectangle {
-                                    implicitWidth: page1ScrollBar.width
-                                    radius: width / 2
-                                    visible: page1ScrollBar.size < 1.0
-                                    color: page1ScrollBar.pressed ? Theme.pressedColor
-                                         : page1ScrollBar.hovered ? Theme.scrollbarHoverColor
-                                         : Theme.scrollbarColor
-
-                                    Behavior on color {
-                                        ColorAnimation { duration: Theme.animationFast }
-                                    }
+                                PropertyAnimation {
+                                    property: "opacity"
+                                    from: 0.0
+                                    to: 1.0
+                                    duration: 220
+                                    easing.type: Easing.OutQuad
                                 }
                             }
-                        }
-
-                        // 2级及更深层文件夹列表视图（最大保留3级存活：0, 1, 2）
-                        ListView {
-                            id: page2View
-                            objectName: "page2View"
-                            anchors.fill: parent
-                            model: root.currentFolderDepth >= 2 ? root.getModelForLevel(2) : null
-                            visible: !root.queueViewActive && !root.isSearching && root.currentFolderDepth >= 2
-                            spacing: 0
-                            topMargin: Theme.paddingMedium + (scanBanner.visible ? scanBanner.height + 8 : 0)
-                            bottomMargin: 80
-                            clip: true
-                            reuseItems: false
-                            delegate: playlistDelegate
-
-                            ScrollBar.vertical: ScrollBar {
-                                id: page2ScrollBar
-                                policy: ScrollBar.AsNeeded
-                                width: (page2ScrollBar.hovered || page2ScrollBar.pressed) ? 10 : Theme.scrollbarWidth
-
-                                Behavior on width {
-                                    NumberAnimation { duration: Theme.animationFast; easing.type: Easing.OutQuad }
+                            pushExit: Transition {
+                                PropertyAnimation {
+                                    property: "x"
+                                    from: 0
+                                    to: -folderStack.width * 0.3
+                                    duration: 220
+                                    easing.type: Easing.OutCubic
                                 }
-
-                                background: Rectangle {
-                                    color: "transparent"
+                                PropertyAnimation {
+                                    property: "opacity"
+                                    from: 1.0
+                                    to: 0.0
+                                    duration: 220
+                                    easing.type: Easing.OutQuad
                                 }
-
-                                contentItem: Rectangle {
-                                    implicitWidth: page2ScrollBar.width
-                                    radius: width / 2
-                                    visible: page2ScrollBar.size < 1.0
-                                    color: page2ScrollBar.pressed ? Theme.pressedColor
-                                         : page2ScrollBar.hovered ? Theme.scrollbarHoverColor
-                                         : Theme.scrollbarColor
-
-                                    Behavior on color {
-                                        ColorAnimation { duration: Theme.animationFast }
-                                    }
+                            }
+                            popEnter: Transition {
+                                PropertyAnimation {
+                                    property: "x"
+                                    from: -folderStack.width * 0.3
+                                    to: 0
+                                    duration: 220
+                                    easing.type: Easing.OutCubic
+                                }
+                                PropertyAnimation {
+                                    property: "opacity"
+                                    from: 0.0
+                                    to: 1.0
+                                    duration: 220
+                                    easing.type: Easing.OutQuad
+                                }
+                            }
+                            popExit: Transition {
+                                PropertyAnimation {
+                                    property: "x"
+                                    from: 0
+                                    to: folderStack.width
+                                    duration: 220
+                                    easing.type: Easing.OutCubic
+                                }
+                                PropertyAnimation {
+                                    property: "opacity"
+                                    from: 1.0
+                                    to: 0.0
+                                    duration: 220
+                                    easing.type: Easing.OutQuad
                                 }
                             }
                         }
@@ -768,7 +969,11 @@ Item {
                             bottomMargin: 80
                             clip: true
                             reuseItems: false
-                            delegate: playlistDelegate
+                            delegate: PlaylistDelegate {
+                                activateNodeHandler: root.activateNode
+                                closeMenusHandler: root.closeMenus
+                                contextMenuHost: root.contextMenuHost
+                            }
 
                             ScrollBar.vertical: ScrollBar {
                                 id: searchScrollBar
@@ -797,349 +1002,6 @@ Item {
                                 }
                             }
                         }
-
-                        // 可复用的列表项模板（含右键菜单、封面、内嵌导航滑入动画）
-                        Component {
-                            id: playlistDelegate
-
-                            ItemDelegate {
-                                id: delegate
-                                required property int index
-                                required property string type
-                                required property string name
-                                required property string title
-                                required property string artist
-                                required property string album
-                                required property string parentName
-                                required property int songCount
-                                required property string duration
-                                required property string format
-                                required property int sampleRate
-                                required property int bitDepth
-                                required property string nodeId
-                                required property string trackId
-                                required property bool isFolder
-                                required property bool isPlaying
-                                required property bool isFocused
-                                required property string artworkSource
-                                required property int year
-
-                                readonly property bool hasFolderArtwork: delegate.isFolder && delegate.artworkSource.length > 0
-
-                                width: ListView.view ? ListView.view.width : root.width
-                                height: 72
-                                topPadding: Theme.spacing8
-                                bottomPadding: Theme.spacing8
-                                leftPadding: 15
-                                rightPadding: 15
-                                Accessible.role: Accessible.ListItem
-                                Accessible.name: isFolder ? name : title
-
-                                onClicked: root.activateNode(nodeId, isFolder)
-
-                                transform: Translate {
-                                    id: navTranslate
-                                    x: 0
-                                }
-
-                                SequentialAnimation {
-                                    id: navSlideAnim
-
-                                    PauseAnimation {
-                                        id: navDelay
-                                        duration: 0
-                                    }
-
-                                    ParallelAnimation {
-                                        NumberAnimation {
-                                            target: navTranslate
-                                            property: "x"
-                                            to: 0
-                                            duration: 220
-                                            easing.type: Easing.OutCubic
-                                        }
-                                        NumberAnimation {
-                                            target: delegate
-                                            property: "opacity"
-                                            to: 1.0
-                                            duration: 220
-                                            easing.type: Easing.OutQuad
-                                        }
-                                    }
-                                }
-
-                                function startNavSlideIn(step, direction) {
-                                    if (direction === 0) {
-                                        navSlideAnim.stop();
-                                        navTranslate.x = 0;
-                                        delegate.opacity = 1.0;
-                                        return;
-                                    }
-                                    navSlideAnim.stop();
-                                    var startX = (direction > 0 ? 1 : -1) * delegate.width;
-                                    navTranslate.x = startX;
-                                    delegate.opacity = 0.0;
-                                    navDelay.duration = Math.min(Math.max(0, step), 12) * 15;
-                                    navSlideAnim.start();
-                                }
-
-                                // 右键菜单（T14）：仅接受右键，左键事件继续穿透给 ItemDelegate
-                                MouseArea {
-                                    anchors.fill: parent
-                                    acceptedButtons: Qt.RightButton
-                                    onPressed: (mouse) => {
-                                        if (trackContextMenu.isOpen) {
-                                            trackContextMenu.close();
-                                        }
-                                    }
-                                    onClicked: (mouse) => {
-                                        root.closeMenus();
-                                        trackContextMenu.openForEntry({
-                                            nodeId: delegate.nodeId,
-                                            trackId: delegate.trackId,
-                                            isFolder: delegate.isFolder,
-                                            name: delegate.name,
-                                            title: delegate.title,
-                                            artist: delegate.artist,
-                                            album: delegate.album,
-                                            parentName: delegate.parentName,
-                                            songCount: delegate.songCount,
-                                            duration: delegate.duration,
-                                            format: delegate.format,
-                                            sampleRate: delegate.sampleRate,
-                                            bitDepth: delegate.bitDepth,
-                                            artworkSource: delegate.artworkSource,
-                                            year: delegate.year,
-                                            path: root.appFacade.filePathForNodeId(delegate.nodeId)
-                                        }, delegate, mouse.x, mouse.y);
-                                    }
-                                }
-
-                                background: Rectangle {
-                                    color: delegate.hovered ? Theme.hoverColor : (delegate.isPlaying ? Theme.baseColor : "transparent")
-
-                                    Behavior on color {
-                                        ColorAnimation {
-                                            duration: Theme.animationFast
-                                        }
-                                    }
-
-                                    // 播放中左侧高亮指示条
-                                    Rectangle {
-                                        anchors.left: parent.left
-                                        anchors.top: parent.top
-                                        anchors.bottom: parent.bottom
-                                        anchors.topMargin: Theme.spacing8
-                                        anchors.bottomMargin: Theme.spacing8
-                                        width: 3
-                                        radius: 1.5
-                                        color: Theme.accentColor
-                                        visible: delegate.isPlaying
-                                    }
-                                }
-
-                                contentItem: RowLayout {
-                                    spacing: Theme.spacing12
-
-                                    Rectangle {
-                                        Layout.alignment: Qt.AlignVCenter
-                                        Layout.preferredWidth: 44
-                                        Layout.preferredHeight: 44
-                                        radius: 12
-                                        color: Theme.mainColor
-                                        antialiasing: true
-                                        layer.enabled: true
-                                        layer.effect: OpacityMask {
-                                            maskSource: Rectangle {
-                                                width: 44
-                                                height: 44
-                                                radius: 12
-                                            }
-                                        }
-
-                                        Image {
-                                            id: folderThumbIcon
-                                            anchors.fill: parent
-                                            anchors.margins: delegate.isFolder ? 10 : 0
-                                            source: delegate.isFolder ? "qrc:/qt/qml/Seriona/qml/assets/folder.svg" : delegate.artworkSource
-                                            sourceSize.width: delegate.isFolder ? 24 : 44
-                                            sourceSize.height: delegate.isFolder ? 24 : 44
-                                            fillMode: delegate.isFolder ? Image.PreserveAspectFit : Image.PreserveAspectCrop
-                                            asynchronous: !delegate.isFolder
-                                            visible: !delegate.isFolder && status === Image.Ready
-                                        }
-
-                                        Image {
-                                            id: folderArtworkIcon
-                                            anchors.fill: parent
-                                            source: delegate.artworkSource
-                                            sourceSize: Qt.size(88, 88)
-                                            fillMode: Image.PreserveAspectCrop
-                                            asynchronous: true
-                                            visible: delegate.hasFolderArtwork && status === Image.Ready
-                                        }
-
-                                        ColorOverlay {
-                                            anchors.fill: folderThumbIcon
-                                            source: folderThumbIcon
-                                            color: Theme.accentColor
-                                            visible: delegate.isFolder && !delegate.hasFolderArtwork
-                                        }
-
-                                        Rectangle {
-                                            anchors.fill: parent
-                                            radius: 12
-                                            color: Theme.baseColor
-                                            visible: !delegate.isFolder && folderThumbIcon.status !== Image.Ready
-                                            antialiasing: true
-
-                                            Text {
-                                                anchors.centerIn: parent
-                                                text: "♫"
-                                                color: Theme.textPrimary
-                                                font.pixelSize: Theme.fontHeading
-                                            }
-                                        }
-                                    }
-
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        Layout.alignment: Qt.AlignVCenter
-                                        spacing: 1
-
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            spacing: Theme.spacing4
-
-                                            Text {
-                                                Layout.fillWidth: true
-                                                text: delegate.isFolder ? delegate.name : delegate.title
-                                                color: delegate.isPlaying ? Theme.accentColor : Theme.textPrimary
-                                                font.pixelSize: Theme.fontBody
-                                                font.weight: delegate.isPlaying ? Font.Bold : Font.DemiBold
-                                                elide: Text.ElideRight
-                                            }
-                                        }
-
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: delegate.isFolder ? delegate.parentName : (delegate.artist.length > 0 && delegate.album.length > 0 ? delegate.artist + " - " + delegate.album : delegate.artist + delegate.album)
-                                            color: Theme.textSecondary
-                                            font.pixelSize: Theme.fontCaption
-                                            elide: Text.ElideRight
-                                        }
-
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            spacing: Theme.spacing4
-
-                                            RowLayout {
-                                                visible: !delegate.isFolder
-                                                spacing: Theme.spacing4
-
-                                                Text {
-                                                    text: delegate.duration || ""
-                                                    color: Theme.textSecondary
-                                                    font.pixelSize: 10
-                                                }
-                                                Text {
-                                                    text: "|"
-                                                    color: Theme.borderColor
-                                                    font.pixelSize: 10
-                                                    visible: delegate.duration.length > 0 && delegate.format.length > 0
-                                                }
-                                                Text {
-                                                    text: delegate.format || ""
-                                                    color: Theme.textSecondary
-                                                    font.pixelSize: 10
-                                                }
-                                                Text {
-                                                    text: "|"
-                                                    color: Theme.borderColor
-                                                    font.pixelSize: 10
-                                                    visible: delegate.sampleRate > 44100
-                                                }
-                                                Text {
-                                                    text: (delegate.sampleRate / 1000) + "kHz"
-                                                    color: Theme.accentColor
-                                                    font.pixelSize: 10
-                                                    visible: delegate.sampleRate > 44100
-                                                }
-                                                Text {
-                                                    text: "|"
-                                                    color: Theme.borderColor
-                                                    font.pixelSize: 10
-                                                    visible: delegate.bitDepth > 16
-                                                }
-                                                Text {
-                                                    text: delegate.bitDepth + "bit"
-                                                    color: Theme.accentColor
-                                                    font.pixelSize: 10
-                                                    visible: delegate.bitDepth > 16
-                                                }
-                                            }
-
-                                            RowLayout {
-                                                visible: delegate.isFolder
-                                                spacing: Theme.spacing4
-
-                                                Item {
-                                                    Layout.preferredWidth: 10
-                                                    Layout.preferredHeight: 10
-
-                                                    Image {
-                                                        id: musicNoteIcon
-                                                        anchors.fill: parent
-                                                        source: "qrc:/qt/qml/Seriona/qml/assets/music_note.svg"
-                                                        sourceSize: Qt.size(10, 10)
-                                                        fillMode: Image.PreserveAspectFit
-                                                        visible: false
-                                                    }
-
-                                                    ColorOverlay {
-                                                        anchors.fill: musicNoteIcon
-                                                        source: musicNoteIcon
-                                                        color: Theme.textSecondary
-                                                        opacity: 0.7
-                                                    }
-                                                }
-
-                                                Text {
-                                                    text: qsTr("%1 Songs").arg(delegate.songCount)
-                                                    color: Theme.textSecondary
-                                                    font.pixelSize: 10
-                                                }
-                                                Text {
-                                                    text: "|"
-                                                    color: Theme.borderColor
-                                                    font.pixelSize: 10
-                                                    visible: delegate.duration.length > 0
-                                                }
-                                                Text {
-                                                    text: delegate.duration || ""
-                                                    color: Theme.textSecondary
-                                                    font.pixelSize: 10
-                                                }
-                                            }
-
-                                            Image {
-                                                Layout.alignment: Qt.AlignVCenter
-                                                source: "qrc:/qt/qml/Seriona/qml/assets/folder.svg"
-                                                sourceSize: Qt.size(14, 14)
-                                                fillMode: Image.PreserveAspectFit
-                                                visible: delegate.isFolder
-
-                                                ColorOverlay {
-                                                    anchors.fill: parent
-                                                    source: parent
-                                                    color: Theme.textOnAccent
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
 
                     Connections {
@@ -1158,6 +1020,7 @@ Item {
                             if (row >= 0) {
                                 Qt.callLater(() => {
                                     view.positionViewAtIndex(row, ListView.Beginning);
+                                    root.suppressNavAnimation = false;
                                 });
                             } else {
                                 // 目标不在当前激活页投影内：调用 locateNodeInFolderStack 逐级切栈后定位
@@ -1169,6 +1032,7 @@ Item {
                                         if (newView && newRow >= 0) {
                                             newView.positionViewAtIndex(newRow, ListView.Beginning);
                                         }
+                                        root.suppressNavAnimation = false;
                                     });
                                 }
                             }
@@ -1271,7 +1135,21 @@ Item {
             visible: !root.queueViewActive
 
             onClicked: {
-                libraryController.locateCurrentSong()
+                libraryController.locateCurrentSong();
+                Qt.callLater(() => {
+                    var ctrlDepth = libraryController.folderStackDepth;
+                    var stackDepth = folderStack.depth;
+                    var targetNodeId = libraryController.currentFolderNodeId;
+                    if (stackDepth === ctrlDepth) {
+                        if (ctrlDepth === 0) {
+                            if (targetNodeId === "") {
+                                root.suppressNavAnimation = false;
+                            }
+                        } else if (folderStack.currentItem && folderStack.currentItem.folderNodeId === targetNodeId) {
+                            root.suppressNavAnimation = false;
+                        }
+                    }
+                });
             }
 
             // Shadow for FAB

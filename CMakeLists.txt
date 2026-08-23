@@ -831,6 +831,7 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         qt6_add_resources(SERIONA_SIDEBAR_QUEUE_TEST_QRC
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qmake_Seriona.qrc
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0.qrc
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_res_0.qrc
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0_extra_qmldirs.qrc
         )
         # 复用 qt_add_qml_module 生成的静态类型注册器：Sidebar 引用的

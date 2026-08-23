@@ -1783,25 +1783,6 @@ QObject *LibraryController::projectionModelForNodeId(const QString &folderNodeId
     return model;
 }
 
-QObject *LibraryController::projectionModelForLevel(int level)
-{
-    // deprecated 别名（Task 3 删除）：level 0 → 根键；level k ≥ 1 → 祖先链第 k-1 项；越界 nullptr。
-    if (level < 0) {
-        return nullptr;
-    }
-    if (level == 0) {
-        return projectionModelForNodeId(QString());
-    }
-    if (m_currentFolderNodeId.isEmpty()) {
-        return nullptr;
-    }
-    const QStringList chain = ancestorChainForNode(m_currentFolderNodeId);
-    if (level - 1 >= chain.size()) {
-        return nullptr;
-    }
-    return projectionModelForNodeId(chain.at(level - 1));
-}
-
 QStringList LibraryController::ancestorChainForNode(const QString &nodeId) const
 {
     // 对 LibraryModel::ancestorChainForNode（:619-637，返回 [目标, 父, …, 根]）

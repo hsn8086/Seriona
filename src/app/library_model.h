@@ -274,13 +274,15 @@ public:
     int folderStackDepth() const;
     // 按 folderNodeId 取投影模型（缓存 get-or-create；排序规则经 sortRulesForProjectionLevel）。
     Q_INVOKABLE QObject *projectionModelForNodeId(const QString &folderNodeId);
-    // deprecated 别名（Task 3 删除）：level 0 → 根键；level k ≥ 1 → 当前祖先链第 k-1 项；越界 nullptr。
-    Q_INVOKABLE QObject *projectionModelForLevel(int level);
     // 当前文件夹祖先链（从根向目标、排除根；现有 C++ 实现 :619-637 的"去根 + 倒序"等价变换）。
     Q_INVOKABLE QStringList ancestorChainForNode(const QString &nodeId) const;
     // 缓存条目计数（含根键），供测试/诊断观测缓存大小。
     Q_INVOKABLE int projectionCacheSize() const;
     Q_INVOKABLE void locateNodeInFolderStack(const QString &nodeId);
+    // 设置已保存的曲库根路径（归一化后存值并发射 savedRootPathChanged）。
+    // 真实应用经扫描流程（requestScanForRoot）设置；测试宿主未启动后端桥，
+    // 需要直接配置该状态才能覆盖"重进目录恢复排序规则"路径。
+    void setSavedRootPath(const QString &rootPath);
 
 signals:
     void currentFolderNameChanged();
@@ -315,7 +317,6 @@ private:
     void setScanProgress(int progress);
     void setScanCounts(quint64 scanned, quint64 total);
     void setLastError(const QString &error);
-    void setSavedRootPath(const QString &rootPath);
     void setBackendAvailable(bool available);
     void emitLibraryStateChanges(bool previousLibraryEmpty, const QString &previousLibraryState);
     void applyBrowsingState();

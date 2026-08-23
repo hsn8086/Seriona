@@ -11,6 +11,7 @@ Item {
     property var projectionModel: null
     property bool isActive: false
     property int navDirection: 1
+    property bool animationSuppressed: false
 
     property alias listView: folderListView
 
@@ -23,7 +24,7 @@ Item {
     height: parent ? parent.height : 0
 
     onIsActiveChanged: {
-        if (isActive) {
+        if (isActive && !animationSuppressed) {
             triggerPageSlideAnimation(folderListView, navDirection);
         }
     }

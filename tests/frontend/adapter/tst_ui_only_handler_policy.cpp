@@ -193,6 +193,7 @@ void UiOnlyHandlerPolicyTest::qmlLayoutSourceContractsStayStable()
     const QString mainQml = sourceFile(QStringLiteral("qml/Main.qml"));
     const QString mainContentQml = sourceFile(QStringLiteral("qml/views/MainContent.qml"));
     const QString sidebarQml = sourceFile(QStringLiteral("qml/components/Sidebar.qml"));
+    const QString playlistDelegateQml = sourceFile(QStringLiteral("qml/components/PlaylistDelegate.qml"));
     const QString sortDialogQml = sourceFile(QStringLiteral("qml/components/SortDialog.qml"));
     const QString sortRuleRowQml = sourceFile(QStringLiteral("qml/components/SortRuleRow.qml"));
     const QString startupViewQml = sourceFile(QStringLiteral("qml/views/StartupView.qml"));
@@ -269,29 +270,31 @@ void UiOnlyHandlerPolicyTest::qmlLayoutSourceContractsStayStable()
 
     expectContainsAll(sidebarQml, {
         "width: Theme.sidebarWidth",
-        "Accessible.role: Accessible.ListItem",
-        "Accessible.name: isFolder ? name : title",
         "id: playlistView",
         "ScrollBar.vertical: ScrollBar {",
         "policy: ScrollBar.AsNeeded",
         "id: playlistScrollBar",
         "visible: playlistScrollBar.size < 1.0",
         "readonly property ScrollBar verticalScrollBar: playlistView.ScrollBar.vertical",
-        "ItemDelegate {",
-        "height: 72",
-        "Layout.preferredWidth: 44",
-        "Layout.preferredHeight: 44",
-        "sourceSize.width: delegate.isFolder ? 24 : 44",
-        "sourceSize.height: delegate.isFolder ? 24 : 44",
         "id: sidebarFolderDialog",
         "id: fab"
     });
     expectInOrder(sidebarQml, {
         "id: playlistView",
         "ScrollBar.vertical: ScrollBar {",
-        "ItemDelegate {",
         "id: sidebarFolderDialog",
         "id: fab"
+    });
+
+    expectContainsAll(playlistDelegateQml, {
+        "Accessible.role: Accessible.ListItem",
+        "Accessible.name: isFolder ? name : title",
+        "ItemDelegate {",
+        "height: 72",
+        "Layout.preferredWidth: 44",
+        "Layout.preferredHeight: 44",
+        "sourceSize.width: delegate.isFolder ? 24 : 44",
+        "sourceSize.height: delegate.isFolder ? 24 : 44"
     });
 
     expectContainsAll(sortRuleRowQml, {
