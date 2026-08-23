@@ -201,6 +201,10 @@ private slots:
     void rescanRemovesCurrentFolderFallback();
     void pairingNoOpSelfHealing();
     void deepChainSortRuleRestoration();
+    // 用户报告：根视图（playlistView）条目 hover 无 UI 变化，深层 FolderPage 条目正常——回归锁
+    void rootViewDelegateHover();
+    // 对照组：FolderPage 条目 hover 必须保持正常（hoverEnabled: false 不得波及其子树）
+    void folderPageDelegateHover();
 
 private:
     QQmlApplicationEngine engine;
@@ -1739,6 +1743,62 @@ void SidebarQueueSwitchTest::deepChainSortRuleRestoration()
     assertStackAligned();
     QCOMPARE(stackView()->property("depth").toInt(), 25);
     QCOMPARE(currentPage()->property("folderNodeId").toString(), QStringLiteral("f25"));
+}
+
+// 用户报告：根视图（playlistView）条目 hover 无 UI 变化，深层 FolderPage 条目正常
+// （folderStack 在 depth 0 时可见但 disabled，疑似拦截 hover）。回归锁：
+// 根视图条目 hover 必须置位（与 FolderPage 条目行为一致）。
+void SidebarQueueSwitchTest::rootViewDelegateHover()
+{
+    resetNavigationState();
+    applyRichTree();
+
+    QQuickItem *rootView = qobject_cast<QQuickItem *>(findItem(QStringLiteral("playlistView")));
+    QVERIFY(rootView != nullptr);
+    QTRY_VERIFY(itemAt(rootView, 0) != nullptr);
+    QQuickItem *rootDelegate = itemAt(rootView, 0);
+
+    // 先移出条目区域，确保初始为未悬停态
+    QTest::mouseMove(window, QPoint(-50, -50));
+    QTest::qWait(80);
+    QVERIFY2(!rootDelegate->property("hovered").toBool(),
+             "precondition: root delegate must start unhovered");
+
+    // 悬停到根视图第一个条目：hovered 必须置位（当前 bug：始终 false）
+    const QPointF center = rootDelegate->mapToScene(QPointF(rootDelegate->width() / 2, rootDelegate->height() / 2));
+    QTest::mouseMove(window, center.toPoint());
+    QTRY_VERIFY_WITH_TIMEOUT(rootDelegate->property("hovered").toBool(), 1000);
+}
+
+// 对照组：FolderPage 条目 hover 保持正常（hoverEnabled: false 只禁 StackView 自身命中）
+void SidebarQueueSwitchTest::folderPageDelegateHover()
+{
+    resetNavigationState();
+    applyRichTree();
+
+    QQuickItem *rootView = qobject_cast<QQuickItem *>(findItem(QStringLiteral("playlistView")));
+    QVERIFY(rootView != nullptr);
+    QTRY_VERIFY(itemAt(rootView, 0) != nullptr);
+
+    QQuickItem *folderDelegate = itemAt(rootView, 0);
+    clickDelegate(folderDelegate);
+    QTRY_COMPARE(stackView()->property("depth").toInt(), 1);
+    waitStackSettled();
+    QObject *page = currentPage();
+    QVERIFY(page != nullptr);
+    QQuickItem *pageList = qobject_cast<QQuickItem *>(page->property("listView").value<QObject *>());
+    QVERIFY(pageList != nullptr);
+    QTRY_VERIFY(itemAt(pageList, 0) != nullptr);
+    QQuickItem *pageDelegate = itemAt(pageList, 0);
+    // 点击进入时鼠标停留在 g1 行场景位置，可能恰好落在页面首行上：先移出清空 hover
+    QTest::mouseMove(window, QPoint(-50, -50));
+    QTest::qWait(80);
+    QVERIFY2(!pageDelegate->property("hovered").toBool(),
+             "precondition: page delegate must start unhovered");
+    const QPointF pageCenter =
+        pageDelegate->mapToScene(QPointF(pageDelegate->width() / 2, pageDelegate->height() / 2));
+    QTest::mouseMove(window, pageCenter.toPoint());
+    QTRY_VERIFY_WITH_TIMEOUT(pageDelegate->property("hovered").toBool(), 1000);
 }
 
 QTEST_MAIN(SidebarQueueSwitchTest)
