@@ -196,6 +196,8 @@ set(SERIONA_QML_MODULE_FILES
     qml/components/SortRuleRow.qml
     qml/components/ConfirmDeleteDialog.qml
     qml/components/TrackContextMenu.qml
+    qml/components/PlaylistDelegate.qml
+    qml/components/FolderPage.qml
     qml/components/QueueView.qml
     qml/components/AboutOverlay.qml
     qml/views/MainContent.qml
@@ -841,9 +843,68 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         add_dependencies(seriona_frontend_sidebar_queue_tests appSeriona)
         add_test(NAME seriona_frontend_sidebar_queue_switch COMMAND seriona_frontend_sidebar_queue_tests)
 
+        add_executable(seriona_frontend_folder_page_tests
+            tests/frontend/adapter/tst_folder_page.cpp
+            src/app/app_facade.cpp
+            src/app/app_settings_storage.cpp
+            src/app/app_settings_storage.h
+            src/app/track_stats_controller.cpp
+            src/app/track_stats_controller.h
+            src/app/app_facade.h
+            src/app/playback_controller.cpp
+            src/app/playback_controller.h
+            src/app/artwork_palette_worker.cpp
+            src/app/artwork_palette_worker.h
+            src/app/navigation_controller.cpp
+            src/app/navigation_controller.h
+            src/app/settings_controller.cpp
+            src/app/settings_controller.h
+            src/app/backend_snapshot_mapper.cpp
+            src/app/backend_snapshot_mapper.h
+            src/app/backend_command_adapter.cpp
+            src/app/backend_command_adapter.h
+            src/app/backend_bridge.cpp
+            src/app/backend_bridge.h
+            src/app/notification_controller.cpp
+            src/app/notification_controller.h
+            src/app/waveform_provider.cpp
+            src/app/waveform_provider.h
+            src/app/lyrics_model.cpp
+            src/app/lyrics_model.h
+            src/app/library_model.cpp
+            src/app/library_model.h
+            src/app/library_folder_projection_model.cpp
+            src/app/library_folder_projection_model.h
+            src/app/library_tree_store.cpp
+            src/app/library_tree_store.h
+        )
+        target_include_directories(seriona_frontend_folder_page_tests
+            PRIVATE src/app
+        )
+        target_compile_definitions(seriona_frontend_folder_page_tests
+            PRIVATE SERIONA_HAS_BACKEND=1
+        )
+        target_link_libraries(seriona_frontend_folder_page_tests
+            PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET} ${SERIONA_BACKEND_APP_TARGET} spdlog::spdlog
+        )
+        qt6_add_resources(SERIONA_FOLDER_PAGE_TEST_QRC
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qmake_Seriona.qrc
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0.qrc
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_res_0.qrc
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0_extra_qmldirs.qrc
+        )
+        target_sources(seriona_frontend_folder_page_tests PRIVATE
+            ${SERIONA_FOLDER_PAGE_TEST_QRC}
+            ${CMAKE_CURRENT_BINARY_DIR}/appseriona_qmltyperegistrations.cpp
+        )
+        add_dependencies(seriona_frontend_folder_page_tests appSeriona)
+        add_test(NAME seriona_frontend_folder_page_tests COMMAND seriona_frontend_folder_page_tests)
+
         add_executable(seriona_frontend_playback_command_tests
             tests/frontend/adapter/tst_playback_command_mapping.cpp
             src/app/app_facade.cpp
+            src/app/app_settings_storage.cpp
+            src/app/app_settings_storage.h
             src/app/track_stats_controller.cpp
             src/app/track_stats_controller.h
             src/app/app_facade.h
