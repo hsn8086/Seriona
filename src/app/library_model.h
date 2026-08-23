@@ -200,6 +200,9 @@ class LibraryController : public QObject
     Q_PROPERTY(QString libraryState READ libraryState NOTIFY libraryStateChanged)
     Q_PROPERTY(QVariantList currentSortRules READ currentSortRules NOTIFY currentSortRulesChanged)
     Q_PROPERTY(int folderStackDepth READ folderStackDepth NOTIFY folderStackDepthChanged)
+    Q_PROPERTY(QString currentFolderNodeId READ currentFolderNodeId NOTIFY currentFolderNodeIdChanged)
+    // 投影缓存代次：主模型树重建（treeChanged）时递增；缓存模型自重建，QML 无需消费。
+    Q_PROPERTY(int projectionGeneration READ projectionGeneration NOTIFY projectionGenerationChanged)
     QML_ELEMENT
 
 public:
@@ -263,10 +266,20 @@ public:
     Q_INVOKABLE void selectBrowserNode(const QString &nodeId);
     Q_INVOKABLE int rowForNodeId(const QString &nodeId) const;
     Q_INVOKABLE void applySortRules(const QVariantList &rules);
-    // B'' 文件夹路径栈：每级一个独立投影模型实例（归 controller 所有，QML 只读绑定）。
-    // 栈内 level 0 恒为根投影；enterFolder 压栈 / goBack 弹栈并释放该级投影模型。
+    // 每级文件夹一个独立投影模型实例（归 controller 所有，QML 只读绑定）：
+    // 按 folderNodeId 缓存（QString() 根键保留），goBack/enterFolder 不再销毁实例；
+    // 树重建时缓存模型经 setSource 连接的 treeChanged 自动原地重建（身份不变）。
+    QString currentFolderNodeId() const;
+    int projectionGeneration() const;
     int folderStackDepth() const;
-    Q_INVOKABLE QObject *projectionModelForLevel(int level) const;
+    // 按 folderNodeId 取投影模型（缓存 get-or-create；排序规则经 sortRulesForProjectionLevel）。
+    Q_INVOKABLE QObject *projectionModelForNodeId(const QString &folderNodeId);
+    // deprecated 别名（Task 3 删除）：level 0 → 根键；level k ≥ 1 → 当前祖先链第 k-1 项；越界 nullptr。
+    Q_INVOKABLE QObject *projectionModelForLevel(int level);
+    // 当前文件夹祖先链（从根向目标、排除根；现有 C++ 实现 :619-637 的"去根 + 倒序"等价变换）。
+    Q_INVOKABLE QStringList ancestorChainForNode(const QString &nodeId) const;
+    // 缓存条目计数（含根键），供测试/诊断观测缓存大小。
+    Q_INVOKABLE int projectionCacheSize() const;
     Q_INVOKABLE void locateNodeInFolderStack(const QString &nodeId);
 
 signals:
@@ -289,6 +302,8 @@ signals:
     void libraryStateChanged();
     void currentSortRulesChanged();
     void folderStackDepthChanged();
+    void currentFolderNodeIdChanged();
+    void projectionGenerationChanged();
 
 private:
 #if SERIONA_HAS_BACKEND
@@ -319,9 +334,13 @@ private:
     void requestScrollToNode(const QString &nodeId);
     bool persistCurrentFolderSortRules(const QVector<LibraryModel::SortRule> &rules);
     QVariantList sortRuleVariantsFromModelRules(const QVector<LibraryModel::SortRule> &rules) const;
-    // B'' 文件夹路径栈维护：让栈与当前文件夹路径一致（前缀级复用既有实例，
-    // 超出目标深度的级释放，缺失的目标级新建），并在深度变化时发 folderStackDepthChanged。
+    // 当前文件夹投影缓存维护：确保祖先链各级（含根键）缓存条目存在；
+    // 进入/返回不再销毁任何投影模型（实例跨导航复用，滚动位置保留的前提）。
     void syncFolderStackToCurrentFolder();
+    // 统一修改 m_currentFolderNodeId/m_currentFolderName 并发射
+    // currentFolderNodeIdChanged/currentFolderNameChanged/folderStackDepthChanged
+    // （深度按祖先链计算，变化时发射）；canGoBackChanged 由调用点按既有语义发射。
+    void setCurrentFolderNodeId(const QString &nodeId, const QString &folderName);
     LibraryFolderProjectionModel *createFolderProjection(const QString &folderNodeId);
     QVector<LibraryModel::SortRule> sortRulesForProjectionLevel(const QString &folderNodeId) const;
     void refreshCurrentFolderProjection();
@@ -351,7 +370,8 @@ private:
     QVector<LibraryModel::SortRule> m_sortRules;
     QHash<QString, QVector<LibraryModel::SortRule>> m_savedFolderSortRules;
     QString m_activeFolderSortKey;
-    QVector<LibraryFolderProjectionModel *> m_folderProjectionStack;
+    QHash<QString, LibraryFolderProjectionModel *> m_folderProjectionCache;
+    int m_projectionGeneration = 0;
 #if SERIONA_HAS_BACKEND
     CommandExecutor m_commandExecutor;
     FolderSortExecutor m_folderSortExecutor;

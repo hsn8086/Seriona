@@ -145,6 +145,31 @@ PlaylistTreeSnapshot makeSortableSnapshot()
     return snapshot;
 }
 
+// 深链树：root → folder-1 → … → folder-<depth>（缓存容量/深度测试用）。
+PlaylistTreeSnapshot makeDeepChainSnapshot(int depth)
+{
+    PlaylistTreeSnapshot snapshot;
+    snapshot.version = 41;
+    snapshot.rootNodeId = std::string{"root"};
+    std::vector<PlaylistNode> nodes;
+    nodes.push_back(makeFolder("root", "Library", {"folder-1"}, std::nullopt, PlaylistNodeKind::Root));
+    for (int i = 1; i <= depth; ++i) {
+        const std::string nodeId = "folder-" + std::to_string(i);
+        const std::string parent = i == 1 ? "root" : "folder-" + std::to_string(i - 1);
+        std::vector<std::string> children;
+        if (i < depth) {
+            children.push_back("folder-" + std::to_string(i + 1));
+        } else {
+            children.push_back("track-deep");
+        }
+        nodes.push_back(makeFolder(nodeId, "Folder " + std::to_string(i), children, parent, PlaylistNodeKind::Album));
+    }
+    nodes.push_back(makeTrack("track-deep", "track-deep-id", "deep.flac", "Deep Tune", "Deep Artist", "Deep Album",
+                              std::chrono::milliseconds{100000}, "folder-" + std::to_string(depth)));
+    snapshot.nodes = std::move(nodes);
+    return snapshot;
+}
+
 // 深层树：root → folder-a → folder-b → folder-c（栈生命周期测试用）。
 PlaylistTreeSnapshot makeNestedTreeSnapshot()
 {
@@ -239,6 +264,13 @@ private slots:
     void playingAndFocusSyncEmitDataChanged();
     void stackDepthAndProjectionLifecycle();
     void locateNodeInFolderStackNavigatesToTargetLevel();
+    void projectionCacheReusesInstances();
+    void treeChangeKeepsCachedModelIdentity();
+    void sortChangeKeepsModelIdentity();
+    void deepChainProjectionCacheSize();
+    void depthSignalsEmitOnEnterAndGoBack();
+    void reconcileClearedFolderEmitsSignals();
+    void ancestorChainInvokableMatchesExpected();
     void roleNamesMatchLibraryModel();
 };
 
@@ -440,21 +472,23 @@ void LibraryFolderProjectionModelTest::stackDepthAndProjectionLifecycle()
     QVERIFY(level2 != nullptr);
     expectProjection(level2, {QStringLiteral("folder-c"), QStringLiteral("track-b1")});
 
-    // 返回：栈顶级释放（越界返回 nullptr），前缀级实例保留（视图滚动位置保留的前提）。
+    // 返回：level 2 越界返回 nullptr（别名按当前祖先链映射），
+    // 但实例保留在缓存中（下方重入断言验证复用）；前缀级实例不变。
     controller.goBack();
     QCOMPARE(controller.folderStackDepth(), 1);
     QVERIFY(controller.projectionModelForLevel(0) == rootProjection);
     QVERIFY(controller.projectionModelForLevel(1) == level1First);
     QVERIFY(controller.projectionModelForLevel(2) == nullptr);
 
-    // 再次进入同级目录：新实例（旧实例已释放）。
+    // 再次进入同级目录：复用同一缓存实例（缓存化语义：goBack 不再释放模型，
+    // 重入 get-or-create 命中既有实例，视图滚动位置保留的前提）。
     controller.enterFolder(QStringLiteral("folder-b"));
     QCOMPARE(controller.folderStackDepth(), 2);
     QVERIFY(controller.projectionModelForLevel(0) == rootProjection);
     QVERIFY(controller.projectionModelForLevel(1) == level1First);
     auto *level2Reentered = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForLevel(2));
     QVERIFY(level2Reentered != nullptr);
-    QVERIFY(level2Reentered != level2);
+    QVERIFY(level2Reentered == level2);
     expectProjection(level2Reentered, {QStringLiteral("folder-c"), QStringLiteral("track-b1")});
 
     controller.goBack();
@@ -516,6 +550,174 @@ void LibraryFolderProjectionModelTest::locateNodeInFolderStackNavigatesToTargetL
     const int depthBeforeUnknown = controller.folderStackDepth();
     controller.locateNodeInFolderStack(QStringLiteral("missing-node"));
     QCOMPARE(controller.folderStackDepth(), depthBeforeUnknown);
+}
+
+void LibraryFolderProjectionModelTest::projectionCacheReusesInstances()
+{
+    LibraryController controller;
+    controller.setPlaylistTreeSnapshot(makeNestedTreeSnapshot());
+
+    controller.enterFolder(QStringLiteral("folder-a"));
+    auto *folderA = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("folder-a")));
+    QVERIFY(folderA != nullptr);
+    controller.enterFolder(QStringLiteral("folder-b"));
+    auto *folderB = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("folder-b")));
+    QVERIFY(folderB != nullptr);
+    // 不同层独立实例。
+    QVERIFY(folderB != folderA);
+    // 同层重复取用返回同一实例。
+    QVERIFY(controller.projectionModelForNodeId(QStringLiteral("folder-a")) == folderA);
+
+    // 返回后实例保留（缓存化：不销毁）。
+    controller.goBack();
+    QVERIFY(controller.projectionModelForNodeId(QStringLiteral("folder-b")) == folderB);
+    QVERIFY(controller.projectionModelForNodeId(QStringLiteral("folder-a")) == folderA);
+
+    // 重入复用同一实例。
+    controller.enterFolder(QStringLiteral("folder-b"));
+    QVERIFY(controller.projectionModelForNodeId(QStringLiteral("folder-b")) == folderB);
+    QVERIFY(controller.projectionModelForNodeId(QStringLiteral("folder-a")) == folderA);
+}
+
+void LibraryFolderProjectionModelTest::treeChangeKeepsCachedModelIdentity()
+{
+    LibraryController controller;
+    controller.setPlaylistTreeSnapshot(makeProjectedTreeSnapshot());
+    controller.enterFolder(QStringLiteral("album-a"));
+
+    auto *level1 = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("album-a")));
+    QVERIFY(level1 != nullptr);
+    expectProjection(level1, {QStringLiteral("track-a"), QStringLiteral("track-b")});
+    const int generationBefore = controller.projectionGeneration();
+
+    // 树重建：缓存模型实例身份不变（setSource 连接的 treeChanged 自动原地重建），
+    // 内容更新为新树，投影代次递增。
+    controller.setPlaylistTreeSnapshot(makeProjectedTreeSnapshotV2());
+    QCOMPARE(controller.projectionGeneration(), generationBefore + 1);
+    QVERIFY(controller.projectionModelForNodeId(QStringLiteral("album-a")) == level1);
+    expectProjection(level1, {QStringLiteral("track-x"), QStringLiteral("track-y")});
+    QVERIFY(controller.projectionModelForNodeId(QString()) == controller.projectionModelForNodeId(QString()));
+}
+
+void LibraryFolderProjectionModelTest::sortChangeKeepsModelIdentity()
+{
+    QTemporaryDir musicDir;
+    LibraryController controller;
+    CommandRecorder commandRecorder;
+    installCommandRecorder(controller, commandRecorder);
+    scanTemporaryRoot(controller, musicDir);
+    controller.setPlaylistTreeSnapshot(makeSortableSnapshot());
+    controller.enterFolder(QStringLiteral("folder-jazz"));
+
+    auto *level1 = qobject_cast<LibraryFolderProjectionModel *>(controller.projectionModelForNodeId(QStringLiteral("folder-jazz")));
+    QVERIFY(level1 != nullptr);
+    const int revisionBefore = level1->projectionRevision();
+
+    // 排序变更：模型对象身份不变（setSource 原地重建），顺序更新。
+    controller.applySortRules(sortRules({{QStringLiteral("title"), QStringLiteral("asc")}}));
+    QVERIFY(controller.projectionModelForNodeId(QStringLiteral("folder-jazz")) == level1);
+    expectProjection(level1, {QStringLiteral("track-folder-a"), QStringLiteral("track-folder-b"), QStringLiteral("track-folder-c")});
+    QVERIFY(level1->projectionRevision() > revisionBefore);
+}
+
+void LibraryFolderProjectionModelTest::deepChainProjectionCacheSize()
+{
+    LibraryController controller;
+    controller.setPlaylistTreeSnapshot(makeDeepChainSnapshot(25));
+
+    // 初始只有根键。
+    QCOMPARE(controller.projectionCacheSize(), 1);
+
+    for (int i = 1; i <= 25; ++i) {
+        controller.enterFolder(QStringLiteral("folder-%1").arg(i));
+    }
+    QCOMPARE(controller.folderStackDepth(), 25);
+    // 缓存大小 == 访问目录数 + 1（含根键）。
+    QCOMPARE(controller.projectionCacheSize(), 26);
+
+    // 逐级返回后缓存不收缩（实例保留）。
+    while (controller.canGoBack()) {
+        controller.goBack();
+    }
+    QCOMPARE(controller.folderStackDepth(), 0);
+    QCOMPARE(controller.projectionCacheSize(), 26);
+}
+
+void LibraryFolderProjectionModelTest::depthSignalsEmitOnEnterAndGoBack()
+{
+    LibraryController controller;
+    controller.setPlaylistTreeSnapshot(makeNestedTreeSnapshot());
+    QSignalSpy depthSpy(&controller, &LibraryController::folderStackDepthChanged);
+    QSignalSpy nodeSpy(&controller, &LibraryController::currentFolderNodeIdChanged);
+
+    controller.enterFolder(QStringLiteral("folder-a"));
+    QCOMPARE(depthSpy.count(), 1);
+    QCOMPARE(nodeSpy.count(), 1);
+    QCOMPARE(controller.currentFolderNodeId(), QStringLiteral("folder-a"));
+
+    controller.enterFolder(QStringLiteral("folder-b"));
+    QCOMPARE(depthSpy.count(), 2);
+    QCOMPARE(nodeSpy.count(), 2);
+
+    // 重复进入同一文件夹：深度/节点未变，不发。
+    controller.enterFolder(QStringLiteral("folder-b"));
+    QCOMPARE(depthSpy.count(), 2);
+    QCOMPARE(nodeSpy.count(), 2);
+
+    controller.goBack();
+    QCOMPARE(depthSpy.count(), 3);
+    QCOMPARE(nodeSpy.count(), 3);
+    QCOMPARE(controller.currentFolderNodeId(), QStringLiteral("folder-a"));
+
+    controller.goBack();
+    QCOMPARE(depthSpy.count(), 4);
+    QCOMPARE(nodeSpy.count(), 4);
+    QCOMPARE(controller.currentFolderNodeId(), QString());
+}
+
+void LibraryFolderProjectionModelTest::reconcileClearedFolderEmitsSignals()
+{
+    LibraryController controller;
+    controller.setPlaylistTreeSnapshot(makeProjectedTreeSnapshot());
+    controller.enterFolder(QStringLiteral("album-a"));
+    QCOMPARE(controller.folderStackDepth(), 1);
+
+    QSignalSpy depthSpy(&controller, &LibraryController::folderStackDepthChanged);
+    QSignalSpy nodeSpy(&controller, &LibraryController::currentFolderNodeIdChanged);
+
+    // 重扫树不含 album-a：对账清空当前文件夹，folderStackDepthChanged 与
+    // currentFolderNodeIdChanged 同步发射（深度 1 → 0，节点 → 根键）。
+    controller.setPlaylistTreeSnapshot(makeSortableSnapshot());
+    QCOMPARE(controller.folderStackDepth(), 0);
+    QCOMPARE(controller.currentFolderNodeId(), QString());
+    QCOMPARE(depthSpy.count(), 1);
+    QCOMPARE(nodeSpy.count(), 1);
+}
+
+void LibraryFolderProjectionModelTest::ancestorChainInvokableMatchesExpected()
+{
+    LibraryController controller;
+    controller.setPlaylistTreeSnapshot(makeNestedTreeSnapshot());
+
+    // 3 层树：链 == [顶层, 中层, 目标]（从根向目标、排除根）。
+    QStringList chain;
+    const bool invoked = QMetaObject::invokeMethod(
+        &controller, "ancestorChainForNode", Qt::DirectConnection,
+        Q_RETURN_ARG(QStringList, chain), Q_ARG(QString, QStringLiteral("folder-c")));
+    QVERIFY(invoked);
+    QCOMPARE(chain, QStringList({QStringLiteral("folder-a"), QStringLiteral("folder-b"), QStringLiteral("folder-c")}));
+
+    // 根直属节点：链只含自身。
+    QStringList rootChildChain;
+    QVERIFY(QMetaObject::invokeMethod(&controller, "ancestorChainForNode", Qt::DirectConnection,
+                                      Q_RETURN_ARG(QStringList, rootChildChain), Q_ARG(QString, QStringLiteral("folder-a"))));
+    QCOMPARE(rootChildChain, QStringList({QStringLiteral("folder-a")}));
+
+    // 未知节点：现有 C++ 实现返回 [目标, 根]，去根后等价变换为 [目标]。
+    QStringList unknownChain;
+    QVERIFY(QMetaObject::invokeMethod(&controller, "ancestorChainForNode", Qt::DirectConnection,
+                                      Q_RETURN_ARG(QStringList, unknownChain), Q_ARG(QString, QStringLiteral("missing-node"))));
+    QCOMPARE(unknownChain, QStringList({QStringLiteral("missing-node")}));
 }
 
 void LibraryFolderProjectionModelTest::roleNamesMatchLibraryModel()

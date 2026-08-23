@@ -23,6 +23,19 @@ namespace Seriona::App {
 
 namespace {
 
+bool sortRulesEqual(const QVector<LibraryModel::SortRule> &lhs, const QVector<LibraryModel::SortRule> &rhs)
+{
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (qsizetype i = 0; i < lhs.size(); ++i) {
+        if (lhs.at(i).field != rhs.at(i).field || lhs.at(i).order != rhs.at(i).order) {
+            return false;
+        }
+    }
+    return true;
+}
+
 QString normalizeFolderSortRootPath(const QString &rootPath)
 {
     if (rootPath.isEmpty()) {
@@ -1299,6 +1312,8 @@ void LibraryController::setPlaylistTreeSnapshot(const seriona::scanner::Playlist
     m_backendAvailable = true;
     m_model.setPlaylistTreeSnapshot(snapshot);
     reconcileBrowsingState(focusedFallbackChain, selectedFallbackChain);
+    ++m_projectionGeneration;
+    emit projectionGenerationChanged();
     if (previousBackendAvailable != m_backendAvailable) {
         emit backendAvailableChanged();
     }
@@ -1376,18 +1391,13 @@ void LibraryController::enterFolder(const QString &nodeId)
 
     const bool previousCanGoBack = canGoBack();
     const bool folderChanged = m_currentFolderNodeId != nodeId;
-    const bool nameChanged = m_currentFolderName != entry->name;
 
-    m_currentFolderNodeId = nodeId;
-    m_currentFolderName = entry->name;
+    setCurrentFolderNodeId(nodeId, entry->name);
     setSelectedBrowserNodeId(nodeId);
     restoreSortRulesForCurrentFolder();
     applyBrowsingState();
     syncFolderStackToCurrentFolder();
 
-    if (nameChanged) {
-        emit currentFolderNameChanged();
-    }
     if (previousCanGoBack != canGoBack() || folderChanged) {
         emit canGoBackChanged();
     }
@@ -1408,8 +1418,7 @@ void LibraryController::goBack()
         if (!parentNodeId.isEmpty() && parentNodeId != rootNodeId) {
             enterFolder(parentNodeId);
         } else {
-            m_currentFolderNodeId.clear();
-            m_currentFolderName = QStringLiteral("My Music");
+            setCurrentFolderNodeId(QString(), QStringLiteral("My Music"));
             m_sortRules.clear();
             m_activeFolderSortKey.clear();
             if (!previousFolderNodeId.isEmpty()) {
@@ -1418,7 +1427,6 @@ void LibraryController::goBack()
             }
             applyBrowsingState();
             syncFolderStackToCurrentFolder();
-            emit currentFolderNameChanged();
             if (previousCanGoBack != canGoBack()) {
                 emit canGoBackChanged();
             }
@@ -1736,19 +1744,84 @@ int LibraryController::rowForNodeId(const QString &nodeId) const
     return m_model.rowForNodeId(nodeId);
 }
 
-int LibraryController::folderStackDepth() const
+QString LibraryController::currentFolderNodeId() const
 {
-    // 深度 = 已进入的文件夹层数：根浏览（栈内只有根投影）为 0，
-    // 与 QML 视图层级约定一致（0=根视图，1=第一级，…）。
-    return qMax(0, m_folderProjectionStack.size() - 1);
+    return m_currentFolderNodeId;
 }
 
-QObject *LibraryController::projectionModelForLevel(int level) const
+int LibraryController::projectionGeneration() const
 {
-    if (level < 0 || level >= m_folderProjectionStack.size()) {
+    return m_projectionGeneration;
+}
+
+int LibraryController::folderStackDepth() const
+{
+    // 深度 = 当前文件夹祖先链（排除根）长度：根浏览为 0，
+    // 与 QML 视图层级约定一致（0=根视图，1=第一级，…）。
+    if (m_currentFolderNodeId.isEmpty()) {
+        return 0;
+    }
+    QStringList chain = ancestorChainForNode(m_currentFolderNodeId);
+    return qMax(0, chain.size());
+}
+
+QObject *LibraryController::projectionModelForNodeId(const QString &folderNodeId)
+{
+    const auto cacheIt = m_folderProjectionCache.constFind(folderNodeId);
+    if (cacheIt != m_folderProjectionCache.cend()) {
+        LibraryFolderProjectionModel *model = cacheIt.value();
+        const QVector<LibraryModel::SortRule> rules = sortRulesForProjectionLevel(folderNodeId);
+        if (!sortRulesEqual(model->sortRules(), rules)) {
+            // 排序规则变化：原地重建（setSource → rebuildFromSource，模型对象身份不变，
+            // 发射 modelReset 而非 layoutChanged，排序应用后视口归顶行为与现状一致）。
+            model->setSource(&m_model, folderNodeId, rules);
+        }
+        return model;
+    }
+    LibraryFolderProjectionModel *model = createFolderProjection(folderNodeId);
+    m_folderProjectionCache.insert(folderNodeId, model);
+    return model;
+}
+
+QObject *LibraryController::projectionModelForLevel(int level)
+{
+    // deprecated 别名（Task 3 删除）：level 0 → 根键；level k ≥ 1 → 祖先链第 k-1 项；越界 nullptr。
+    if (level < 0) {
         return nullptr;
     }
-    return m_folderProjectionStack.at(level);
+    if (level == 0) {
+        return projectionModelForNodeId(QString());
+    }
+    if (m_currentFolderNodeId.isEmpty()) {
+        return nullptr;
+    }
+    const QStringList chain = ancestorChainForNode(m_currentFolderNodeId);
+    if (level - 1 >= chain.size()) {
+        return nullptr;
+    }
+    return projectionModelForNodeId(chain.at(level - 1));
+}
+
+QStringList LibraryController::ancestorChainForNode(const QString &nodeId) const
+{
+    // 对 LibraryModel::ancestorChainForNode（:619-637，返回 [目标, 父, …, 根]）
+    // 做"去根 + 倒序"等价变换：返回 [根向目标、排除根]（QML JS 调用，非绑定）。
+    const QVector<QString> chain = m_model.ancestorChainForNode(nodeId);
+    const QString rootNodeId = m_model.firstNodeId();
+    QStringList result;
+    result.reserve(chain.size());
+    for (auto it = chain.crbegin(); it != chain.crend(); ++it) {
+        if (*it == rootNodeId) {
+            continue;
+        }
+        result.append(*it);
+    }
+    return result;
+}
+
+int LibraryController::projectionCacheSize() const
+{
+    return m_folderProjectionCache.size();
 }
 
 void LibraryController::locateNodeInFolderStack(const QString &nodeId)
@@ -1780,34 +1853,14 @@ void LibraryController::locateNodeInFolderStack(const QString &nodeId)
 
 void LibraryController::syncFolderStackToCurrentFolder()
 {
-    QVector<QString> desiredChain;
-    desiredChain.append(QString());
+    // 缓存遍历：确保祖先链各级（含根键）缓存条目存在；不销毁任何模型
+    // （get-or-create 内部会按 sortRulesForProjectionLevel 校验并原地重建规则漂移的条目）。
+    projectionModelForNodeId(QString());
     if (!m_currentFolderNodeId.isEmpty()) {
-        const QVector<QString> chain = m_model.ancestorChainForNode(m_currentFolderNodeId);
-        const QString rootNodeId = m_model.rootNodeId();
-        for (auto it = chain.crbegin(); it != chain.crend(); ++it) {
-            if (*it == rootNodeId) {
-                continue;
-            }
-            desiredChain.append(*it);
+        const QStringList chain = ancestorChainForNode(m_currentFolderNodeId);
+        for (const QString &folderNodeId : chain) {
+            projectionModelForNodeId(folderNodeId);
         }
-    }
-
-    const int previousDepth = m_folderProjectionStack.size();
-    qsizetype common = 0;
-    while (common < m_folderProjectionStack.size() && common < desiredChain.size()
-           && m_folderProjectionStack.at(common)->folderNodeId() == desiredChain.at(common)) {
-        ++common;
-    }
-    while (m_folderProjectionStack.size() > common) {
-        LibraryFolderProjectionModel *model = m_folderProjectionStack.takeLast();
-        model->deleteLater();
-    }
-    for (qsizetype level = common; level < desiredChain.size(); ++level) {
-        m_folderProjectionStack.append(createFolderProjection(desiredChain.at(level)));
-    }
-    if (m_folderProjectionStack.size() != previousDepth) {
-        emit folderStackDepthChanged();
     }
 }
 
@@ -1834,28 +1887,34 @@ QVector<LibraryModel::SortRule> LibraryController::sortRulesForProjectionLevel(c
 
 void LibraryController::refreshCurrentFolderProjection()
 {
-    if (m_folderProjectionStack.isEmpty()) {
+    LibraryFolderProjectionModel *model = m_folderProjectionCache.value(m_currentFolderNodeId, nullptr);
+    if (model == nullptr) {
         return;
     }
-    LibraryFolderProjectionModel *top = m_folderProjectionStack.last();
-    if (top->folderNodeId().isEmpty()) {
-        return;
+    const QVector<LibraryModel::SortRule> rules = sortRulesForProjectionLevel(m_currentFolderNodeId);
+    if (!sortRulesEqual(model->sortRules(), rules)) {
+        model->setSource(&m_model, m_currentFolderNodeId, rules);
     }
-    const QVector<LibraryModel::SortRule> rules = sortRulesForProjectionLevel(top->folderNodeId());
-    const QVector<LibraryModel::SortRule> currentRules = top->sortRules();
-    bool rulesUnchanged = currentRules.size() == rules.size();
-    if (rulesUnchanged) {
-        for (qsizetype i = 0; i < rules.size(); ++i) {
-            if (currentRules.at(i).field != rules.at(i).field || currentRules.at(i).order != rules.at(i).order) {
-                rulesUnchanged = false;
-                break;
-            }
-        }
+}
+
+void LibraryController::setCurrentFolderNodeId(const QString &nodeId, const QString &folderName)
+{
+    const int previousDepth = folderStackDepth();
+    const bool folderChanged = m_currentFolderNodeId != nodeId;
+    const bool nameChanged = m_currentFolderName != folderName;
+
+    m_currentFolderNodeId = nodeId;
+    m_currentFolderName = folderName;
+
+    if (folderChanged) {
+        emit currentFolderNodeIdChanged();
     }
-    if (rulesUnchanged) {
-        return;
+    if (nameChanged) {
+        emit currentFolderNameChanged();
     }
-    top->setSource(&m_model, top->folderNodeId(), rules);
+    if (folderStackDepth() != previousDepth) {
+        emit folderStackDepthChanged();
+    }
 }
 
 void LibraryController::applySortRules(const QVariantList &rules)
@@ -2072,11 +2131,9 @@ bool LibraryController::showNodeInBrowserProjection(const QString &nodeId)
     }
 
     const bool folderChanged = m_currentFolderNodeId != folderNodeId;
-    const bool folderNameChanged = m_currentFolderName != folderName;
     const bool searchChanged = !m_searchQuery.isEmpty();
 
-    m_currentFolderNodeId = folderNodeId;
-    m_currentFolderName = folderName;
+    setCurrentFolderNodeId(folderNodeId, folderName);
     if (searchChanged) {
         m_searchQuery.clear();
     }
@@ -2087,9 +2144,6 @@ bool LibraryController::showNodeInBrowserProjection(const QString &nodeId)
 
     if (searchChanged) {
         emit searchQueryChanged();
-    }
-    if (folderNameChanged) {
-        emit currentFolderNameChanged();
     }
     if (previousCanGoBack != canGoBack() || folderChanged) {
         emit canGoBackChanged();
@@ -2132,12 +2186,10 @@ void LibraryController::reconcileBrowsingState(const QVector<QString> &focusedFa
         selectedNeedsVisibleFallback = true;
     }
     if (!m_currentFolderNodeId.isEmpty() && !m_model.containsNodeId(m_currentFolderNodeId)) {
-        m_currentFolderNodeId.clear();
-        m_currentFolderName = QStringLiteral("My Music");
+        setCurrentFolderNodeId(QString(), QStringLiteral("My Music"));
         m_sortRules.clear();
         m_activeFolderSortKey.clear();
         folderWasCleared = true;
-        emit currentFolderNameChanged();
     }
     if (!folderWasCleared && !m_currentFolderNodeId.isEmpty()) {
         restoreSortRulesForCurrentFolder();
