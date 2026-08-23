@@ -52,7 +52,7 @@ Release 模式（`CMAKE_BUILD_TYPE=Release`）按编译器启用全量优化：G
 │  ├─ LibraryController/LibraryModel/LibraryTreeStore  曲库树、双游标、排序、扫描│
 │  ├─ LyricsModel           歌词列表模型（分隔符切分、时间同步）               │
 │  ├─ NotificationController 有界通知队列（容量 12）+ 不支持项本地反馈          │
-│  ├─ NavigationController   视图/侧栏/启动屏状态 + 曲库根路径持久化（QSettings）│
+│  ├─ NavigationController   视图/侧栏/启动屏状态 + 曲库根路径持久化（应用设置存储）│
 │  └─ WaveformProvider / ArtworkPaletteWorker（异步波形、封面取色）            │
 └──────────────┬──────────────────────────────────────────────────────────────┘
                │ BackendBridge（命令/快照边界）
@@ -133,7 +133,7 @@ Release 模式（`CMAKE_BUILD_TYPE=Release`）按编译器启用全量优化：G
 ### 5.5 NavigationController（`QML_UNCREATABLE`）
 
 - 三组外壳状态：`currentView`（仅 `"playback"`/`"lyrics"` 两值）、`sidebarOpen`（dock/overlay 双模式，`syncSidebarForDockCapability` 同步停靠能力；`manualSidebarToggle` 标记手动开关，Main.qml 用 310ms 定时器在 dock 模式下协调 x/width 动画）、`startupScreenVisible`（启动页）。
-- 曲库根路径持久化：`QSettings`（org/app 均为 `Seriona`，键 `library/lastScanRoot`；测试可经 `seriona.settingsFileForTests` 注入 Ini 文件）——这是前端唯一的本地持久化（设置类，非媒体数据）。
+- 曲库根路径持久化：应用设置存储（默认内存；AppFacade 接入后端时注入 BackendBridge → 后端键值存储；键 `library/lastScanRoot`）——这是前端唯一的本地持久化（设置类，非媒体数据）。
 - 启动恢复：读上次根 → 缺失/非目录时清持久化并给用户错误消息；否则触发扫描（后端模式为 Incremental）并进入主界面。
 
 ### 5.6 NotificationController（`QML_UNCREATABLE`）
@@ -208,7 +208,7 @@ WindowControls.closeRequested / 设置菜单"退出" ──► requestApplicatio
 3. `loadFromModule("Seriona", "Main")` → Main.qml 实例化 `AppFacade`。
 4. AppFacade 构造：注入执行器、连接快照信号、`start()` 后端桥（默认自动）。
 5. Main.qml `Component.onCompleted`：应用 smoke 场景（若有）；正常模式默认显示启动页（`startupScreenVisible=true`）。
-6. 启动页用户动作：恢复播放列表（`AppFacade::restorePlaylistFromStartup` → 读 QSettings 上次根 → 扫描）或添加文件夹 → 进入主界面（`enterMainShell`：隐藏启动页、切到 playback 视图）。
+6. 启动页用户动作：恢复播放列表（`AppFacade::restorePlaylistFromStartup` → 读应用设置中的上次根 → 扫描）或添加文件夹 → 进入主界面（`enterMainShell`：隐藏启动页、切到 playback 视图）。
 
 ## 8. 核心运行流程
 
@@ -238,8 +238,8 @@ WindowControls.closeRequested / 设置菜单"退出" ──► requestApplicatio
 
 ### 9.2 运行期
 
-- `QSettings`（org/app `Seriona`/`Seriona`）：仅 `library/lastScanRoot`（上次曲库根）。
-- QCoreApplication 动态属性：`seriona.backendBridgeAutostartEnabled`（跳过后端自启）、`seriona.settingsFileForTests`（测试注入设置文件）。
+- 应用设置存储：三个控制器（SettingsController / NavigationController / TrackStatsController）共用；默认内存存储（进程内，mock-only/smoke 有效），AppFacade 接入后端时注入 BackendBridge（命令/快照边界）→ 后端键值存储（`app_settings` 表），读取失败回退内存缓存。
+- QCoreApplication 动态属性：`seriona.backendBridgeAutostartEnabled`（跳过后端自启）、`seriona.smokeScenario`（smoke 场景名，见 §9.3）。
 - `Theme.qml` token：共享颜色/尺寸/动画参数。
 
 ### 9.3 Smoke CLI（`./build/appSeriona`）
