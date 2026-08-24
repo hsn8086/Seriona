@@ -218,6 +218,20 @@ void LyricsModel::toggleTranslation()
     setShowTranslation(!m_showTranslation);
 }
 
+QVariantList LyricsModel::lines() const
+{
+    QVariantList out;
+    out.reserve(m_lines.size());
+    for (const auto &line : m_lines) {
+        QVariantMap entry;
+        entry.insert(QStringLiteral("displayLine"), displayLine(line.text));
+        entry.insert(QStringLiteral("translation"), translationLine(line.text));
+        entry.insert(QStringLiteral("timestampSec"), line.timestamp.count() / 1000.0);
+        out.append(entry);
+    }
+    return out;
+}
+
 QString LyricsModel::displayLine(const QString &line) const
 {
     const DelimiterHit hit = earliestDelimiterHit(line, m_lyricDelimiters);

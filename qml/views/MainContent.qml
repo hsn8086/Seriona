@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import QtQml.Models
 import Qt5Compat.GraphicalEffects
 import QtQuick.Effects
 import Seriona
@@ -25,14 +26,131 @@ Item {
     // 1: 切换下一首 (歌词从右滑入)，-1: 切换上一首 (歌词从左滑入)
     property int lyricsSwitchDirection: 1
 
+    // ---- 切歌逐行划出/划入动画状态（两段式：先退场 → 换数据 → 再进入）----
+    property bool lyricsAnimBusy: false        // 动画相位进行中（退场或进入）
+    property bool lyricsAnimEntering: false    // 相位③ 进入（用于区分 modelReset 到达时的缓冲语义）
+    property var pendingLyricsRows: []         // modelReset 到达但退场未完成时的新歌数据缓冲
+
+    // 歌词数据源：QAbstractListModel 的 rowCount()/data() 非 Q_INVOKABLE，QML 无法直接调用，
+    // 通过 LyricsModel::lines()（Q_INVOKABLE）读取全部行做快照
+    // 歌词显示层快照：Repeater 只绑这个 ListModel，与 C++ LyricsModel 解耦，
+    // 使"退场动画播完才换数据"的两段式时序完全可控（LyricsModel 的 modelReset 不再直接重建视图）
+    ListModel {
+        id: lyricsViewList
+    }
+
+    // 切歌动画相位协调器（root 作用域：QML 中 id 不是对象属性，lyricsContainer 内无法 root 访问）
+    Timer {
+        id: lyricsPhaseTimer
+        interval: 400
+        repeat: false
+        onTriggered: root.finishLyricsPhase()
+    }
+
+    // 复制 LyricsModel 全部行为 JS 数组（isCurrent 不复制：行高亮实时绑定 lyricsState.currentIndex）
+    function snapshotRowsFromLyricsState() {
+        var rows = [];
+        var arr = lyricsState.lines();
+        for (var i = 0; i < arr.length; ++i) {
+            rows.push({
+                displayLine: arr[i].displayLine,
+                translation: arr[i].translation,
+                timestampSec: arr[i].timestampSec
+            });
+        }
+        return rows;
+    }
+
+    function applyRowsToView(rows) {
+        lyricsViewList.clear();
+        for (var i = 0; i < rows.length; ++i)
+            lyricsViewList.append(rows[i]);
+    }
+
+    // 无动画直接同步快照（非歌词态切歌 / modelReset 时空闲）
+    function applyLyricsSnapshotDirectly() {
+        applyRowsToView(snapshotRowsFromLyricsState());
+        if (lyricsContainer && root.state === "lyrics")
+            lyricsContainer.scheduleSnapToCurrentLyric();
+    }
+
+    // 相位① 退场：对可视范围内旧行逐行划出，随后协调器进入换数据
+    function beginLyricsSwitch() {
+        if (lyricsAnimBusy) {
+            // 动画中再次切歌：打断重排（现有行全部复位，重新退场）
+            lyricsContainer.resetAllLines();
+        }
+        lyricsAnimBusy = true;
+        lyricsAnimEntering = false;
+        pendingLyricsRows = [];
+        var range = lyricsContainer.visibleLineRange();
+        if (range[1] < range[0]) {
+            // 当前无歌词：无行可退，直接进入换数据
+            finishLyricsExitPhase();
+            return;
+        }
+        var n = range[1] - range[0] + 1;
+        for (var i = range[0]; i <= range[1]; ++i) {
+            var it = lyricsRepeater.itemAt(i);
+            if (it)
+                it.startLineExit(lyricsSwitchDirection, i - range[0]);
+        }
+        lyricsPhaseTimer.interval = (n - 1) * 25 + 260 + 40; // 最后一行延迟+动画时长+余量
+        lyricsPhaseTimer.restart();
+    }
+
+    // 相位② 换数据：应用新歌快照（modelReset 已把新数据存进 pendingLyricsRows；未到则兜底直读）
+    function finishLyricsExitPhase() {
+        if (pendingLyricsRows.length === 0)
+            pendingLyricsRows = snapshotRowsFromLyricsState();
+        // 先置进入相位标志再换数据：新 delegate 创建即"屏外透明"初始态，
+        // 避免"先显示新歌词、再播进入动画"的闪现帧（与文件夹动画第一次编写时的坑相同）
+        lyricsAnimEntering = true;
+        applyRowsToView(pendingLyricsRows);
+        pendingLyricsRows = [];
+        // 等布局稳定（新 delegate 已就位、contentHeight 已更新）再进入相位③
+        Qt.callLater(root.beginLyricsEnter);
+    }
+
+    // 相位③ 进入：对可视范围内新行逐行划入，完成后恢复 idle 并定位当前行
+    function beginLyricsEnter() {
+        lyricsAnimEntering = true;
+        var range = lyricsContainer.visibleLineRange();
+        if (range[1] < range[0]) {
+            finishLyricsEnterPhase();
+            return;
+        }
+        var n = range[1] - range[0] + 1;
+        for (var i = range[0]; i <= range[1]; ++i) {
+            var it = lyricsRepeater.itemAt(i);
+            if (it)
+                it.startLineEnter(lyricsSwitchDirection, i - range[0]);
+        }
+        lyricsPhaseTimer.interval = (n - 1) * 25 + 260 + 40;
+        lyricsPhaseTimer.restart();
+    }
+
+    // 协调器统一回调：退场完成 → 换数据；进入完成 → 恢复
+    function finishLyricsPhase() {
+        if (lyricsAnimEntering) {
+            lyricsAnimEntering = false;
+            lyricsAnimBusy = false;
+            lyricsContainer.scheduleSnapToCurrentLyric();
+        } else {
+            finishLyricsExitPhase();
+        }
+    }
+
     Connections {
         target: root.playbackController
 
         function onCurrentSongChanged() {
-            // 切歌后恢复歌词自动跟随并定位到当前行
+            // 切歌后恢复歌词自动跟随；歌词界面内播放逐行划出/划入动画
+            // （此刻 LyricsModel 仍是旧歌，modelReset 稍后到达——两段式时序的关键提前量）
             if (lyricsContainer) {
                 lyricsContainer.lyricsSyncToPlayback = true;
-                lyricsContainer.scheduleSnapToCurrentLyric();
+                if (root.state === "lyrics")
+                    root.beginLyricsSwitch();
                 lyricsRestoreTimer.stop();
             }
         }
@@ -106,7 +224,11 @@ Item {
         notificationClearTimer.restart();
     }
 
-    Component.onCompleted: showLatestNotificationToast()
+    // 初始快照：启动时把 LyricsModel 已有内容同步到显示层（无动画）
+    Component.onCompleted: {
+        showLatestNotificationToast();
+        root.applyLyricsSnapshotDirectly();
+    }
 
     Connections {
         target: root.notifications
@@ -469,6 +591,70 @@ Item {
                 Qt.callLater(lyricsContainer.snapToCurrentLyric);
         }
 
+        // 切歌动画：可视范围裁剪——只对 [firstVisible, lastVisible]（±1 行余量）内的行播动画，
+        // 视口外行全程被 clip 裁剪不可见，动画是纯开销（行高可变，须按实际 y/height 遍历求交集）
+        function visibleLineRange() {
+            var count = lyricsViewList.count;
+            if (count === 0)
+                return [0, -1];
+            var top = lyricsContainer.contentY;
+            var bottom = top + lyricsContainer.height;
+            var first = -1, last = -1;
+            for (var i = 0; i < count; ++i) {
+                var it = lyricsRepeater.itemAt(i);
+                if (!it)
+                    continue;
+                var y0 = it.y, y1 = it.y + it.height;
+                if (y1 < top || y0 > bottom) {
+                    if (first >= 0) {
+                        last = i - 1;
+                        break;
+                    }
+                    continue;
+                }
+                if (first < 0)
+                    first = i;
+                last = i;
+            }
+            if (first < 0)
+                return [0, -1];
+            return [Math.max(0, first - 1), Math.min(count - 1, last + 1)];
+        }
+
+        // 退场相位：可视行从左/右划出（方向由 lyricsSwitchDirection 贯穿）；可见区间与时长由 root 协调
+        function startLinesExit(direction) {
+            var range = visibleLineRange();
+            if (range[1] < range[0])
+                return;
+            for (var i = range[0]; i <= range[1]; ++i) {
+                var it = lyricsRepeater.itemAt(i);
+                if (it)
+                    it.startLineExit(direction, i - range[0]);
+            }
+        }
+
+        // 进入相位：新行从另一侧划入（可视行）
+        function startLinesEnter(direction) {
+            var range = visibleLineRange();
+            if (range[1] < range[0])
+                return;
+            for (var i = range[0]; i <= range[1]; ++i) {
+                var it = lyricsRepeater.itemAt(i);
+                if (it)
+                    it.startLineEnter(direction, i - range[0]);
+            }
+        }
+
+        // 打断重排：全部行复位到原位（快速连续切歌时先复位再重新退场）
+        function resetAllLines() {
+            var count = lyricsViewList.count;
+            for (var i = 0; i < count; ++i) {
+                var it = lyricsRepeater.itemAt(i);
+                if (it)
+                    it.resetLine();
+            }
+        }
+
         // 用户开始滚动 → 停车（暂停自动跟随）并重置空闲计时
         function parkLyricsFollow() {
             lyricsSyncToPlayback = false;
@@ -524,19 +710,102 @@ Item {
 
             Repeater {
                 id: lyricsRepeater
-                model: lyricsState
+                model: lyricsViewList
 
                 delegate: Item {
                     id: delegateItem
                     required property int index
                     required property string displayLine
                     required property string translation
-                    required property bool isCurrent
                     required property real timestampSec
                     width: lyricsContainer.width
                     height: lyricColumn.implicitHeight + Theme.paddingLarge
 
-                    readonly property bool isActive: isCurrent
+                    // 行高亮实时跟随播放进度（currentIndex 来自 C++ LyricsModel，快照只存静态文本）
+                    readonly property bool isActive: index === lyricsState.currentIndex
+
+                    // ---- 切歌逐行划出/划入动画（transform 纯视觉，不触发布局/锚点）----
+                    // 初始态绑定进入相位：数据加载帧（applyRowsToView 后、进入动画启动前）保持屏外透明，
+                    // 避免新歌词先显示再划入的闪现；startLineEnter/startLineExit 的赋值会解除绑定接管动画
+                    opacity: root.lyricsAnimEntering ? 0.0 : 1.0
+                    transform: Translate {
+                        id: lineSlide
+                        x: root.lyricsAnimEntering ? (root.lyricsSwitchDirection >= 0 ? lyricsContainer.width : -lyricsContainer.width) : 0
+                    }
+
+                    SequentialAnimation {
+                        id: lineExitAnim
+                        PauseAnimation {
+                            id: lineExitDelay
+                            duration: 0
+                        }
+                        ParallelAnimation {
+                            NumberAnimation {
+                                id: lineExitX
+                                target: lineSlide
+                                property: "x"
+                                duration: 260
+                                easing.type: Easing.InCubic
+                            }
+                            NumberAnimation {
+                                target: delegateItem
+                                property: "opacity"
+                                to: 0
+                                duration: 180
+                                easing.type: Easing.OutQuad
+                            }
+                        }
+                    }
+
+                    SequentialAnimation {
+                        id: lineEnterAnim
+                        PauseAnimation {
+                            id: lineEnterDelay
+                            duration: 0
+                        }
+                        ParallelAnimation {
+                            NumberAnimation {
+                                target: lineSlide
+                                property: "x"
+                                to: 0
+                                duration: 260
+                                easing.type: Easing.OutCubic
+                            }
+                            NumberAnimation {
+                                target: delegateItem
+                                property: "opacity"
+                                to: 1
+                                duration: 220
+                                easing.type: Easing.OutQuad
+                            }
+                        }
+                    }
+
+                    // 退场：下一首向左划出（x → -width），上一首向右划出（x → +width）；step×25ms 错峰
+                    function startLineExit(direction, step) {
+                        lineExitAnim.stop();
+                        lineSlide.x = 0;
+                        lineExitX.to = -(direction >= 0 ? 1 : -1) * lyricsContainer.width;
+                        lineExitDelay.duration = step * 25;
+                        lineExitAnim.start();
+                    }
+
+                    // 进入：下一首从右划入（x 从 +width → 0），上一首从左划入（x 从 -width → 0）
+                    function startLineEnter(direction, step) {
+                        lineEnterAnim.stop();
+                        lineSlide.x = (direction >= 0 ? 1 : -1) * lyricsContainer.width;
+                        delegateItem.opacity = 0.0;
+                        lineEnterDelay.duration = step * 25;
+                        lineEnterAnim.start();
+                    }
+
+                    // 打断复位（快速连续切歌 / 应用新快照前）
+                    function resetLine() {
+                        lineExitAnim.stop();
+                        lineEnterAnim.stop();
+                        lineSlide.x = 0;
+                        delegateItem.opacity = 1.0;
+                    }
 
                     Column {
                         id: lyricColumn
@@ -611,24 +880,18 @@ Item {
         }
     }
 
-    // 歌词内容重置（切歌）时的容器级滑入动画（替代原 ListView populate；方向由 lyricsSwitchDirection 控制）
+    // 歌词内容重置（切歌）时的新数据入口：退场动画在播则缓冲，否则直接同步
     Connections {
         target: lyricsState
 
         function onModelReset() {
-            if (root.state === "lyrics") {
-                lyricsContainer.x = (root.lyricsSwitchDirection >= 0 ? 1 : -1) * lyricsContainer.width;
-                lyricsContainer.opacity = 0.0;
-                lyricsSwitchInAnim.restart();
-            }
-        }
-    }
-
-    SequentialAnimation {
-        id: lyricsSwitchInAnim
-        ParallelAnimation {
-            NumberAnimation { target: lyricsContainer; property: "x"; to: 0; duration: 220; easing.type: Easing.OutCubic }
-            NumberAnimation { target: lyricsContainer; property: "opacity"; to: 1.0; duration: 220; easing.type: Easing.OutQuad }
+            // LyricsModel 此刻已是新歌（C++ 同步替换完成）：
+            // - 退场相位进行中：把新歌数据存入缓冲，退场完成后由 finishLyricsExitPhase 应用（两段式）
+            // - 空闲（非歌词态切歌 / 无动画场景）：直接同步快照
+            if (root.lyricsAnimBusy && !root.lyricsAnimEntering)
+                root.pendingLyricsRows = root.snapshotRowsFromLyricsState();
+            else
+                root.applyLyricsSnapshotDirectly();
         }
     }
 
@@ -637,7 +900,7 @@ Item {
         id: noLyricsPlaceholder
         anchors.fill: lyricsContainer
         z: 11
-        visible: lyricsContainer.visible && (lyricsState.rowCount() === 0)
+        visible: lyricsContainer.visible && (lyricsViewList.count === 0)
         opacity: visible ? 1.0 : 0.0
 
         Behavior on opacity {

@@ -63,6 +63,10 @@ public:
     Q_INVOKABLE void selectLyric(int index);
     Q_INVOKABLE void toggleTranslation();
 
+    // 供 QML 侧切歌动画快照使用：返回全部行 {displayLine, translation, timestampSec}
+    // （QAbstractListModel 的 rowCount()/data() 非 Q_INVOKABLE，QML 无法直接调用）
+    Q_INVOKABLE QVariantList lines() const;
+
 signals:
     void currentIndexChanged();
     void playbackPositionChanged();
