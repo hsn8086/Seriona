@@ -167,7 +167,7 @@ void UiOnlyHandlerPolicyTest::uiOnlyHandlersDoNotUseBackendCommands()
     expectContains(sidebarQml, QStringLiteral("return currentRules.length > 0 ? currentRules : [{field: \"filename\", order: \"asc\"}];"));
     expectContains(sidebarQml, QStringLiteral("sortDialog.sortRules = root.sortRulesForDialog();"));
     expectContains(sidebarQml, QStringLiteral("libraryController.applySortRules(sortRules);"));
-    expectContains(sidebarQml, QStringLiteral("libraryController.refresh();"));
+    expectContains(sidebarQml, QStringLiteral("libraryController.forceRescan();"));
     expectContains(sidebarQml, QStringLiteral("onAccepted: root.appFacade.scanLibrary(folder)"));
     expectAbsent(sidebarQml, QStringLiteral("sortBy"));
     expectAbsent(sidebarQml, QStringLiteral("setSort"));

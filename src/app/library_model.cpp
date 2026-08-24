@@ -1445,6 +1445,23 @@ bool LibraryController::refresh()
     }
 
 #if SERIONA_HAS_BACKEND
+    return requestScanForRoot(m_savedRootPath, seriona::scanner::ScanMode::Incremental);
+#else
+    return requestScanForRoot(m_savedRootPath);
+#endif
+}
+
+bool LibraryController::forceRescan()
+{
+    if (m_savedRootPath.isEmpty()) {
+        setScanStatus(QStringLiteral("error"));
+        setScanProgress(0);
+        setLastError(tr("尚未选择曲库文件夹"));
+        return false;
+    }
+
+#if SERIONA_HAS_BACKEND
+    // 显式 Full：后端 decideScanMode 对 Full 请求直接短路，不做增量决策，强制全量重扫
     return requestScanForRoot(m_savedRootPath, seriona::scanner::ScanMode::Full);
 #else
     return requestScanForRoot(m_savedRootPath);
@@ -1470,7 +1487,7 @@ bool LibraryController::scanLibrary(const QUrl &rootUrl)
     }
 
 #if SERIONA_HAS_BACKEND
-    return requestScanForRoot(rootPath, seriona::scanner::ScanMode::Full);
+    return requestScanForRoot(rootPath, seriona::scanner::ScanMode::Incremental);
 #else
     return requestScanForRoot(rootPath);
 #endif

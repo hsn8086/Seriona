@@ -138,7 +138,7 @@ void StartupRestoreTest::scanLibraryPersistsRootForStartupRestore()
     QVERIFY(facade.scanLibrary(QUrl::fromLocalFile(musicDir.path())));
 
     QCOMPARE(recorder.roots, std::vector<QString>{canonicalRoot});
-    QCOMPARE(recorder.modes, std::vector<seriona::scanner::ScanMode>{seriona::scanner::ScanMode::Full});
+    QCOMPARE(recorder.modes, std::vector<seriona::scanner::ScanMode>{seriona::scanner::ScanMode::Incremental});
     QCOMPARE(facade.library()->savedRootPath(), canonicalRoot);
     QCOMPARE(savedRoot(), canonicalRoot);
     QVERIFY(facade.navigation()->startupScreenVisible());

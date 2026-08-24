@@ -254,6 +254,7 @@ public:
     Q_INVOKABLE void enterFolder(const QString &nodeId);
     Q_INVOKABLE void goBack();
     Q_INVOKABLE bool refresh();
+    Q_INVOKABLE bool forceRescan();
     Q_INVOKABLE bool scanLibrary(const QUrl &rootUrl);
 #if SERIONA_HAS_BACKEND
     bool scanLibrary(const QUrl &rootUrl, seriona::scanner::ScanMode mode);

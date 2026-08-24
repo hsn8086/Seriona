@@ -135,6 +135,7 @@ private slots:
     void emptySnapshotExposesEmptyLibraryState();
     void backendUnavailableDoesNotFabricateRows();
     void scanLibraryRequestSubmitsBackendScanAndUpdatesTree();
+    void forceRescanRequestsFullScanAndRequiresRoot();
     void cancelAndInvalidSelectionDoNotScanOrSaveRoot();
     void scanSnapshotsMapUiStates();
 };
@@ -193,7 +194,7 @@ void LibraryScanFlowTest::scanLibraryRequestSubmitsBackendScanAndUpdatesTree()
     QVERIFY(controller.scanLibrary(QUrl::fromLocalFile(musicDir.path())));
 
     QCOMPARE(recorder.roots, std::vector<QString>{canonicalRoot});
-    QCOMPARE(recorder.modes, std::vector<seriona::scanner::ScanMode>{seriona::scanner::ScanMode::Full});
+    QCOMPARE(recorder.modes, std::vector<seriona::scanner::ScanMode>{seriona::scanner::ScanMode::Incremental});
     QCOMPARE(controller.savedRootPath(), canonicalRoot);
     QCOMPARE(controller.scanStatus(), QStringLiteral("running"));
     QCOMPARE(controller.scanProgress(), 0);
@@ -202,7 +203,7 @@ void LibraryScanFlowTest::scanLibraryRequestSubmitsBackendScanAndUpdatesTree()
     recorder.clear();
     QVERIFY(controller.refresh());
     QCOMPARE(recorder.roots, std::vector<QString>{canonicalRoot});
-    QCOMPARE(recorder.modes, std::vector<seriona::scanner::ScanMode>{seriona::scanner::ScanMode::Full});
+    QCOMPARE(recorder.modes, std::vector<seriona::scanner::ScanMode>{seriona::scanner::ScanMode::Incremental});
 
     LibraryStateSnapshot completed;
     completed.scanStatus = LibraryScanStatus::Completed;
@@ -235,6 +236,31 @@ void LibraryScanFlowTest::scanLibraryRequestSubmitsBackendScanAndUpdatesTree()
     QCOMPARE(controller.visibleNodeCount(), previousVisibleNodeCount);
     QCOMPARE(controller.scanStatus(), QStringLiteral("error"));
     QCOMPARE(controller.lastError(), QStringLiteral("backend scan rejected"));
+}
+
+void LibraryScanFlowTest::forceRescanRequestsFullScanAndRequiresRoot()
+{
+    QTemporaryDir musicDir;
+    QVERIFY(musicDir.isValid());
+    const QString canonicalRoot = QFileInfo(musicDir.path()).absoluteFilePath();
+
+    LibraryController controller;
+    ScanRecorder recorder;
+    controller.setScanExecutor([&recorder](const QString &rootPath, seriona::scanner::ScanMode mode) {
+        return recorder.record(rootPath, mode);
+    });
+
+    QCOMPARE(controller.forceRescan(), false);
+    QCOMPARE(recorder.roots.size(), std::size_t{0});
+    QCOMPARE(controller.savedRootPath(), QString());
+    QVERIFY(!controller.lastError().isEmpty());
+
+    QVERIFY(controller.scanLibrary(QUrl::fromLocalFile(musicDir.path())));
+    recorder.clear();
+
+    QVERIFY(controller.forceRescan());
+    QCOMPARE(recorder.roots, std::vector<QString>{canonicalRoot});
+    QCOMPARE(recorder.modes, std::vector<seriona::scanner::ScanMode>{seriona::scanner::ScanMode::Full});
 }
 
 void LibraryScanFlowTest::cancelAndInvalidSelectionDoNotScanOrSaveRoot()

@@ -523,9 +523,9 @@ Item {
                                         }
                                     }
                                     BubbleMenuItem {
-                                        text: qsTr("刷新")
+                                        text: qsTr("强制重新扫描")
                                         onTriggered: {
-                                            libraryController.refresh();
+                                            libraryController.forceRescan();
                                             sidebarMenu.close();
                                         }
                                     }
