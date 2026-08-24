@@ -366,6 +366,7 @@ if(BUILD_TESTING)
     add_test(NAME seriona_frontend_settings_log_level_persist COMMAND seriona_frontend_settings_controller_tests logLevelPersistRoundTrip)
     add_test(NAME seriona_frontend_settings_log_level_mapping COMMAND seriona_frontend_settings_controller_tests logLevelMapping)
     add_test(NAME seriona_frontend_settings_log_level_push_defense COMMAND seriona_frontend_settings_controller_tests logLevelPushAndDefense)
+    add_test(NAME seriona_frontend_settings_follow_restore_persist COMMAND seriona_frontend_settings_controller_tests followRestoreDelayPersistRoundTrip)
 
     # 播放次数/星级持久化（T16）：纯 QML 面（无后端依赖），mock-only 构建同样注册
     add_executable(seriona_frontend_track_stats_tests
@@ -1088,6 +1089,10 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             tests/frontend/adapter/tst_artwork_transition.cpp
             src/app/playback_controller.cpp
             src/app/playback_controller.h
+            src/app/settings_controller.cpp
+            src/app/settings_controller.h
+            src/app/app_settings_storage.cpp
+            src/app/app_settings_storage.h
             src/app/artwork_palette_worker.cpp
             src/app/artwork_palette_worker.h
             src/app/backend_snapshot_mapper.cpp

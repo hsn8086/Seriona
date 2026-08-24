@@ -50,6 +50,7 @@ private slots:
     void logLevelPersistRoundTrip();
     void logLevelMapping();
     void logLevelPushAndDefense();
+    void followRestoreDelayPersistRoundTrip();
 
 private:
     Seriona::App::AppSettingsBackend testBackend();
@@ -114,6 +115,8 @@ void SettingsControllerTest::defaults()
     QCOMPARE(settings.lyricDelimiters(), defaultDelimiters);
     // 日志等级默认 info（与前端持久化默认一致，启动后经 applyLogLevel 同步后端）
     QCOMPARE(settings.logLevel(), 2);
+    // 歌词跟随恢复延迟默认 5s（与前端持久化默认一致）
+    QCOMPARE(settings.followRestoreDelayMs(), 5000);
 }
 
 void SettingsControllerTest::propertySettersPersistAndNotify()
@@ -195,6 +198,13 @@ void SettingsControllerTest::invalidValuesRejected()
     settings.setBufferDurationMs(2000);
     QCOMPARE(settings.bufferDurationMs(), 300);
 
+    settings.setFollowRestoreDelayMs(999);
+    QCOMPARE(settings.followRestoreDelayMs(), 5000);
+    settings.setFollowRestoreDelayMs(16000);
+    QCOMPARE(settings.followRestoreDelayMs(), 5000);
+    settings.setFollowRestoreDelayMs(0);
+    QCOMPARE(settings.followRestoreDelayMs(), 5000);
+
     // 边界值合法
     settings.setOutputMode(1);
     settings.setSampleRate(8000);
@@ -204,20 +214,25 @@ void SettingsControllerTest::invalidValuesRejected()
     settings.setSampleFormat(4);
     settings.setBufferDurationMs(50);
     settings.setBufferDurationMs(1000);
+    settings.setFollowRestoreDelayMs(1000);
+    settings.setFollowRestoreDelayMs(15000);
     QCOMPARE(settings.outputMode(), 1);
     QCOMPARE(settings.sampleRate(), 768000);
     QCOMPARE(settings.sampleFormat(), 4);
     QCOMPARE(settings.bufferDurationMs(), 1000);
+    QCOMPARE(settings.followRestoreDelayMs(), 15000);
 
     // 非法值不写入存储
     settings.setOutputMode(7);
     settings.setSampleRate(100);
     settings.setSampleFormat(3);
     settings.setBufferDurationMs(2000);
+    settings.setFollowRestoreDelayMs(42);
     QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("outputMode")).toInt(), 1);
     QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("sampleRate")).toInt(), 768000);
     QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("sampleFormat")).toInt(), 4);
     QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("bufferDurationMs")).toInt(), 1000);
+    QCOMPARE(storedValue(QStringLiteral("lyrics"), QStringLiteral("followRestoreDelayMs")).toInt(), 15000);
 }
 
 void SettingsControllerTest::applyAssemblesPayload()
@@ -670,6 +685,38 @@ void SettingsControllerTest::lyricDelimitersPersistRoundTrip()
     emptyReader.setSettingsStorageBackend(testBackend());
     emptyReader.reloadFromSettings();
     QVERIFY(emptyReader.lyricDelimiters().isEmpty());
+}
+
+void SettingsControllerTest::followRestoreDelayPersistRoundTrip()
+{
+    {
+        Seriona::App::SettingsController writer;
+        writer.setSettingsStorageBackend(testBackend());
+        writer.setFollowRestoreDelayMs(8000);
+        QCOMPARE(writer.followRestoreDelayMs(), 8000);
+    }
+
+    // 持久化键位于 lyrics 组（与分隔符同组），值为毫秒 int
+    QCOMPARE(storedValue(QStringLiteral("lyrics"), QStringLiteral("followRestoreDelayMs")).toInt(), 8000);
+
+    Seriona::App::SettingsController reader;
+    reader.setSettingsStorageBackend(testBackend());
+    reader.reloadFromSettings();
+    QCOMPARE(reader.followRestoreDelayMs(), 8000);
+
+    // 未写入时默认 5000
+    removeStored(QStringLiteral("lyrics"), QStringLiteral("followRestoreDelayMs"));
+    Seriona::App::SettingsController defaultReader;
+    defaultReader.setSettingsStorageBackend(testBackend());
+    defaultReader.reloadFromSettings();
+    QCOMPARE(defaultReader.followRestoreDelayMs(), 5000);
+
+    // reload 防御：存储中的非法值回退默认
+    m_store.insert(storageKey(QStringLiteral("lyrics"), QStringLiteral("followRestoreDelayMs")), 123456);
+    Seriona::App::SettingsController corruptReader;
+    corruptReader.setSettingsStorageBackend(testBackend());
+    corruptReader.reloadFromSettings();
+    QCOMPARE(corruptReader.followRestoreDelayMs(), 5000);
 }
 
 void SettingsControllerTest::sampleFormatPersistRoundTrip()

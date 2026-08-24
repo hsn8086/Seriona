@@ -53,6 +53,7 @@ class SettingsController : public QObject
     Q_PROPERTY(int sampleFormat READ sampleFormat WRITE setSampleFormat NOTIFY sampleFormatChanged)
     Q_PROPERTY(int bufferDurationMs READ bufferDurationMs WRITE setBufferDurationMs NOTIFY bufferDurationMsChanged)
     Q_PROPERTY(QStringList lyricDelimiters READ lyricDelimiters WRITE setLyricDelimiters NOTIFY lyricDelimitersChanged)
+    Q_PROPERTY(int followRestoreDelayMs READ followRestoreDelayMs WRITE setFollowRestoreDelayMs NOTIFY followRestoreDelayMsChanged)
     Q_PROPERTY(int logLevel READ logLevel WRITE setLogLevel NOTIFY logLevelChanged)
     Q_PROPERTY(bool sampleParamsGreyed READ sampleParamsGreyed NOTIFY outputModeChanged)
     Q_PROPERTY(QVariantList sampleRateOptions READ sampleRateOptions NOTIFY sampleRateOptionsChanged)
@@ -99,6 +100,10 @@ public:
     QStringList lyricDelimiters() const;
     void setLyricDelimiters(const QStringList &delimiters);
 
+    // 歌词跟随恢复延迟（毫秒）：纯本地项，仅持久化不推送；QML 歌词容器绑定为恢复计时器 interval。
+    int followRestoreDelayMs() const;
+    void setFollowRestoreDelayMs(int delayMs);
+
     bool sampleParamsGreyed() const;
     QVariantList sampleRateOptions() const;
     QVariantList sampleFormatOptions() const;
@@ -133,6 +138,7 @@ signals:
     void sampleFormatChanged();
     void bufferDurationMsChanged();
     void lyricDelimitersChanged();
+    void followRestoreDelayMsChanged();
     void logLevelChanged();
     void sampleRateOptionsChanged();
     void sampleFormatOptionsChanged();
@@ -145,6 +151,7 @@ private:
     void setBufferDurationMsInternal(int bufferDurationMs);
     void setPreferredDeviceIdInternal(const QString &deviceId);
     void setLyricDelimitersInternal(const QStringList &delimiters);
+    void setFollowRestoreDelayMsInternal(int delayMs);
     void setLogLevelInternal(int level);
     void persistValue(const char *group, const char *key, const QVariant &value);
     void persistOutputValue(const char *key, const QVariant &value);
@@ -166,6 +173,7 @@ private:
     int m_sampleFormat = 0;
     int m_bufferDurationMs = 300;
     QStringList m_lyricDelimiters = {QStringLiteral(" / ")};
+    int m_followRestoreDelayMs = 5000;
     int m_logLevel = 2;
     int m_lastValidOutputMode = 0;
     int m_lastValidSampleRate = 48000;

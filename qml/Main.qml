@@ -300,6 +300,7 @@ Window {
                         notifications: window.appFacade.notifications
                         libraryController: window.appFacade.library
                         lyricsState: window.appFacade.lyrics
+                        settings: window.appFacade.settings
 
                         onCoverClicked: {
                             window.navigationController.showLyricsView();

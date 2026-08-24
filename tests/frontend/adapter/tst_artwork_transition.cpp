@@ -3,6 +3,7 @@
 #include "notification_controller.h"
 #include "lyrics_model.h"
 #include "library_model.h"
+#include "settings_controller.h"
 
 #include "seriona/control/control_contracts.h"
 
@@ -5473,6 +5474,7 @@ void registerSerionaModuleForTests(const QString &sourceRoot)
         || qmlRegisterType<NotificationController>(kModuleUri, 1, 0, "NotificationController") < 0
         || qmlRegisterType<LyricsModel>(kModuleUri, 1, 0, "LyricsModel") < 0
         || qmlRegisterType<LibraryController>(kModuleUri, 1, 0, "LibraryController") < 0
+        || qmlRegisterType<SettingsController>(kModuleUri, 1, 0, "SettingsController") < 0
         || qmlRegisterSingletonType(moduleFile(QStringLiteral("theme/Theme.qml")),
                kModuleUri, 1, 0, "Theme")
                < 0
@@ -5555,6 +5557,7 @@ private:
         Seriona::App::NotificationController *notifications,
         Seriona::App::LyricsModel *lyrics,
         Seriona::App::LibraryController *library,
+        Seriona::App::SettingsController *settings,
         QString *error);
 
     CoverBlock locateCoverBlock(QQuickItem *root) const;
@@ -5573,6 +5576,7 @@ QQuickItem *ArtworkTransitionTest::loadMainContent(
     Seriona::App::NotificationController *notifications,
     Seriona::App::LyricsModel *lyrics,
     Seriona::App::LibraryController *library,
+    Seriona::App::SettingsController *settings,
     QString *error)
 {
     QQmlComponent component(
@@ -5587,6 +5591,7 @@ QQuickItem *ArtworkTransitionTest::loadMainContent(
     initialProperties.insert(QStringLiteral("notifications"), QVariant::fromValue<QObject *>(notifications));
     initialProperties.insert(QStringLiteral("lyricsState"), QVariant::fromValue<QObject *>(lyrics));
     initialProperties.insert(QStringLiteral("libraryController"), QVariant::fromValue<QObject *>(library));
+    initialProperties.insert(QStringLiteral("settings"), QVariant::fromValue<QObject *>(settings));
     QScopedPointer<QObject> created(component.createWithInitialProperties(
         initialProperties, m_engine.rootContext()));
     if (!created) {
@@ -5711,10 +5716,11 @@ void ArtworkTransitionTest::artwork_transition()
     Seriona::App::NotificationController notifications;
     Seriona::App::LyricsModel lyrics;
     Seriona::App::LibraryController library;
+    Seriona::App::SettingsController settingsController;
 
     QString error;
     QScopedPointer<QQuickItem> mainContent(
-        loadMainContent(&controller, &notifications, &lyrics, &library, &error));
+        loadMainContent(&controller, &notifications, &lyrics, &library, &settingsController, &error));
     QVERIFY2(mainContent, qPrintable(error));
     const CoverBlock block = locateCoverBlock(mainContent.data());
     QVERIFY(block.container);
@@ -5839,10 +5845,11 @@ void ArtworkTransitionTest::artwork_fallback()
     Seriona::App::NotificationController notifications;
     Seriona::App::LyricsModel lyrics;
     Seriona::App::LibraryController library;
+    Seriona::App::SettingsController settingsController;
 
     QString error;
     QScopedPointer<QQuickItem> mainContent(
-        loadMainContent(&controller, &notifications, &lyrics, &library, &error));
+        loadMainContent(&controller, &notifications, &lyrics, &library, &settingsController, &error));
     QVERIFY2(mainContent, qPrintable(error));
     const CoverBlock block = locateCoverBlock(mainContent.data());
     QVERIFY(block.icon);
@@ -5902,10 +5909,11 @@ void ArtworkTransitionTest::artwork_palette_nonblocking()
     Seriona::App::NotificationController notifications;
     Seriona::App::LyricsModel lyrics;
     Seriona::App::LibraryController library;
+    Seriona::App::SettingsController settingsController;
 
     QString error;
     QScopedPointer<QQuickItem> mainContent(
-        loadMainContent(&controller, &notifications, &lyrics, &library, &error));
+        loadMainContent(&controller, &notifications, &lyrics, &library, &settingsController, &error));
     QVERIFY2(mainContent, qPrintable(error));
     const CoverBlock block = locateCoverBlock(mainContent.data());
     QVERIFY(block.preferred);

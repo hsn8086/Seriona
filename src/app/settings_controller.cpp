@@ -16,6 +16,7 @@ constexpr auto kSampleFormatKey = "sampleFormat";
 constexpr auto kBufferDurationMsKey = "bufferDurationMs";
 constexpr auto kPreferredDeviceIdKey = "preferredDeviceId";
 constexpr auto kLyricsDelimitersKey = "delimiters";
+constexpr auto kFollowRestoreDelayMsKey = "followRestoreDelayMs";
 constexpr auto kLogLevelKey = "logLevel";
 
 constexpr int kDefaultOutputMode = 0; // Direct
@@ -31,6 +32,10 @@ constexpr int kMinSampleRate = 8000;
 constexpr int kMaxSampleRate = 768000;
 constexpr int kMinBufferDurationMs = 50;
 constexpr int kMaxBufferDurationMs = 1000;
+// 歌词跟随恢复延迟：默认 5s；范围 1s-15s（业界实测 1s~10s，默认取中位）
+constexpr int kDefaultFollowRestoreDelayMs = 5000;
+constexpr int kMinFollowRestoreDelayMs = 1000;
+constexpr int kMaxFollowRestoreDelayMs = 15000;
 // 连续控件去抖窗口（300-500ms 要求区间内）
 constexpr int kDebounceIntervalMs = 400;
 
@@ -76,6 +81,11 @@ bool isValidSampleFormat(int sampleFormat)
 bool isValidBufferDurationMs(int bufferDurationMs)
 {
     return bufferDurationMs >= kMinBufferDurationMs && bufferDurationMs <= kMaxBufferDurationMs;
+}
+
+bool isValidFollowRestoreDelayMs(int delayMs)
+{
+    return delayMs >= kMinFollowRestoreDelayMs && delayMs <= kMaxFollowRestoreDelayMs;
 }
 
 bool isValidLogLevel(int level)
@@ -149,6 +159,11 @@ QStringList SettingsController::lyricDelimiters() const
     return m_lyricDelimiters;
 }
 
+int SettingsController::followRestoreDelayMs() const
+{
+    return m_followRestoreDelayMs;
+}
+
 int SettingsController::logLevel() const
 {
     return m_logLevel;
@@ -191,6 +206,15 @@ void SettingsController::setLyricDelimiters(const QStringList &delimiters)
     }
     setLyricDelimitersInternal(delimiters);
     persistValue(kLyricsGroup, kLyricsDelimitersKey, delimiters);
+}
+
+void SettingsController::setFollowRestoreDelayMs(int delayMs)
+{
+    if (!isValidFollowRestoreDelayMs(delayMs) || m_followRestoreDelayMs == delayMs) {
+        return;
+    }
+    setFollowRestoreDelayMsInternal(delayMs);
+    persistValue(kLyricsGroup, kFollowRestoreDelayMsKey, delayMs);
 }
 
 void SettingsController::setLogLevel(int level)
@@ -291,6 +315,11 @@ void SettingsController::reloadFromSettings()
                                                           kDefaultLyricDelimiters)
                                        .toStringList();
 
+    const int followRestoreDelayMs = m_settingsStorage.read(QString::fromUtf8(kLyricsGroup),
+                                                            QString::fromUtf8(kFollowRestoreDelayMsKey),
+                                                            kDefaultFollowRestoreDelayMs)
+                                         .toInt();
+
     const int logLevel = m_settingsStorage.read(QString::fromUtf8(kLoggingGroup),
                                                 QString::fromUtf8(kLogLevelKey),
                                                 kDefaultLogLevel)
@@ -302,6 +331,7 @@ void SettingsController::reloadFromSettings()
     setBufferDurationMsInternal(bufferDurationMs);
     setPreferredDeviceIdInternal(deviceId);
     setLyricDelimitersInternal(delimiters);
+    setFollowRestoreDelayMsInternal(followRestoreDelayMs);
     setLogLevelInternal(logLevel);
 }
 
@@ -457,6 +487,15 @@ void SettingsController::setLyricDelimitersInternal(const QStringList &delimiter
     }
     m_lyricDelimiters = delimiters;
     emit lyricDelimitersChanged();
+}
+
+void SettingsController::setFollowRestoreDelayMsInternal(int delayMs)
+{
+    if (!isValidFollowRestoreDelayMs(delayMs) || m_followRestoreDelayMs == delayMs) {
+        return;
+    }
+    m_followRestoreDelayMs = delayMs;
+    emit followRestoreDelayMsChanged();
 }
 
 void SettingsController::setLogLevelInternal(int level)

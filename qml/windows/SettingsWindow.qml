@@ -992,6 +992,70 @@ Window {
                                 }
                             }
                         }
+
+                        // Row: Lyric Follow Restore Delay
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Text {
+                                text: qsTr("跟随恢复延迟")
+                                color: Theme.textPrimary
+                                font.pixelSize: Theme.fontBody
+                                Layout.preferredWidth: 100
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.spacing12
+
+                                Slider {
+                                    id: followRestoreSlider
+                                    Layout.fillWidth: true
+                                    from: 1
+                                    to: 15
+                                    stepSize: 1
+                                    value: settings.followRestoreDelayMs / 1000
+                                    onMoved: {
+                                        settings.followRestoreDelayMs = value * 1000;
+                                    }
+
+                                    background: Rectangle {
+                                        x: followRestoreSlider.leftPadding
+                                        y: followRestoreSlider.topPadding + followRestoreSlider.availableHeight / 2 - height / 2
+                                        implicitWidth: 200
+                                        implicitHeight: 4
+                                        width: followRestoreSlider.availableWidth
+                                        height: implicitHeight
+                                        radius: 2
+                                        color: Theme.progressBarTrackColor
+
+                                        Rectangle {
+                                            width: followRestoreSlider.visualPosition * parent.width
+                                            height: parent.height
+                                            color: Theme.progressBarColor
+                                            radius: 2
+                                        }
+                                    }
+
+                                    handle: Rectangle {
+                                        x: followRestoreSlider.leftPadding + followRestoreSlider.visualPosition * (followRestoreSlider.availableWidth - width)
+                                        y: followRestoreSlider.topPadding + followRestoreSlider.availableHeight / 2 - height / 2
+                                        implicitWidth: 16
+                                        implicitHeight: 16
+                                        radius: 8
+                                        color: followRestoreSlider.pressed ? Qt.darker(Theme.accentColor, 1.2) : (followRestoreSlider.hovered ? Qt.lighter(Theme.accentColor, 1.2) : Theme.accentColor)
+                                    }
+                                }
+
+                                Text {
+                                    text: `${settings.followRestoreDelayMs / 1000} s`
+                                    color: Theme.textPrimary
+                                    font.pixelSize: Theme.fontBody
+                                    Layout.preferredWidth: 50
+                                    horizontalAlignment: Text.AlignRight
+                                }
+                            }
+                        }
                     }
                 }
             }

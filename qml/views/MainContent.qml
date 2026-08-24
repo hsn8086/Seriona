@@ -21,17 +21,20 @@ Item {
     required property LibraryController libraryController
     readonly property bool hasOpenMenu: mainMenu.visible
 
-    // 切换歌曲动画方向与状态追踪
-    // 1: 切换下一首 (当前歌词向左滑出，下一首从右滑入)
-    // -1: 切换上一首 (当前歌词向右滑出，上一首从左滑入)
+    // 切换歌曲动画方向
+    // 1: 切换下一首 (歌词从右滑入)，-1: 切换上一首 (歌词从左滑入)
     property int lyricsSwitchDirection: 1
-    property int lyricsSwitchToken: 0
 
     Connections {
         target: root.playbackController
 
         function onCurrentSongChanged() {
-            root.lyricsSwitchToken++;
+            // 切歌后恢复歌词自动跟随并定位到当前行
+            if (lyricsContainer) {
+                lyricsContainer.lyricsSyncToPlayback = true;
+                lyricsContainer.scheduleSnapToCurrentLyric();
+                lyricsRestoreTimer.stop();
+            }
         }
     }
     readonly property bool scanRunning: root.libraryController ? (root.libraryController.scanStatus === "running") : false
@@ -43,10 +46,6 @@ Item {
         ? Math.min(root.libraryController.scannedSongCount / root.libraryController.totalSongCount, 1.0)
         : 0.0
 
-    property bool isTogglingTranslation: false
-    readonly property real currentItemHeight: lyricsContainer.currentItem ? lyricsContainer.currentItem.height : 0
-    readonly property real currentItemOriginalHeight: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.originalHeight !== "undefined") ? lyricsContainer.currentItem.originalHeight : 0
-    readonly property real currentItemOriginalHeightUnscaled: (lyricsContainer.currentItem && typeof lyricsContainer.currentItem.originalHeightUnscaled !== "undefined") ? lyricsContainer.currentItem.originalHeightUnscaled : 0
     readonly property real playbackTimelineDuration: playbackController.totalDuration
     readonly property real playbackTimelinePosition: playbackController.currentPosition
     readonly property real boundedPlaybackTimelinePosition: playbackTimelineDuration > 0 ? Math.max(0, Math.min(playbackTimelinePosition, playbackTimelineDuration)) : 0
@@ -57,26 +56,12 @@ Item {
     property string toastCode: ""
     property string toastSeverity: "info"
     required property LyricsModel lyricsState
+    required property SettingsController settings
 
     Binding {
         target: lyricsState
         property: "playbackPosition"
         value: root.boundedPlaybackTimelinePosition
-    }
-
-    Connections {
-        target: lyricsState
-
-        function onShowTranslationChanged() {
-            root.isTogglingTranslation = true;
-            toggleTranslationTimer.restart();
-        }
-    }
-
-    Timer {
-        id: toggleTranslationTimer
-        interval: 320  // 覆盖翻译动画（300ms）+ 20ms 缓冲
-        onTriggered: root.isTogglingTranslation = false
     }
 
     // 时间格式化辅助函数
@@ -442,14 +427,12 @@ Item {
     }
 
     // 4. 歌词滚动区域 (仅在 lyrics 状态下显示)
-    ListView {
+    // Flickable + Column + Repeater：滚动动画由 Behavior on contentY 驱动（VLC 式），
+    // 避免 ListView highlight 机制在行高变化（加粗折行/翻译行）时重置 moveReason 导致滚动动画瞬移。
+    Flickable {
         id: lyricsContainer
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        model: lyricsState
-        currentIndex: lyricsState.currentIndex
-        preferredHighlightBegin: height / 4 - (lyricsContainer.currentItem ? lyricsContainer.currentItem.height : 0) / 2
-        preferredHighlightEnd: preferredHighlightBegin
         anchors.top: metadataContainer.bottom
         anchors.topMargin: 8
         anchors.bottom: linearProgressContainer.top
@@ -459,152 +442,191 @@ Item {
         opacity: 0.0
         visible: opacity > 0.0
         z: 11
-        
-        highlightRangeMode: ListView.StrictlyEnforceRange
-        highlightMoveDuration: root.isTogglingTranslation ? 0 : 400
 
-        populate: Transition {
-            id: populateTrans
-            SequentialAnimation {
-                ParallelAnimation {
-                    NumberAnimation {
-                        property: "x"
-                        from: (root.lyricsSwitchDirection >= 0 ? 1 : -1) * lyricsContainer.width
-                        to: (root.lyricsSwitchDirection >= 0 ? 1 : -1) * lyricsContainer.width
-                        duration: Math.min(populateTrans.ViewTransition.index, 25) * 35
-                    }
-                    NumberAnimation {
-                        property: "opacity"
-                        from: 0.0
-                        to: 0.0
-                        duration: Math.min(populateTrans.ViewTransition.index, 25) * 35
-                    }
-                }
-                ParallelAnimation {
-                    NumberAnimation {
-                        property: "x"
-                        from: (root.lyricsSwitchDirection >= 0 ? 1 : -1) * lyricsContainer.width
-                        to: 0
-                        duration: 220
-                        easing.type: Easing.OutCubic
-                    }
-                    NumberAnimation {
-                        property: "opacity"
-                        from: 0.0
-                        to: 1.0
-                        duration: 220
-                        easing.type: Easing.OutQuad
-                    }
-                }
+        // 播放同步滚动：true=自动跟随当前行；用户拖动浏览时置 false，避免动画与手指竞争
+        property bool lyricsSyncToPlayback: true
+
+        contentWidth: lyricsColumn.width
+        contentHeight: lyricsColumn.height
+
+        // 定位：当前行行中心锚定容器上 1/4 处
+        function snapToCurrentLyric() {
+            const idx = lyricsState.currentIndex;
+            if (idx < 0)
+                return;
+            const item = lyricsRepeater.itemAt(idx);
+            if (!item)
+                return;
+            const targetY = item.y + item.height / 2 - lyricsContainer.height / 4;
+            lyricsContainer.contentY = Math.max(0, Math.min(targetY, lyricsContainer.contentHeight - lyricsContainer.height));
+        }
+
+        // 延迟到布局稳定后（行高变化完成）再定位
+        function scheduleSnapToCurrentLyric() {
+            if (lyricsSyncToPlayback)
+                Qt.callLater(lyricsContainer.snapToCurrentLyric);
+        }
+
+        // 用户开始滚动 → 停车（暂停自动跟随）并重置空闲计时
+        function parkLyricsFollow() {
+            lyricsSyncToPlayback = false;
+            lyricsRestoreTimer.restart();
+        }
+
+        // 用户手动拖动/滚轮 → 停车；停止滚动（含惯性结束）后重新计时
+        onFlickStarted: parkLyricsFollow()
+        onDragStarted: parkLyricsFollow()
+        onMovementStarted: parkLyricsFollow()
+        onMovementEnded: lyricsRestoreTimer.restart()
+        // 停车态兜底：任何滚动源（滚动条/程序化）导致的 contentY 变化都重置空闲计时
+        onContentYChanged: if (!lyricsSyncToPlayback) lyricsRestoreTimer.restart()
+
+        // 空闲 N 秒（设置可调，默认 5s）无操作后自动恢复自动跟随并平滑回拉当前行
+        Timer {
+            id: lyricsRestoreTimer
+            interval: root.settings.followRestoreDelayMs
+            repeat: false
+            onTriggered: {
+                if (root.state !== "lyrics")
+                    return;
+                lyricsContainer.lyricsSyncToPlayback = true;
+                lyricsContainer.snapToCurrentLyric();
             }
         }
+
+        // 行高变化（翻译切换/加粗折行）或容器尺寸变化 → 重新计算目标；SmoothedAnimation 平滑重定向
+        onContentHeightChanged: scheduleSnapToCurrentLyric()
+        onHeightChanged: scheduleSnapToCurrentLyric()
 
         Connections {
             target: lyricsState
-            
-            function onShowTranslationChanged() {
-                if (!lyricsContainer.currentItem) {
-                    return;
-                }
-                
-                // 记录切换前当前项的视觉 Y 位置（相对于 viewport 顶部）
-                const itemY = lyricsContainer.currentItem.y - lyricsContainer.contentY;
-                
-                // 等待一帧让高度变化完成
-                Qt.callLater(function() {
-                    if (!lyricsContainer.currentItem) {
-                        return;
-                    }
-                    
-                    // 计算切换后当前项的新 Y 位置
-                    const newItemY = lyricsContainer.currentItem.y - lyricsContainer.contentY;
-                    
-                    // 调整 contentY 抵消位移
-                    const offset = newItemY - itemY;
-                    lyricsContainer.contentY += offset;
-                });
+
+            function onCurrentIndexChanged() {
+                // 播放推进到新行 → 滚动到当前行（用户拖动浏览中则不打扰，保持浏览位置）
+                lyricsContainer.scheduleSnapToCurrentLyric();
             }
         }
 
-        delegate: Item {
-            id: delegateItem
-            required property int index
-            required property string displayLine
-            required property string translation
-            required property bool isCurrent
-            required property real timestampSec
+        // 行切换滚动动画：目标连续变化时从当前值+当前速度平滑重定向，动画必触发
+        Behavior on contentY {
+            enabled: lyricsContainer.lyricsSyncToPlayback
+            SmoothedAnimation {
+                velocity: 400
+                duration: 400
+            }
+        }
+
+        Column {
+            id: lyricsColumn
             width: lyricsContainer.width
-            height: lyricColumn.implicitHeight + Theme.paddingLarge
 
-            readonly property bool isActive: isCurrent
-            readonly property real originalHeight: lyricText.implicitHeight * lyricColumn.scale + Theme.paddingLarge
-            readonly property real originalHeightUnscaled: lyricText.implicitHeight + Theme.paddingLarge
-            readonly property real fullHeightUnscaled: lyricColumn.implicitHeight + Theme.paddingLarge
+            Repeater {
+                id: lyricsRepeater
+                model: lyricsState
 
-            Column {
-                id: lyricColumn
-                anchors.top: parent.top
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.min(parent.width - Theme.paddingLarge * 2, 600)
-                spacing: 4
+                delegate: Item {
+                    id: delegateItem
+                    required property int index
+                    required property string displayLine
+                    required property string translation
+                    required property bool isCurrent
+                    required property real timestampSec
+                    width: lyricsContainer.width
+                    height: lyricColumn.implicitHeight + Theme.paddingLarge
 
-                transformOrigin: Item.Center
-                scale: delegateItem.isActive ? 1.0 : 0.75
+                    readonly property bool isActive: isCurrent
 
-                Behavior on scale {
-                    NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
-                }
+                    Column {
+                        id: lyricColumn
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.min(parent.width - Theme.paddingLarge * 2, 600)
+                        spacing: 4
 
-                Text {
-                    id: lyricText
-                    width: parent.width
-                    text: delegateItem.displayLine
-                    color: Theme.textColor
-                    font.pixelSize: 32
-                    font.weight: delegateItem.isActive ? Font.Bold : Font.Normal
-                    opacity: delegateItem.isActive ? 1.0 : 0.4
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
-                    Behavior on opacity {
-                        NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
+                        transformOrigin: Item.Center
+                        scale: delegateItem.isActive ? 1.0 : 0.75
+
+                        Behavior on scale {
+                            NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
+                        }
+
+                        Text {
+                            id: lyricText
+                            width: parent.width
+                            text: delegateItem.displayLine
+                            color: Theme.textColor
+                            font.pixelSize: 32
+                            font.weight: delegateItem.isActive ? Font.Bold : Font.Normal
+                            opacity: delegateItem.isActive ? 1.0 : 0.4
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            Behavior on opacity {
+                                NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
+                            }
+                        }
+
+                        Text {
+                            id: translationTextCtrl
+                            width: parent.width
+                            text: delegateItem.translation
+                            color: Theme.secondaryTextColor
+                            font.pixelSize: 22
+                            font.weight: delegateItem.isActive ? Font.Bold : Font.Normal
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            clip: true
+
+                            // 缓存自然高度，避免绑定循环
+                            readonly property real naturalHeight: translationTextCtrl.implicitHeight
+
+                            height: (lyricsState.showTranslation && delegateItem.translation !== "") ? naturalHeight : 0
+                            opacity: (lyricsState.showTranslation && delegateItem.translation !== "") ? (delegateItem.isActive ? 0.8 : 0.3) : 0.0
+                            visible: height > 0
+
+                            // 高度瞬间变化（禁用动画）；contentHeight 变化由 onContentHeightChanged 重新定位并以滚动动画平滑补偿
+                            Behavior on opacity {
+                                NumberAnimation { duration: 300; easing.type: Easing.InOutQuad }
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: function () {
+                            if (delegateItem.timestampSec > 0) {
+                                // 点击跳转 = 明确的跟随意图，恢复自动跟随
+                                lyricsContainer.lyricsSyncToPlayback = true;
+                                lyricsContainer.scheduleSnapToCurrentLyric();
+                                lyricsRestoreTimer.stop();
+                                root.playbackController.seek(delegateItem.timestampSec);
+                            }
+                        }
                     }
                 }
 
-                Text {
-                    id: translationTextCtrl
-                    width: parent.width
-                    text: delegateItem.translation
-                    color: Theme.secondaryTextColor
-                    font.pixelSize: 22
-                    font.weight: delegateItem.isActive ? Font.Bold : Font.Normal
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
-                    clip: true
-                    
-                    // 缓存自然高度，避免绑定循环
-                    readonly property real naturalHeight: translationTextCtrl.implicitHeight
-                    
-                    height: (lyricsState.showTranslation && delegateItem.translation !== "") ? naturalHeight : 0
-                    opacity: (lyricsState.showTranslation && delegateItem.translation !== "") ? (delegateItem.isActive ? 0.8 : 0.3) : 0.0
-                    visible: height > 0
-
-                    // 禁用高度动画，防止在切换翻译时所有 delegate 同时改变高度导致 ListView 的内容高度在动画期间发生剧烈变化，
-                    // 进而引起高亮行的错误位移和瞬移。高度将瞬间改变，结合 highlightMoveDuration=0 使当前行位置视觉上绝对不动。
-                    Behavior on opacity {
-                        NumberAnimation { duration: 300; easing.type: Easing.InOutQuad }
-                    }
-                }
             }
+        }
+    }
 
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: function () {
-                    if (delegateItem.timestampSec > 0) {
-                        root.playbackController.seek(delegateItem.timestampSec);
-                    }
-                }
+    // 歌词内容重置（切歌）时的容器级滑入动画（替代原 ListView populate；方向由 lyricsSwitchDirection 控制）
+    Connections {
+        target: lyricsState
+
+        function onModelReset() {
+            if (root.state === "lyrics") {
+                lyricsContainer.x = (root.lyricsSwitchDirection >= 0 ? 1 : -1) * lyricsContainer.width;
+                lyricsContainer.opacity = 0.0;
+                lyricsSwitchInAnim.restart();
             }
+        }
+    }
+
+    SequentialAnimation {
+        id: lyricsSwitchInAnim
+        ParallelAnimation {
+            NumberAnimation { target: lyricsContainer; property: "x"; to: 0; duration: 220; easing.type: Easing.OutCubic }
+            NumberAnimation { target: lyricsContainer; property: "opacity"; to: 1.0; duration: 220; easing.type: Easing.OutQuad }
         }
     }
 
