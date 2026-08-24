@@ -191,7 +191,8 @@ ItemDelegate {
                 anchors.fill: folderThumbIcon
                 source: folderThumbIcon
                 color: Theme.accentColor
-                visible: delegate.isFolder && !delegate.hasFolderArtwork
+                // 源未就绪时隐藏，避免重扫重建期间效果层输出白色方块
+                visible: delegate.isFolder && !delegate.hasFolderArtwork && folderThumbIcon.status === Image.Ready
             }
 
             Rectangle {
@@ -329,21 +330,20 @@ ItemDelegate {
                         font.pixelSize: 10
                     }
                 }
-
-                Image {
-                    Layout.alignment: Qt.AlignVCenter
-                    source: "qrc:/qt/qml/Seriona/qml/assets/folder.svg"
-                    sourceSize: Qt.size(14, 14)
-                    fillMode: Image.PreserveAspectFit
-                    visible: delegate.isFolder
-
-                    ColorOverlay {
-                        anchors.fill: parent
-                        source: parent
-                        color: Theme.textOnAccent
-                    }
-                }
             }
+        }
+
+        // 文件夹图标：条目最右侧、垂直居中
+        // 纯 Image 渲染（folder.svg 内嵌白色 fill），不用 ColorOverlay——
+        // 自引用效果层（source: parent）在 Wayland 批量重建时会导致
+        // 原始图元与着色效果同时上屏，出现双图标重叠且重扫后残留
+        Image {
+            id: folderTrailingIcon
+            Layout.alignment: Qt.AlignVCenter
+            source: "qrc:/qt/qml/Seriona/qml/assets/folder.svg"
+            sourceSize: Qt.size(14, 14)
+            fillMode: Image.PreserveAspectFit
+            visible: delegate.isFolder
         }
     }
 }
