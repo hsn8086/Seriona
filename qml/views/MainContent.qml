@@ -463,7 +463,9 @@ Item {
 
         // 延迟到布局稳定后（行高变化完成）再定位
         function scheduleSnapToCurrentLyric() {
-            if (lyricsSyncToPlayback)
+            // 仅歌词态跟随：切换动画期间（锚链驱动 height 连续变化）不重算 contentY，
+            // 避免歌词列表在淡出窗口内整体下移又回位的闪烁
+            if (root.state === "lyrics" && lyricsSyncToPlayback)
                 Qt.callLater(lyricsContainer.snapToCurrentLyric);
         }
 
@@ -1291,6 +1293,16 @@ Item {
                 easing.type: Easing.InOutCubic
             }
 
+            // metadataContainer.height（44↔70）必须与锚链同步动画：
+            // 否则切换瞬间高度瞬跳 26px，带动 lyricsContainer.top 阶跃，
+            // 触发 onHeightChanged→snap→contentY 补偿，产生歌词整体下移又回位的闪烁
+            NumberAnimation {
+                target: metadataContainer
+                property: "height"
+                duration: 400
+                easing.type: Easing.InOutCubic
+            }
+
             NumberAnimation {
                 target: coverContainer
                 properties: "x,y,width,height"
@@ -1342,6 +1354,16 @@ Item {
 
             AnchorAnimation {
                 targets: [metadataContainer, controlsContainer, waveformProgressContainer, linearProgressContainer, titleText, artistText, albumText, dashText]
+                duration: 400
+                easing.type: Easing.InOutCubic
+            }
+
+            // metadataContainer.height（44↔70）必须与锚链同步动画：
+            // 否则切换瞬间高度瞬跳 26px，带动 lyricsContainer.top 阶跃，
+            // 触发 onHeightChanged→snap→contentY 补偿，产生歌词整体下移又回位的闪烁
+            NumberAnimation {
+                target: metadataContainer
+                property: "height"
                 duration: 400
                 easing.type: Easing.InOutCubic
             }
