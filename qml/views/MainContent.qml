@@ -448,7 +448,7 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         model: lyricsState
         currentIndex: lyricsState.currentIndex
-        preferredHighlightBegin: height / 2 - 40
+        preferredHighlightBegin: height / 4 - (lyricsContainer.currentItem ? lyricsContainer.currentItem.height : 0) / 2
         preferredHighlightEnd: preferredHighlightBegin
         anchors.top: metadataContainer.bottom
         anchors.topMargin: 8
