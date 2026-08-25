@@ -184,7 +184,7 @@ void SettingsControllerTest::invalidValuesRejected()
     settings.setSampleRate(768001);
     QCOMPARE(settings.sampleRate(), 48000);
 
-    settings.setSampleFormat(3);
+    settings.setSampleFormat(6);
     QCOMPARE(settings.sampleFormat(), 0);
     settings.setSampleFormat(5);
     QCOMPARE(settings.sampleFormat(), 0);
@@ -211,6 +211,7 @@ void SettingsControllerTest::invalidValuesRejected()
     settings.setSampleRate(768000);
     settings.setSampleFormat(1);
     settings.setSampleFormat(2);
+    settings.setSampleFormat(3);
     settings.setSampleFormat(4);
     settings.setBufferDurationMs(50);
     settings.setBufferDurationMs(1000);
@@ -225,7 +226,7 @@ void SettingsControllerTest::invalidValuesRejected()
     // 非法值不写入存储
     settings.setOutputMode(7);
     settings.setSampleRate(100);
-    settings.setSampleFormat(3);
+    settings.setSampleFormat(6);
     settings.setBufferDurationMs(2000);
     settings.setFollowRestoreDelayMs(42);
     QCOMPARE(storedValue(QStringLiteral("output"), QStringLiteral("outputMode")).toInt(), 1);
@@ -436,11 +437,12 @@ void SettingsControllerTest::deviceCapsEmptyShowsAllOptions()
     QCOMPARE(rates.at(4).toMap().value(QStringLiteral("value")).toInt(), 192000);
 
     const QVariantList formats = settings.sampleFormatOptions();
-    QCOMPARE(formats.size(), 4);
+    QCOMPARE(formats.size(), 5);
     QCOMPARE(formats.at(0).toMap().value(QStringLiteral("value")).toInt(), 0);
     QCOMPARE(formats.at(1).toMap().value(QStringLiteral("value")).toInt(), 1);
     QCOMPARE(formats.at(2).toMap().value(QStringLiteral("value")).toInt(), 2);
-    QCOMPARE(formats.at(3).toMap().value(QStringLiteral("value")).toInt(), 4);
+    QCOMPARE(formats.at(3).toMap().value(QStringLiteral("value")).toInt(), 3);
+    QCOMPARE(formats.at(4).toMap().value(QStringLiteral("value")).toInt(), 4);
 }
 
 void SettingsControllerTest::deviceCapsFilterSampleRatesAndFormats()

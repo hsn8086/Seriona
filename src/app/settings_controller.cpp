@@ -43,7 +43,8 @@ const QStringList kDefaultLyricDelimiters = {QStringLiteral(" / ")};
 
 // 标准采样率/位深选项（0 = 跟随设备，恒保留；与既有 QML 硬编码模型一致）
 const QList<int> kStandardSampleRates = {0, 44100, 48000, 96000, 192000};
-const QList<int> kStandardSampleFormats = {0, 1, 2, 4};
+// 1/2/3/4 对应后端 AudioSampleFormat 的 Int16/Int24/Int32/Float32
+const QList<int> kStandardSampleFormats = {0, 1, 2, 3, 4};
 
 bool capabilitiesEqual(const QList<PlaybackDeviceCapabilities> &lhs, const QList<PlaybackDeviceCapabilities> &rhs)
 {
@@ -74,8 +75,8 @@ bool isValidSampleRate(int sampleRate)
 
 bool isValidSampleFormat(int sampleFormat)
 {
-    // 0 = 设备默认；1/2/4 对应后端 AudioSampleFormat 的 Int16/Int24/Float32
-    return sampleFormat == 0 || sampleFormat == 1 || sampleFormat == 2 || sampleFormat == 4;
+    // 0 = 设备默认；1/2/3/4 对应后端 AudioSampleFormat 的 Int16/Int24/Int32/Float32
+    return sampleFormat == 0 || sampleFormat == 1 || sampleFormat == 2 || sampleFormat == 3 || sampleFormat == 4;
 }
 
 bool isValidBufferDurationMs(int bufferDurationMs)
@@ -639,6 +640,8 @@ QString SettingsController::sampleFormatLabel(int value) const
         return QStringLiteral("16-bit");
     case 2:
         return QStringLiteral("24-bit");
+    case 3:
+        return QStringLiteral("32-bit");
     case 4:
         return QStringLiteral("32-bit float");
     default:

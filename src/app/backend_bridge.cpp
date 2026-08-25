@@ -346,9 +346,9 @@ seriona::control::MediaControllerCommandResult BackendBridge::submitConfigureOut
         enqueueCommandFailureNotification(result);
         return result;
     }
-    if (sampleFormat != 0 && sampleFormat != 1 && sampleFormat != 2 && sampleFormat != 4) {
+    if (sampleFormat != 0 && sampleFormat != 1 && sampleFormat != 2 && sampleFormat != 3 && sampleFormat != 4) {
         seriona::control::MediaControllerCommandResult result = invalidCommandResult(
-            "ConfigureOutput sample format must be 0 (device default), 1 (Int16), 2 (Int24), or 4 (Float32)");
+            "ConfigureOutput sample format must be 0 (device default), 1 (Int16), 2 (Int24), 3 (Int32), or 4 (Float32)");
         enqueueCommandFailureNotification(result);
         return result;
     }
