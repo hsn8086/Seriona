@@ -363,7 +363,8 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: Math.max(8, (parent.height - 650) / 2)
-        width: 320
+        // 内容区宽度：小窗口保底 320（保持原布局），大窗口/最大化跟随窗口宽度
+        width: Math.max(320, root.width - 2 * Theme.paddingLarge)
         height: 650
         visible: false
     }
@@ -482,7 +483,7 @@ Item {
     // 3. 歌曲元数据组件 (共享元素)
     Item {
         id: metadataContainer
-        width: 320
+        width: positionHelper.width
         height: metadataLayout.implicitHeight
         z: 9
         anchors.top: coverContainer.bottom
@@ -559,8 +560,9 @@ Item {
         anchors.topMargin: 8
         anchors.bottom: linearProgressContainer.top
         anchors.bottomMargin: 10
-        width: 320
-        anchors.horizontalCenter: positionHelper.horizontalCenter
+        // 宽度跟随 positionHelper（= 窗口减边距，小窗口保底 320），两状态一致无切换跳变
+        anchors.left: positionHelper.left
+        anchors.right: positionHelper.right
         opacity: 0.0
         visible: opacity > 0.0
         z: 11
@@ -811,7 +813,8 @@ Item {
                         id: lyricColumn
                         anchors.top: parent.top
                         anchors.horizontalCenter: parent.horizontalCenter
-                        width: Math.min(parent.width - Theme.paddingLarge * 2, 600)
+                        // 跟随歌词容器宽度（小窗口与原 296 一致，最大化时拓宽）
+                        width: parent.width - Theme.paddingLarge * 2
                         spacing: 4
 
                         transformOrigin: Item.Center
