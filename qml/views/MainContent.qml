@@ -570,10 +570,16 @@ Item {
         // 播放同步滚动：true=自动跟随当前行；用户拖动浏览时置 false，避免动画与手指竞争
         property bool lyricsSyncToPlayback: true
 
+        // 底部填充（容器高 3/4，显式加在 contentHeight 上）：最后一行行中心需滚到上 1/4 锚点，
+        // 其下需有 3/4 容器高的内容空间；不加则内容滚到底即 clamp，最后几句歌词停在视口底部。
+        // 显式加法不依赖 Column/Positioner 对动态子项的布局行为（与 Qcm 等歌词实现用
+        // ListView footer 补 vh*(1-锚点比) 的做法同构），内容总高恒 = 歌词总高 + 3H/4。
         contentWidth: lyricsColumn.width
-        contentHeight: lyricsColumn.height
+        contentHeight: lyricsColumn.height + lyricsContainer.height * 3 / 4
 
-        // 定位：当前行行中心锚定容器上 1/4 处
+        // 定位：当前行行中心锚定容器上 1/4 处；
+        // 行顶保护（超长折行行高 > 容器高/2 时，行中心锚定会把行顶推出视口顶，行首被裁）：
+        // 目标位置不得超过 item.y（行顶贴视口顶），普通行（行高 < 容器高/2）时取行中心锚点，行为不变
         function snapToCurrentLyric() {
             const idx = lyricsState.currentIndex;
             if (idx < 0)
@@ -581,7 +587,8 @@ Item {
             const item = lyricsRepeater.itemAt(idx);
             if (!item)
                 return;
-            const targetY = item.y + item.height / 2 - lyricsContainer.height / 4;
+            const centerTarget = item.y + item.height / 2 - lyricsContainer.height / 4;
+            const targetY = Math.min(centerTarget, item.y);
             lyricsContainer.contentY = Math.max(0, Math.min(targetY, lyricsContainer.contentHeight - lyricsContainer.height));
         }
 
