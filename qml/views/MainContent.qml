@@ -513,6 +513,8 @@ Item {
                 color: Theme.secondaryTextColor
                 font.pixelSize: 15
                 font.weight: Font.Medium
+                // 歌词态交叉淡化到合并行后自动隐藏（visible 不可动画，opacity 归零即隐）
+                visible: opacity > 0.0
                 anchors.top: titleText.bottom
                 anchors.topMargin: 8
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -525,6 +527,7 @@ Item {
                 color: Theme.secondaryTextColor
                 font.pixelSize: 15
                 opacity: 0.0
+                visible: opacity > 0.0
                 anchors.verticalCenter: artistText.verticalCenter
             }
 
@@ -535,9 +538,36 @@ Item {
                 color: Theme.secondaryTextColor
                 font.pixelSize: 13
                 opacity: 0.8
+                visible: opacity > 0.0
                 anchors.top: artistText.bottom
                 anchors.topMargin: 6
                 anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            // 歌词界面合并行：歌手 — 专辑 单行整体滚动（一个滚动单元）。
+            // 行业惯例（网易云桌面歌词/Apple Music mini player/VLC 副信息行等）：紧凑信息行
+            // 长文本整行滚动，而非各字段各自滚动。文本拼接带空字段兜底（任一为空只显另一）。
+            // 锚定跟随 titleText（两态同一绑定），播放态 opacity 0 不可见，切换时随 title 轨道
+            // 淡入到位；原三控件在歌词态 opacity 0 隐藏，各自轨道锚定动画保留。
+            MarqueeText {
+                id: metaCombinedText
+                // 必须显式限宽：不设则 Item 采用隐式尺寸(=implicitWidth)，isOverflow 恒 false 永不滚动
+                width: Math.min(implicitWidth, parent.width)
+                text: {
+                    var a = root.playbackController.artistName;
+                    var al = root.playbackController.albumName;
+                    if (a && al)
+                        return a + " — " + al;
+                    return a || al;
+                }
+                color: Theme.secondaryTextColor
+                font.pixelSize: 13
+                font.weight: Font.Medium
+                opacity: 0.0
+                visible: opacity > 0.0 && (root.playbackController.artistName.length + root.playbackController.albumName.length > 0)
+                anchors.top: titleText.bottom
+                anchors.topMargin: 8
+                anchors.left: metadataLayout.left
             }
         }
 
@@ -1490,19 +1520,24 @@ Item {
             }
             PropertyChanges {
                 target: artistText
-                width: implicitWidth
                 font.pixelSize: 13
+                // 交叉淡化：轨道锚定动画保留（左移到合并行位置），显示权交给合并行
+                opacity: 0.0
             }
             PropertyChanges {
                 target: dashText
-                opacity: 1.0
+                // 合并行自带 " — " 分隔符，原 dash 淡出
+                opacity: 0.0
             }
             PropertyChanges {
                 target: albumText
-                width: Math.max(0, Math.min(implicitWidth, metadataLayout.width - artistText.implicitWidth - dashText.implicitWidth))
-                anchors.leftMargin: 0
+                // 不再限制宽度（歌词态不可见）；原 width/visible 处理删除，
+                // 避免 PropertyChanges 覆盖 visible 绑定（visible 由 opacity>0 派生）
+                opacity: 0.0
+            }
+            PropertyChanges {
+                target: metaCombinedText
                 opacity: 1.0
-                visible: true
             }
             PropertyChanges {
                 target: lyricsContainer
@@ -1584,7 +1619,7 @@ Item {
             }
 
             NumberAnimation {
-                targets: [coverRect, coverIcon, coverGlow, titleText, artistText, albumText, dashText, prevButton, nextButton]
+                targets: [coverRect, coverIcon, coverGlow, titleText, artistText, albumText, dashText, metaCombinedText, prevButton, nextButton]
                 properties: "radius,font.pixelSize,opacity,spacing,anchors.topMargin,anchors.leftMargin,anchors.rightMargin,anchors.bottomMargin"
                 duration: 400
                 easing.type: Easing.InOutCubic
@@ -1649,7 +1684,7 @@ Item {
             }
 
             NumberAnimation {
-                targets: [coverRect, coverIcon, coverGlow, titleText, artistText, albumText, dashText, prevButton, nextButton]
+                targets: [coverRect, coverIcon, coverGlow, titleText, artistText, albumText, dashText, metaCombinedText, prevButton, nextButton]
                 properties: "radius,font.pixelSize,opacity,spacing,anchors.topMargin,anchors.leftMargin,anchors.rightMargin,anchors.bottomMargin"
                 duration: 400
                 easing.type: Easing.InOutCubic
