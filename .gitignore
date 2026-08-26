@@ -51,6 +51,11 @@ build/
 Build/
 build-*/
 *build-*
+!scripts/build-package-windows.ps1
+
+# Windows release package
+Seriona-windows-x64/
+Seriona-windows-x64.zip
 
 # =========================================================
 # CMake
