@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(Seriona VERSION 0.1 LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(QT_QML_GENERATE_QMLLS_INI ON)
@@ -1161,7 +1162,7 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             PRIVATE SERIONA_HAS_BACKEND=1
         )
         target_link_libraries(seriona_frontend_backend_bridge_tests
-            PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_APP_TARGET}
+            PRIVATE Qt6::Quick Qt6::Test ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_APP_TARGET} spdlog::spdlog
         )
 
         add_test(NAME seriona_frontend_backend_bridge_threading COMMAND seriona_frontend_backend_bridge_tests threading)
