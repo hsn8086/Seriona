@@ -118,7 +118,7 @@ void AppFacadeSmokeModeTest::doesNotStartBackendBridgeWhenSmokeDisablesAutostart
 
 void AppFacadeSmokeModeTest::sourceKeepsFacadeThin()
 {
-    const QDir sourceRoot(QCoreApplication::applicationDirPath() + QStringLiteral("/.."));
+    const QDir sourceRoot(QString::fromUtf8(QT_TESTCASE_SOURCEDIR));
     QFile header(sourceRoot.filePath(QStringLiteral("src/app/app_facade.h")));
     QFile implementation(sourceRoot.filePath(QStringLiteral("src/app/app_facade.cpp")));
 

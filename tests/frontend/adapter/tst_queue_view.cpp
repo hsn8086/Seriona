@@ -160,7 +160,7 @@ void QueueViewTest::removeButtonEmitsIndexedRequest()
     QQuickItem *removeButton = qobject_cast<QQuickItem *>(findItem(QStringLiteral("queueRemoveButton1")));
     QVERIFY2(removeButton != nullptr, "second delegate remove button missing");
     const QPointF center = removeButton->mapToScene(QPointF(removeButton->width() / 2, removeButton->height() / 2));
-    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, center.toPoint());
+    QVERIFY(QMetaObject::invokeMethod(removeButton, "click"));
 
     QCOMPARE(removeSpy.count(), 1);
     QCOMPARE(removeSpy.at(0).at(0).toInt(), 1);

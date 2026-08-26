@@ -5951,8 +5951,7 @@ void ArtworkTransitionTest::artwork_palette_nonblocking()
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
-    const QString sourceRoot =
-        QDir(QCoreApplication::applicationDirPath() + QStringLiteral("/..")).absolutePath();
+    const QString sourceRoot = QString::fromUtf8(QT_TESTCASE_SOURCEDIR);
     Seriona::App::registerSerionaModuleForTests(sourceRoot);
 
     ArtworkTransitionTest test(sourceRoot);

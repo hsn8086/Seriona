@@ -517,7 +517,7 @@ void SettingsControllerTest::enumerateDevicesExposesCapabilities()
     QCOMPARE(device.value(QStringLiteral("deviceId")).toString(), QStringLiteral("dev-1"));
     QCOMPARE(device.value(QStringLiteral("deviceName")).toString(), QStringLiteral("Device One"));
     QCOMPARE(device.value(QStringLiteral("sampleFormats")).toList(), QVariantList({1, 4}));
-    QCOMPARE(device.value(QStringLiteral("sampleRates")).toList(), QVariantList({48000}));
+    QCOMPARE(device.value(QStringLiteral("sampleRates")).toList(), QVariantList{QVariant(48000)});
     QCOMPARE(capsSpy.count(), 1);
 
     // 相同列表不重复 NOTIFY
