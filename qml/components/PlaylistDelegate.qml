@@ -37,6 +37,7 @@ ItemDelegate {
 
     width: ListView.view ? ListView.view.width : 0
     height: 72
+    hoverEnabled: true
     topPadding: Theme.spacing8
     bottomPadding: Theme.spacing8
     leftPadding: 15

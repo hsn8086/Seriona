@@ -892,7 +892,7 @@ Item {
                             // Qt 6 中 enabled=false 仍接收 hover（Qt5→6 行为变更）；
                             // 不加此属性会在 depth 0 拦截 hover，导致根视图条目无 hover 反馈
                             hoverEnabled: folderStack.depth > 0
-                            z: 2
+                            z: folderStack.depth > 0 ? 2 : -1
 
                             pushEnter: Transition {
                                 PropertyAnimation {
