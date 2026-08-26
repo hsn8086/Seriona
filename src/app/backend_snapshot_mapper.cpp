@@ -16,7 +16,9 @@ namespace {
 
 QString fromBackendPath(const std::filesystem::path &path)
 {
-    return QString::fromStdString(path.string());
+    const auto utf8 = path.u8string();
+    return QString::fromUtf8(
+        reinterpret_cast<const char *>(utf8.data()), static_cast<qsizetype>(utf8.size()));
 }
 
 qreal secondsFromMilliseconds(std::chrono::milliseconds value)
