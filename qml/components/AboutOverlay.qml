@@ -30,10 +30,16 @@ Popup {
     // Esc / 点击遮罩关闭
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-    // 半透明遮罩
+    // 半透明遮罩（圆角对齐主窗口 OpacityMask：最大化时 0，否则匹配 Theme.spacing24）
+    // 注意：Popup（QQuickPopup : QObject）自身不能用 Window.window attached 属性
+    // （仅 Item 派生类型支持，访问会警告）；Overlay.overlay 是 QQuickOverlay（Item），
+    // 且 scrim 组件在弹窗首次打开时才创建（此时弹窗已在窗口内，overlay 非 null），
+    // 故经 Overlay.overlay.Window.window 取所属窗口。
     Overlay.modal: Rectangle {
         color: Theme.overlayScrimColor
-        radius: (root.Window && root.Window.window && root.Window.window.visibility === Window.Maximized) ? 0 : Theme.spacing24
+        radius: (Overlay.overlay && Overlay.overlay.Window.window
+                 && Overlay.overlay.Window.window.visibility === Window.Maximized)
+                ? 0 : Theme.spacing24
     }
 
     // 页面状态：0 = 主页, 1 = 许可证与法律信息
