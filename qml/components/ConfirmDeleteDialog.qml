@@ -4,19 +4,29 @@ import QtQuick.Layouts
 import Seriona
 
 // 删除确认弹窗（T16）：用户点"删除"才发出 confirmed()，调用方此时才调后端
-// DeleteTrack/DeleteFolder 命令；取消/点遮罩/Esc 只关闭，不发出任何信号。
-Popup {
+// DeleteTrack/DeleteFolder 命令；取消/Esc 只关闭，不发出任何信号。
+//
+// 独立窗口（与 SortDialog/SettingsWindow 同模式）：
+// - 不受主窗口边界裁剪（Popup 会被钳制在所属窗口内，窗口缩小时弹窗被截断）；
+// - 不产生模态遮罩层覆盖主窗口，主窗口的 OpacityMask 圆角保持完整。
+// 模态由 Qt.ApplicationModal 保证：弹窗打开期间主窗口不可交互。
+Window {
     id: root
+    objectName: "confirmDeleteDialog"
 
-    modal: true
-    anchors.centerIn: Overlay.overlay
+    flags: Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+    modality: Qt.ApplicationModal
+    color: "transparent"
+
     width: 420
-    padding: 0
-    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+    height: Math.round(contentColumn.implicitHeight)
 
-    Overlay.modal: Rectangle {
-        color: Theme.overlayScrimColor
-    }
+    // 跟随主窗口（transientParent，由调用方注入）居中：
+    // X11 为屏幕绝对坐标；Wayland 由 Qt 换算为相对父窗口位置。
+    // 注意：Window 类型自身不能用 Window.window attached 属性（仅 Item 可用），
+    // 故通过 transientParent 引用主窗口。
+    x: root.transientParent ? Math.round(root.transientParent.x + (root.transientParent.width - width) / 2) : 0
+    y: root.transientParent ? Math.round(root.transientParent.y + (root.transientParent.height - height) / 2) : 0
 
     // 待删除目标（显示用）
     property string targetName: ""
@@ -27,169 +37,174 @@ Popup {
     // 仅当用户确认删除时发出；调用方收到后应调用 appFacade.deleteTarget(path, isFolder)
     signal confirmed()
 
-    background: Rectangle {
+    Rectangle {
+        anchors.fill: parent
         color: Theme.raisedSurfaceColor
         radius: Theme.radiusLarge
         border.color: Theme.borderColor
         border.width: 1
-    }
+        focus: true
 
-    contentItem: ColumnLayout {
-        spacing: 0
+        Keys.onEscapePressed: root.close()
 
-        // 顶部警示标题区
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 52
-            color: "transparent"
+        ColumnLayout {
+            id: contentColumn
+            anchors.fill: parent
+            spacing: 0
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: Theme.spacing16
-                anchors.rightMargin: Theme.spacing16
-                spacing: Theme.spacing8
+            // 顶部警示标题区
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 52
+                color: "transparent"
 
-                Rectangle {
-                    Layout.preferredWidth: 28
-                    Layout.preferredHeight: 28
-                    radius: Theme.radiusFull
-                    color: Theme.dangerColor
-                    opacity: 0.15
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: Theme.spacing16
+                    anchors.rightMargin: Theme.spacing16
+                    spacing: Theme.spacing8
+
+                    Rectangle {
+                        Layout.preferredWidth: 28
+                        Layout.preferredHeight: 28
+                        radius: Theme.radiusFull
+                        color: Theme.dangerColor
+                        opacity: 0.15
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "!"
+                            color: Theme.dangerColor
+                            font.pixelSize: Theme.fontTitle
+                            font.bold: true
+                        }
+                    }
 
                     Text {
-                        anchors.centerIn: parent
-                        text: "!"
-                        color: Theme.dangerColor
+                        Layout.fillWidth: true
+                        verticalAlignment: Text.AlignVCenter
+                        text: root.isFolder ? qsTr("删除文件夹") : qsTr("删除歌曲")
+                        color: Theme.textPrimary
                         font.pixelSize: Theme.fontTitle
                         font.bold: true
                     }
                 }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Theme.borderColor
+            }
+
+            // 警示内容区
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.spacing16
+                Layout.rightMargin: Theme.spacing16
+                Layout.topMargin: Theme.spacing16
+                Layout.bottomMargin: Theme.spacing16
+                spacing: Theme.spacing12
 
                 Text {
                     Layout.fillWidth: true
-                    verticalAlignment: Text.AlignVCenter
-                    text: root.isFolder ? qsTr("删除文件夹") : qsTr("删除歌曲")
-                    color: Theme.textPrimary
+                    text: qsTr("将直接从磁盘删除原文件，不可恢复")
+                    color: Theme.dangerColor
                     font.pixelSize: Theme.fontTitle
-                    font.bold: true
-                }
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: Theme.borderColor
-        }
-
-        // 警示内容区
-        ColumnLayout {
-            Layout.fillWidth: true
-            Layout.leftMargin: Theme.spacing16
-            Layout.rightMargin: Theme.spacing16
-            Layout.topMargin: Theme.spacing16
-            Layout.bottomMargin: Theme.spacing16
-            spacing: Theme.spacing12
-
-            Text {
-                Layout.fillWidth: true
-                text: qsTr("将直接从磁盘删除原文件，不可恢复")
-                color: Theme.dangerColor
-                font.pixelSize: Theme.fontTitle
-                font.weight: Font.DemiBold
-                wrapMode: Text.Wrap
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: root.isFolder
-                    ? qsTr("警告：文件夹“%1”及其全部内容将被永久删除%2。")
-                          .arg(root.targetName)
-                          .arg(root.trackCount > 0 ? qsTr("（包含 %1 首歌曲）").arg(root.trackCount) : "")
-                    : qsTr("警告：歌曲“%1”将从磁盘永久删除。").arg(root.targetName)
-                color: Theme.textSecondary
-                font.pixelSize: Theme.fontBody
-                wrapMode: Text.Wrap
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: Theme.borderColor
-        }
-
-        // 底部操作按钮区
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 60
-            Layout.leftMargin: Theme.spacing12
-            Layout.rightMargin: Theme.spacing12
-            spacing: Theme.spacing8
-
-            Item {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 1
-            }
-
-            Rectangle {
-                Layout.preferredWidth: 96
-                Layout.preferredHeight: 36
-                radius: Theme.radiusSmall
-                color: mouseAreaCancel.pressed ? Theme.pressedColor : (mouseAreaCancel.containsMouse ? Theme.hoverColor : "transparent")
-                border.color: Theme.borderSubtle
-                border.width: 1
-
-                Behavior on color {
-                    ColorAnimation { duration: Theme.animationFast }
-                }
-
-                MouseArea {
-                    id: mouseAreaCancel
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.close()
+                    font.weight: Font.DemiBold
+                    wrapMode: Text.Wrap
                 }
 
                 Text {
-                    anchors.centerIn: parent
-                    text: qsTr("取消")
-                    color: Theme.textPrimary
+                    Layout.fillWidth: true
+                    text: root.isFolder
+                        ? qsTr("警告：文件夹“%1”及其全部内容将被永久删除%2。")
+                              .arg(root.targetName)
+                              .arg(root.trackCount > 0 ? qsTr("（包含 %1 首歌曲）").arg(root.trackCount) : "")
+                        : qsTr("警告：歌曲“%1”将从磁盘永久删除。").arg(root.targetName)
+                    color: Theme.textSecondary
                     font.pixelSize: Theme.fontBody
+                    wrapMode: Text.Wrap
                 }
             }
 
             Rectangle {
-                Layout.preferredWidth: 96
-                Layout.preferredHeight: 36
-                radius: Theme.radiusSmall
-                color: mouseAreaDelete.pressed ? Theme.dangerPressedColor : (mouseAreaDelete.containsMouse ? Theme.dangerHoverColor : Theme.dangerColor)
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Theme.borderColor
+            }
 
-                Behavior on color {
-                    ColorAnimation { duration: Theme.animationFast }
+            // 底部操作按钮区
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 60
+                Layout.leftMargin: Theme.spacing12
+                Layout.rightMargin: Theme.spacing12
+                spacing: Theme.spacing8
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
                 }
 
-                MouseArea {
-                    id: mouseAreaDelete
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.confirmed();
-                        root.close();
+                Rectangle {
+                    Layout.preferredWidth: 96
+                    Layout.preferredHeight: 36
+                    radius: Theme.radiusSmall
+                    color: mouseAreaCancel.pressed ? Theme.pressedColor : (mouseAreaCancel.containsMouse ? Theme.hoverColor : "transparent")
+                    border.color: Theme.borderSubtle
+                    border.width: 1
+
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.animationFast }
+                    }
+
+                    MouseArea {
+                        id: mouseAreaCancel
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.close()
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: qsTr("取消")
+                        color: Theme.textPrimary
+                        font.pixelSize: Theme.fontBody
                     }
                 }
 
-                Text {
-                    anchors.centerIn: parent
-                    text: qsTr("删除")
-                    color: Theme.textOnAccent
-                    font.pixelSize: Theme.fontBody
-                    font.bold: true
+                Rectangle {
+                    Layout.preferredWidth: 96
+                    Layout.preferredHeight: 36
+                    radius: Theme.radiusSmall
+                    color: mouseAreaDelete.pressed ? Theme.dangerPressedColor : (mouseAreaDelete.containsMouse ? Theme.dangerHoverColor : Theme.dangerColor)
+
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.animationFast }
+                    }
+
+                    MouseArea {
+                        id: mouseAreaDelete
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            root.confirmed();
+                            root.close();
+                        }
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: qsTr("删除")
+                        color: Theme.textOnAccent
+                        font.pixelSize: Theme.fontBody
+                        font.bold: true
+                    }
                 }
             }
         }
     }
 }
-

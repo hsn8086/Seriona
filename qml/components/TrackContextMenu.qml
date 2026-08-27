@@ -99,13 +99,17 @@ Item {
                 deleteDialog.targetName = root.entryData.isFolder ? root.entryData.name : root.entryData.title;
                 deleteDialog.isFolder = root.entryData.isFolder;
                 deleteDialog.trackCount = root.entryData.isFolder ? root.entryData.songCount : 0;
-                deleteDialog.open();
+                deleteDialog.show();
             }
         }
     }
 
     ConfirmDeleteDialog {
         id: deleteDialog
+        // 注入主窗口作为 transientParent：ConfirmDeleteDialog 是独立 Window，
+        // 自身无法用 Window.window（仅 Item 可用），由本组件（Item）提供。
+        // 主窗口移动时 x/y 绑定跟随，保证居中。
+        transientParent: root.Window.window
 
         onConfirmed: {
             root.appFacade.deleteTarget(root.entryData.path, root.entryData.isFolder);
