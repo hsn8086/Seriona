@@ -19,6 +19,8 @@ extern "C" {
 }
 #endif
 
+#include "app/path_text.h"
+
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -110,7 +112,7 @@ bool parseSmokeOptions(const QStringList &arguments, SmokeOptions *options, QStr
 bool writeSmokeLog(const SmokeOptions &options, QString *error)
 {
     std::error_code filesystemError;
-    const std::filesystem::path outputDir(options.outputDir.toStdString());
+    const std::filesystem::path outputDir(pathFromUtf8(options.outputDir.toStdString()));
     std::filesystem::create_directories(outputDir, filesystemError);
     if (filesystemError) {
         *error = QStringLiteral("Failed to create smoke output directory %1: %2")
@@ -121,7 +123,7 @@ bool writeSmokeLog(const SmokeOptions &options, QString *error)
     const std::filesystem::path logPath = outputDir / (QStringLiteral("smoke-%1.log").arg(options.scenario).toStdString());
     std::ofstream log(logPath, std::ios::trunc);
     if (!log.is_open()) {
-        *error = QStringLiteral("Failed to open smoke log file: %1").arg(QString::fromStdString(logPath.string()));
+        *error = QStringLiteral("Failed to open smoke log file: %1").arg(QString::fromStdString(pathTextUtf8(logPath)));
         return false;
     }
 
@@ -147,7 +149,7 @@ int main(int argc, char *argv[])
 #if SERIONA_HAS_BACKEND
     try {
         const auto runtimePaths = seriona::app::resolveRuntimePaths(
-            QCoreApplication::applicationFilePath().toStdString());
+            pathFromUtf8(QCoreApplication::applicationFilePath().toStdString()));
         seriona::app::initializeApplicationLogging(runtimePaths);
         // 错误处理器设为不抛：sink 失败（如磁盘满）时异常若从 Qt 消息 handler
         // 逃逸会直接 terminate 应用；静默丢弃单条日志优于进程崩溃。

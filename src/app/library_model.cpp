@@ -2,6 +2,7 @@
 
 #include "backend_snapshot_mapper.h"
 #include "library_folder_projection_model.h"
+#include "path_text.h"
 
 #include <QByteArray>
 #include <QDebug>
@@ -71,13 +72,13 @@ seriona::control::TrackIdentity trackIdentityForEntry(const LibraryModel::Entry 
 
 QString fromBackendPath(const std::filesystem::path &path)
 {
-    return QString::fromStdString(path.generic_string());
+    return QString::fromStdString(pathTextUtf8(path));
 }
 
 std::filesystem::path toBackendPath(const QString &path)
 {
     const QByteArray utf8 = path.toUtf8();
-    return std::filesystem::path(std::string(utf8.constData(), static_cast<std::size_t>(utf8.size())));
+    return pathFromUtf8(std::string(utf8.constData(), static_cast<std::size_t>(utf8.size())));
 }
 
 std::optional<seriona::control::FolderSortField> backendSortField(const QString &field)
@@ -173,7 +174,7 @@ QString formatDuration(std::chrono::milliseconds duration)
 QString formatFromNode(const LibraryTreeStore::Node &node)
 {
     const std::filesystem::path &path = !node.sourceFilePath.empty() ? node.sourceFilePath : node.filePath;
-    QString extension = QString::fromStdString(path.extension().string());
+    QString extension = QString::fromStdString(pathTextUtf8(path.extension()));
     if (extension.startsWith(QLatin1Char('.'))) {
         extension.remove(0, 1);
     }
@@ -186,7 +187,7 @@ QString fileNameFromNode(const LibraryTreeStore::Node &node)
     if (path.empty()) {
         return node.displayName;
     }
-    return QString::fromStdString(path.filename().string());
+    return QString::fromStdString(pathTextUtf8(path.filename()));
 }
 
 LibraryModel::Entry entryFromNode(const LibraryTreeStore::Node &node, const QString &parentName)
@@ -219,7 +220,7 @@ LibraryModel::Entry entryFromNode(const LibraryTreeStore::Node &node, const QStr
 
     const std::filesystem::path &artworkPath = !node.thumbnailPath.empty() ? node.thumbnailPath : node.artworkPath;
     if (!artworkPath.empty()) {
-        entry.artworkSource = QUrl::fromLocalFile(QString::fromStdString(artworkPath.string())).toString();
+        entry.artworkSource = QUrl::fromLocalFile(QString::fromStdString(pathTextUtf8(artworkPath))).toString();
     }
     return entry;
 }
@@ -543,7 +544,7 @@ QString LibraryModel::absoluteFilePathForNode(const QString &nodeId) const
         return !target.sourceFilePath.empty() ? target.sourceFilePath : target.filePath;
     };
     const auto pathText = [](const std::filesystem::path &path) {
-        return path.empty() ? QString() : QString::fromStdString(path.string());
+        return path.empty() ? QString() : QString::fromStdString(pathTextUtf8(path));
     };
 
     if (!node->isFolder) {
@@ -578,7 +579,7 @@ QString LibraryModel::absoluteFilePathForNode(const QString &nodeId) const
         while (!cursor.isEmpty() && cursor != nodeId) {
             const LibraryTreeStore::Node *parent = m_treeStore.nodeById(cursor);
             if (parent == nullptr || !parent->isFolder || parent->parentNodeId.isEmpty()
-                || dir.empty() || QString::fromStdString(dir.filename().string()) != parent->displayName) {
+                || dir.empty() || QString::fromStdString(pathTextUtf8(dir.filename())) != parent->displayName) {
                 matched = false;
                 break;
             }
@@ -592,7 +593,7 @@ QString LibraryModel::absoluteFilePathForNode(const QString &nodeId) const
             // root 虚拟根（parentNodeId 为空）不在投影中，显示名从未被校验，行为不变；
             // 真实文件夹显示名必然与路径段一致，不误伤；不一致宁可返回空拒绝删除。
             if (!node->parentNodeId.isEmpty() && !dir.empty()
-                && QString::fromStdString(dir.filename().string()) != node->displayName) {
+                && QString::fromStdString(pathTextUtf8(dir.filename())) != node->displayName) {
                 continue;
             }
             return pathText(dir);

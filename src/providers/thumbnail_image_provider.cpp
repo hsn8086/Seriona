@@ -88,7 +88,7 @@ QImage ThumbnailImageProvider::loadThumbnail(const QString &sourcePath, const QS
         
         if (std::holds_alternative<seriona::thumbnail::ThumbnailResult>(response)) {
             const auto &result = std::get<seriona::thumbnail::ThumbnailResult>(response);
-            QImage image(QString::fromStdString(result.thumbnailPath.string()));
+            QImage image(QString::fromStdString(pathTextUtf8(result.thumbnailPath)));
             
             if (!image.isNull()) {
                 return image;

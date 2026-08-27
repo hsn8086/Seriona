@@ -2,6 +2,7 @@
 
 #if SERIONA_HAS_BACKEND
 #include "backend_command_adapter.h"
+#include "path_text.h"
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -43,7 +44,7 @@ std::string toBackendString(const QString &value)
 
 std::filesystem::path toBackendPath(const QString &path)
 {
-    return std::filesystem::path(toBackendString(path));
+    return pathFromUtf8(toBackendString(path));
 }
 
 QString normalizedRootPath(const QString &rootPath)
@@ -280,9 +281,8 @@ seriona::control::MediaControllerCommandResult BackendBridge::scanLibrary(const 
         return result;
     }
 
-    const QByteArray utf8Path = rootPath.toUtf8();
     seriona::scanner::ScannerRoot root;
-    root.path = std::filesystem::path(std::string(utf8Path.constData(), static_cast<std::size_t>(utf8Path.size())));
+    root.path = pathFromUtf8(rootPath.toStdString());
     root.recursive = true;
     seriona::control::MediaControllerCommandResult result = m_controller->scanLibrary({std::move(root)}, mode);
     enqueueCommandFailureNotification(result);
@@ -534,7 +534,7 @@ BackendBridge::ControllerFactory BackendBridge::defaultControllerFactory()
     return [] {
 #if SERIONA_HAS_BACKEND
         const auto exePath = QCoreApplication::applicationFilePath().toStdString();
-        const auto runtimePaths = seriona::app::resolveRuntimePaths(exePath);
+        const auto runtimePaths = seriona::app::resolveRuntimePaths(pathFromUtf8(exePath));
         runtimePaths.ensureDirectoriesExist();
         const auto &[dataRoot, logFile, mediaStorePath, artworkDir] = runtimePaths;
         static_cast<void>(dataRoot);

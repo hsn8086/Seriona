@@ -393,7 +393,7 @@ QVariantList mapQueueEntries(
                 : (lookup.song->artworkPath.has_value() ? *lookup.song->artworkPath : std::filesystem::path{});
             if (!artPath.empty()) {
                 item.insert(QStringLiteral("artworkSource"),
-                    QUrl::fromLocalFile(QString::fromStdString(artPath.string())).toString());
+                    QUrl::fromLocalFile(fromBackendPath(artPath)).toString());
             } else {
                 item.insert(QStringLiteral("artworkSource"), QString());
             }
