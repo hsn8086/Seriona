@@ -8,7 +8,7 @@
 [![C++](https://img.shields.io/badge/C%2B%2B-23-00599C?logo=c%2B%2B&logoColor=white)](https://en.cppreference.com/w/cpp/23)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](./LICENSE)
 
-[简介](#-简介) • [界面预览](#-界面预览) • [特性](#-特性一览) • [快速开始](#-快速开始) • [测试](#-测试) • [架构简述](#-架构简述) • [许可证](#-许可证)
+[简介](#-简介) • [界面预览](#-界面预览) • [特性](#-特性一览) • [快速开始](#-快速开始) • [Windows 打包](#-windows-打包) • [测试](#-测试) • [架构简述](#-架构简述) • [许可证](#-许可证)
 
 </div>
 
@@ -52,8 +52,8 @@
 
 ### 依赖要求
 - 支持 **C++23** 的编译器（GCC 13+ / Clang 17+ / MSVC 2022+）
-- **Qt 6.8+**（需包含 Quick, Concurrent, Widgets 模块）
-- **CMake ≥ 3.16**
+- **Qt 6.8+**（需包含 Quick、Concurrent、QuickDialogs2、Widgets 模块）
+- **CMake ≥ 3.20**（Windows 打包使用 3.20+）
 
 ### 构建与运行
 
@@ -72,6 +72,40 @@ cmake --build build -j$(nproc)
 > 如果暂时不想配置后端依赖，只需执行：  
 > `cmake -B build -DSERIONA_BACKEND_SOURCE_DIR="" && cmake --build build`  
 > 即可启动纯前端界面进行预览与调试。
+
+### Windows 打包
+
+Windows x64 的完整构建、测试、Qt 部署和 ZIP 打包由 `build.bat` 统一完成。它不会自动安装软件；首次运行前请准备：
+
+- Visual Studio 2022，勾选“使用 C++ 的桌面开发”和 Windows 10/11 SDK。脚本只接受 VS 2022 的 MSVC x64 工具链。
+- Qt 6.8 或更高版本的 `msvc2022_64` kit，并包含 Quick、Concurrent、QuickDialogs2、Widgets 模块。
+- CMake 3.20+、Git、Python 3，以及已 bootstrap 的 vcpkg。Python 3 必须可通过 `python.exe` 或 `py.exe -3` 发现；可将 vcpkg 根目录加入 `VCPKG_ROOT`，或使用 `-VcpkgRoot` 指定。
+- 可访问网络：首次运行 vcpkg manifest restore 和后端的 FetchContent 可能下载依赖。脚本不会安装 Visual Studio、Qt、CMake、Git 或 VC++ Redistributable。
+
+在仓库根目录执行，或直接双击 `build.bat`：
+
+```bat
+build.bat
+```
+
+脚本会优先使用 `Qt6_ROOT`、`Qt6_DIR`、`QTDIR`、`VCPKG_ROOT` 等环境变量，也支持显式路径：
+
+```powershell
+.\scripts\build-package-windows.ps1 -QtRoot C:\Qt\6.10.1\msvc2022_64 -VcpkgRoot C:\vcpkg -Force
+```
+
+常用参数：`-Force` 替换已有 `dist` 包，`-KeepBuild` 保留构建和暂存目录，`-SkipTests` 跳过 CTest 但仍运行包 Smoke，`-Clean` 清理本工作流的构建目录，`-DryRun` 只检查工具并打印计划，`-BackendSourceDir` 和 `-TagReaderSourceDir` 指定本地源码。
+
+默认会选用同级目录 `..\Seriona_Backend` 和 `..\TagReader`；找到时构建输出会记录“本地源码”，找不到时保留 CMake 既有的 FetchContent 行为。传入空的 `-BackendSourceDir ''` 可构建 mock-only 包，但该包没有真实扫描和播放能力。
+
+成功产物位于 `dist\Seriona-windows-x64\` 和 `dist\Seriona-windows-x64.zip`，构建日志位于 `dist\logs\`。构建目录、manifest 安装和 vcpkg 中间状态分别位于 `dist\.build\`、`dist\.vcpkg_installed\` 和 `dist\.vcpkg\`；`-VcpkgInstalledDir` 可覆盖 manifest 安装位置。包内包含 `BUILD-INFO.txt`、`README.txt` 和 `LICENSE`。发布前会在只允许包目录与 `System32` 的 PATH 下运行 `startup`、`main-playback`、`lyrics`、`sidebar-tree`、`settings-menu`、`empty-library` 六个 Smoke 场景，并清理 Smoke 生成的 `SerionaData`。
+
+**Windows 故障排查**
+
+- 找不到工具链：确认 VS 2022 C++ 工作负载、`msvc2022_64` Qt kit、CMake 和 Python 3 均已安装；用 `-QtRoot`、`-VcpkgRoot` 显式指定对应路径。Python 3 需可通过 `python.exe` 或 `py.exe -3` 启动。
+- manifest restore 失败：先确认网络和 vcpkg 已执行 `bootstrap-vcpkg.bat`，不要使用静态 triplet；删除失败的 `dist\.vcpkg_installed` 后重新运行即可。
+- 配置阶段找不到 FFmpeg 或 `pkg-config` 模块：不要混用 Debug 的 `.pc` 文件，脚本会固定使用 `dist\.vcpkg_installed\x64-windows\lib\pkgconfig`；检查 `dist\logs` 中的 restore/configure 日志。
+- Smoke 失败：保留 `-KeepBuild` 重新运行，查看 `dist\logs` 下对应场景和 `07-package-verify` 日志。包应整体移动，不能只复制 EXE。
 
 ---
 

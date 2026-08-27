@@ -17,10 +17,10 @@ Seriona 是一个 Qt Quick 桌面音乐播放器的**前端**。它本身不实�
 
 | 项 | 值 |
 |---|---|
-| 语言 | C++（构建产物中观察到 `-std=c++23`；CMake 未显式设置标准） |
+| 语言 | C++23（根 CMake 显式设置 `CMAKE_CXX_STANDARD 23` 并要求该标准） |
 | 框架 | Qt 6.8+（`qt_standard_project_setup(REQUIRES 6.8)`） |
-| Qt 模块 | Quick、Concurrent、QuickDialogs2、Widgets；测试另需 Quick Test |
-| 构建系统 | CMake ≥ 3.16；当前生成器 Ninja |
+| Qt 模块 | Quick、Concurrent、QuickDialogs2、Widgets；C++ Qt Test 测试另需 `Qt6::Test`，无 Qt Quick Test 入口 |
+| 构建系统 | mock-only 前端最低 CMake 3.16；默认后端集成与 Windows 发布要求 3.20+；日常开发沿用现有生成器，Windows 发布使用 Visual Studio 17 2022 x64 |
 | QML 效果 | 实际使用 `Qt5Compat.GraphicalEffects`（ColorOverlay/RectangularGlow/OpacityMask/DropShadow）；`MainContent.qml` 虽导入 `QtQuick.Effects` 但未使用 |
 | 语言服务 | `.clangd` 读 `build/`（相对）；`.qmlls.ini` 硬编码 `build/` 绝对路径 |
 
@@ -34,6 +34,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 Release 模式（`CMAKE_BUILD_TYPE=Release`）按编译器启用全量优化：GCC `-O3 -march=native -flto=N`、Clang `-O3 -march=native -flto`、MSVC `/O2 /GL /LTCG`。
+
+Windows x64 发布由根目录 `build.bat` 调用 `scripts/build-package-windows.ps1`：固定使用 Visual Studio 2022 的 MSVC x64 多配置生成器，通过固定 builtin baseline 的 vcpkg manifest 恢复动态依赖，并以外部 `windeployqt` 加独立包验证器生成 `dist/Seriona-windows-x64/` 与 ZIP。该流程不改变日常构建和现有 CMake 后端引入架构。
 
 ## 3. 整体架构
 

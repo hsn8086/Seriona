@@ -145,6 +145,7 @@ qt_add_executable(appSeriona
 set_source_files_properties(qml/theme/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 set(SERIONA_APP_LAYER_SOURCES
+    src/app/path_text.h
     src/app/app_facade.cpp
     src/app/track_stats_controller.cpp
     src/app/track_stats_controller.h
