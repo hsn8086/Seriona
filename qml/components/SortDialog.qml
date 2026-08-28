@@ -10,6 +10,13 @@ Window {
     modality: Qt.ApplicationModal
     color: "transparent"
 
+    // 跟随主窗口（transientParent，由调用方注入）居中：
+    // 注意：Window 类型自身不能用 Window.window attached 属性（仅 Item 可用），
+    // 故通过 transientParent 引用主窗口；此前曾绑定调用方（Sidebar）自身尺寸，
+    // 弹窗宽 480 > 侧栏宽，x 得负值导致窗口落在屏幕最左侧。
+    x: root.transientParent ? Math.round(root.transientParent.x + (root.transientParent.width - width) / 2) : 0
+    y: root.transientParent ? Math.round(root.transientParent.y + (root.transientParent.height - height) / 2) : 0
+
     width: 480
     height: rulesAreaHeight + dialogChromeHeight
 
@@ -55,6 +62,15 @@ Window {
             width: parent.width
             height: 48
             color: "transparent"
+
+            // 无边框窗口拖拽：走系统 move 循环（与 Main.qml 标题栏/SettingsWindow 同模式）
+            MouseArea {
+                anchors.fill: parent
+                anchors.rightMargin: 40  // Don't overlap close button
+                onPressed: {
+                    root.startSystemMove();
+                }
+            }
 
             Text {
                 text: qsTr("排序规则")

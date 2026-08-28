@@ -1170,9 +1170,8 @@ Item {
 
     SortDialog {
         id: sortDialog
-        x: (root.width - width) / 2
-        y: 100
-        
+        transientParent: root.Window.window
+
         sortRules: []
         
         onAccepted: {
