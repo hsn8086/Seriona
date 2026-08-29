@@ -1125,6 +1125,7 @@ Item {
         // Floating Action Button (FAB)
         StyleButton {
             id: fab
+            objectName: "locateFab"
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.margins: Theme.spacing16
@@ -1138,6 +1139,15 @@ Item {
             visible: !root.queueViewActive
 
             onClicked: {
+                // 搜索激活时先退出搜索再定位：定位的滚动请求按 activeListView
+                // 处理（isSearching 时指向 searchView），且深层曲目不在搜索投影内；
+                // 必须先退出搜索模式（与搜索按钮关闭分支一致），让滚动请求
+                // 落在文件夹视图上。C++ 侧 showNodeInBrowserProjection 会兜底
+                // 清空 searchQuery，此处显式先行保证顺序正确。
+                if (root.isSearching) {
+                    root.isSearching = false;
+                    libraryController.clearSearch();
+                }
                 libraryController.locateCurrentSong();
                 Qt.callLater(() => {
                     var ctrlDepth = libraryController.folderStackDepth;

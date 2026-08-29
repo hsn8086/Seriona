@@ -194,6 +194,7 @@ private slots:
     void repeatEnterReusesPageInstance();
     void deepChainNavigationAndCacheSize();
     void searchActivePreservesNavigationState();
+    void locateWhileSearchingExitsSearchAndLocates();
     void rapidBackClicksStateConsistency();
     void controllerStackSynchronization();
     void locateColdCacheAndBranchVariants();
@@ -1210,6 +1211,47 @@ void SidebarQueueSwitchTest::searchActivePreservesNavigationState()
     assertStackAligned();
     QCOMPARE(stackView()->property("depth").toInt(), 3);
     QCOMPARE(currentPage()->property("folderNodeId").toString(), QStringLiteral("f3"));
+}
+
+// 搜索激活时点击"定位当前播放歌曲"（FAB）：自动退出搜索并定位到播放曲目。
+// 回归锁：定位的滚动请求按 activeListView 处理，搜索模式（isSearching）会把
+// 请求吞进 searchView，且深层曲目不在搜索投影内导致定位失效。
+void SidebarQueueSwitchTest::locateWhileSearchingExitsSearchAndLocates()
+{
+    resetNavigationState();
+    applyRichTree();
+
+    libraryController.enterFolder(QStringLiteral("g1"));
+    libraryController.enterFolder(QStringLiteral("g2"));
+    assertStackAligned();
+    QCOMPARE(stackView()->property("depth").toInt(), 2);
+
+    sidebar->setProperty("isSearching", true);
+    libraryController.setSearchQuery(QStringLiteral("zzz-nonexistent"));
+    QTest::qWait(60);
+    QCOMPARE(sidebar->property("isSearching").toBool(), true);
+    QQuickItem *searchView = qobject_cast<QQuickItem *>(findItem(QStringLiteral("searchView")));
+    QVERIFY2(searchView != nullptr, "search view not found");
+    QVERIFY(searchView->isVisible());
+    QVERIFY(!stackView()->isVisible());
+
+    libraryController.setPlayingTrackId(QStringLiteral("t-1"));
+    QQuickItem *locateFab = qobject_cast<QQuickItem *>(findItem(QStringLiteral("locateFab")));
+    QVERIFY2(locateFab != nullptr, "locate FAB not found");
+    const QPointF center = locateFab->mapToScene(QPointF(locateFab->width() / 2, locateFab->height() / 2));
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, center.toPoint());
+
+    QCOMPARE(sidebar->property("isSearching").toBool(), false);
+    QCOMPARE(libraryController.searchQuery(), QString());
+    QVERIFY(!searchView->isVisible());
+
+    QTRY_COMPARE(stackView()->property("depth").toInt(), 3);
+    QCOMPARE(libraryController.currentFolderNodeId(), QStringLiteral("g3"));
+    QCOMPARE(libraryController.scrollRequest(), QStringLiteral("t-1"));
+    QVERIFY(stackView()->isVisible());
+    QCOMPARE(sidebar->property("suppressNavAnimation").toBool(), false);
+
+    libraryController.clearSearch();
 }
 
 // 快速连点 back 两次：最终状态一致、无半程动画残留
