@@ -76,6 +76,11 @@ jobs:
           rm /tmp/node.tar.xz
           node --version
           g++ --version | head -1
+          # apt 的 cmake 3.22 不支持 DOWNLOAD_EXTRACT_TIMESTAMP（CMake 3.24+，TagReader catch2 FetchContent 用到），
+          # pip 官方二进制装新版覆盖（/usr/local/bin 优先于 /usr/bin）
+          python3 -m pip install --upgrade pip
+          python3 -m pip install cmake
+          cmake --version | head -1
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
@@ -162,7 +167,7 @@ jobs:
         run: |
           apt-get update && apt-get install -y --no-install-recommends \
             nodejs git ca-certificates cmake ninja-build g++ pkg-config dpkg-dev \
-            qt6-base-dev qt6-declarative-dev qt6-5compat-dev \
+            qt6-base-dev qt6-declarative-dev qt6-5compat-dev file \
             libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev libsystemd-dev \
             libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev
       - uses: actions/checkout@v7
@@ -208,7 +213,7 @@ jobs:
         run: |
           apt-get update && apt-get install -y --no-install-recommends \
             nodejs git ca-certificates cmake ninja-build g++ pkg-config dpkg-dev \
-            qt6-base-dev qt6-declarative-dev qt6-5compat-dev \
+            qt6-base-dev qt6-declarative-dev qt6-5compat-dev file \
             libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev libsystemd-dev \
             libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev
       - uses: actions/checkout@v7
@@ -276,6 +281,8 @@ jobs:
       - name: 安装 sdbus-c++ v2（Fedora 42 的 sdbus-cpp 为 v1，v2 从 F43 才进 Fedora；header-only 安装很快）
         run: |
           dnf remove -y sdbus-cpp-devel
+          # sdbus-c++ v2 构建需 libsystemd.pc（systemd-devel 被上面的 remove 连带删掉）
+          dnf install -y --nodocs systemd-devel
           git clone --depth 1 --branch v2.1.0 https://github.com/Kistler-Group/sdbus-cpp.git /tmp/sdbus-cpp
           cmake -S /tmp/sdbus-cpp -B /tmp/sdbus-cpp/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTS=OFF -DBUILD_DOC=OFF -DBUILD_EXAMPLES=OFF
