@@ -8,7 +8,6 @@
 - `qml/Main.qml` 实例化唯一的 `AppFacade`。它拥有播放、曲库、歌词、通知和导航对象，并持有 `BackendBridge` 与 `WaveformProvider`（两者始终实例化；`SERIONA_HAS_BACKEND=0` 时不编译后端调用）；不要把这些状态重新放回 QML mock 属性。
 - 扫描进度：`LibraryController` 暴露 `scannedSongCount`/`totalSongCount`（库扫描时更新），`MainContent`/`Sidebar`/`StartupView` 经 `scanMessage` 展示扫描进度 toast（扫描完成自动隐藏）。
 - `PlaybackController`、`NavigationController`、`NotificationController` 和 `LibraryModel` 是 `QML_UNCREATABLE`；`LibraryController` 定义在 `library_model.h/.cpp`（没有独立文件），`LyricsModel` 同为 `QML_ELEMENT`。正式 QML 统一使用 `appFacade.playback/library/lyrics/notifications/navigation`，不要另建可创建的控制器或模型。
-- 孤儿文件（均未接入 CMake/engine，修改不影响正式应用或测试）：`src/providers/thumbnail_image_provider.{h,cpp}`、根目录 `test_popup.qml`、`qml/assets/MaterialIcons-Regular.ttf`（不在 QML 模块 RESOURCES，也无 FontLoader 引用）。根目录 `popup_log.txt` 是已跟踪的空日志残留（0 字节，`*.log` 在 .gitignore 中但该文件早于规则提交），属垃圾文件可删除。
 
 ## 构建与验证
 - 顺序是 `cmake -B build`、`cmake --build build`、`ctest --test-dir build --output-on-failure`；应用为 `./build/seriona`。
