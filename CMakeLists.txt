@@ -869,10 +869,12 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         target_link_libraries(seriona_frontend_sidebar_queue_tests
             PRIVATE Qt6::Quick Qt6::Test Qt6::Concurrent ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET} ${SERIONA_BACKEND_APP_TARGET} spdlog::spdlog
         )
+        # 注：不引用 seriona_raw_res_0.qrc（SVG 资产）——主模块 seriona 与测试目标
+        # 对 qrc_seriona_raw_res_0.cpp 注册重复 rcc 规则，Qt 6.8 下测试目标的规则
+        # 不生效导致输出缺失；资源缺失不影响 QML 加载与测试逻辑。
         qt6_add_resources(SERIONA_SIDEBAR_QUEUE_TEST_QRC
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qmake_Seriona.qrc
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0.qrc
-            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_res_0.qrc
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0_extra_qmldirs.qrc
         )
         # 复用 qt_add_qml_module 生成的静态类型注册器：Sidebar 引用的
@@ -937,7 +939,6 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         qt6_add_resources(SERIONA_FOLDER_PAGE_TEST_QRC
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qmake_Seriona.qrc
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0.qrc
-            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_res_0.qrc
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0_extra_qmldirs.qrc
         )
         target_sources(seriona_frontend_folder_page_tests PRIVATE
