@@ -117,8 +117,9 @@ jobs:
           install-deps: true
           # 容器内使用自带 python3（glibc 2.35）；runner 的 Python 3.12 需 GLIBC 2.38
           setup-python: false
-          # Qt5Compat 不在默认安装列表，QML 运行时 import Qt5Compat.GraphicalEffects 会失败
-          modules: qt5compat
+          # Qt5Compat 不在默认安装列表，QML 运行时 import Qt5Compat.GraphicalEffects 会失败；
+          # GraphicalEffects 插件依赖 Qt6ShaderTools，qtshadertools 也需一并安装
+          modules: qt5compat qtshadertools
       - name: 配置并构建
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
@@ -393,7 +394,7 @@ jobs:
           host: windows
           arch: win64_msvc2022_64
           cache: true
-          modules: qt5compat
+          modules: qt5compat qtshadertools
       # vcpkg 二进制缓存：ffmpeg 等依赖首次需源码编译（约 37 分钟），
       # 命中后 vcpkg install 直接从缓存解压（约 1 分钟）
       - name: 缓存 vcpkg 二进制（archives + registries）
