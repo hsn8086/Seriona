@@ -882,6 +882,11 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             ${SERIONA_SIDEBAR_QUEUE_TEST_QRC}
             ${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp
         )
+        # qmltyperegistrations 由 qt_add_qml_module 标记 GENERATED；测试目标直接引用
+        # 会让 VS 生成器生成空 CustomBuild（MSB4035）。文件实际配置期已生成，
+        # 按普通源处理即可（add_dependencies 已保证 seriona 先构建）。
+        set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp
+            PROPERTIES GENERATED FALSE)
         add_dependencies(seriona_frontend_sidebar_queue_tests seriona)
         add_test(NAME seriona_frontend_sidebar_queue_switch COMMAND seriona_frontend_sidebar_queue_tests)
 
@@ -939,6 +944,8 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             ${SERIONA_FOLDER_PAGE_TEST_QRC}
             ${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp
         )
+        set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp
+            PROPERTIES GENERATED FALSE)
         add_dependencies(seriona_frontend_folder_page_tests seriona)
         add_test(NAME seriona_frontend_folder_page_tests COMMAND seriona_frontend_folder_page_tests)
 
