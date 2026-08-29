@@ -1311,8 +1311,10 @@ if(UNIX AND NOT APPLE AND SERIONA_INSTALLED_MODE)
     set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "kaizen857 <noreply@github.com>")
+    # QML 模块（Qt5Compat.GraphicalEffects）是资源非库，SHLIBDEPS 不自动声明
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "qml6-module-qt5compat-graphicaleffects")
 
-    set(CPACK_RPM_PACKAGE_REQUIRES "qt6-qtbase >= 6.8")
+    set(CPACK_RPM_PACKAGE_REQUIRES "qt6-qtbase >= 6.8, qt6-qt5compat")
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
 
     include(CPack)
