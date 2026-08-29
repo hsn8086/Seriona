@@ -63,7 +63,7 @@ jobs:
             git ca-certificates wget curl sudo software-properties-common gnupg \
             build-essential cmake ninja-build pkg-config python3 python3-pip \
             libgl1-mesa-dev libxkbcommon-dev \
-            libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev \
+            libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev libsystemd-dev \
             libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev
           # C++23 完整支持需要 GCC 13+（22.04 默认 GCC 11 缺 std::string::contains 等）
           add-apt-repository -y ppa:ubuntu-toolchain-r/test
@@ -87,6 +87,13 @@ jobs:
           repository: kaizen857/TagReader
           ref: ${{ env.TAGREADER_REF }}
           path: TagReader
+      - name: 安装 sdbus-c++ v2（Ubuntu 22.04 系统包为 v1，后端 MPRIS 需 v2 API；header-only 安装很快）
+        run: |
+          git clone --depth 1 --branch v2.1.0 https://github.com/Kistler-Group/sdbus-cpp.git /tmp/sdbus-cpp
+          cmake -S /tmp/sdbus-cpp -B /tmp/sdbus-cpp/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTS=OFF -DBUILD_DOC=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build /tmp/sdbus-cpp/build --parallel 2
+          cmake --install /tmp/sdbus-cpp/build
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
@@ -156,7 +163,7 @@ jobs:
           apt-get update && apt-get install -y --no-install-recommends \
             nodejs git ca-certificates cmake ninja-build g++ pkg-config dpkg-dev \
             qt6-base-dev qt6-declarative-dev qt6-5compat-dev \
-            libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev \
+            libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev libsystemd-dev \
             libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
@@ -179,7 +186,7 @@ jobs:
           cmake --build build --parallel 2
       - name: 打包 deb
         run: |
-          cpack -G DEB
+          cpack -G DEB --config build/CPackConfig.cmake
           mv seriona-*.deb seriona-${{ env.SERIONA_VERSION }}-trixie-x86_64.deb
       - uses: actions/upload-artifact@v7
         with:
@@ -202,7 +209,7 @@ jobs:
           apt-get update && apt-get install -y --no-install-recommends \
             nodejs git ca-certificates cmake ninja-build g++ pkg-config dpkg-dev \
             qt6-base-dev qt6-declarative-dev qt6-5compat-dev \
-            libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev \
+            libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev libsystemd-dev \
             libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
@@ -225,7 +232,7 @@ jobs:
           cmake --build build --parallel 2
       - name: 打包 deb
         run: |
-          cpack -G DEB
+          cpack -G DEB --config build/CPackConfig.cmake
           mv seriona-*.deb seriona-${{ env.SERIONA_VERSION }}-resolute-x86_64.deb
       - uses: actions/upload-artifact@v7
         with:
@@ -266,6 +273,14 @@ jobs:
           repository: kaizen857/TagReader
           ref: ${{ env.TAGREADER_REF }}
           path: TagReader
+      - name: 安装 sdbus-c++ v2（Fedora 42 的 sdbus-cpp 为 v1，v2 从 F43 才进 Fedora；header-only 安装很快）
+        run: |
+          dnf remove -y sdbus-cpp-devel
+          git clone --depth 1 --branch v2.1.0 https://github.com/Kistler-Group/sdbus-cpp.git /tmp/sdbus-cpp
+          cmake -S /tmp/sdbus-cpp -B /tmp/sdbus-cpp/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTS=OFF -DBUILD_DOC=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build /tmp/sdbus-cpp/build --parallel 2
+          cmake --install /tmp/sdbus-cpp/build
       - name: 构建
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
@@ -276,7 +291,7 @@ jobs:
           cmake --build build --parallel 2
       - name: 打包 rpm
         run: |
-          cpack -G RPM
+          cpack -G RPM --config build/CPackConfig.cmake
           mv seriona-*.rpm seriona-${{ env.SERIONA_VERSION }}-fc42.x86_64.rpm
       - uses: actions/upload-artifact@v7
         with:
@@ -301,7 +316,8 @@ jobs:
           dnf install -y --nodocs nodejs git cmake ninja-build gcc-c++ pkgconf-pkg-config rpm-build \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qt5compat-devel \
             spdlog-devel sqlite-devel xxhash-devel sdbus-cpp-devel pipewire-devel
-          dnf install -y --nodocs --allowerasing ffmpeg-devel
+          # EPEL 10 无完整 ffmpeg；RHEL 10 AppStream 的 ffmpeg-free-devel 提供同名 pkg-config 文件
+          dnf install -y --nodocs ffmpeg-free-devel
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
@@ -323,7 +339,7 @@ jobs:
           cmake --build build --parallel 2
       - name: 打包 rpm
         run: |
-          cpack -G RPM
+          cpack -G RPM --config build/CPackConfig.cmake
           mv seriona-*.rpm seriona-${{ env.SERIONA_VERSION }}-el10.x86_64.rpm
       - uses: actions/upload-artifact@v7
         with:
