@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(Seriona VERSION 0.1 LANGUAGES CXX)
+# 版本号由 CI 注入（-DSERIONA_VERSION=1.0.0）；本地默认 0.1
+set(SERIONA_VERSION "0.1" CACHE STRING "Seriona release version (overridden by CI)")
+project(Seriona VERSION ${SERIONA_VERSION} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1279,4 +1281,31 @@ if(SERIONA_INSTALLED_MODE)
                 DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/${icon_size}x${icon_size}/apps"
                 RENAME "org.kaizen857.Seriona.png")
     endforeach()
+    # AppStream 元数据：Flathub / GNOME Software / Discover 展示的前置资产
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/org.kaizen857.Seriona.metainfo.xml"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo")
+endif()
+
+# ---- CPack：Linux deb/rpm 打包（仅 installed 模式有意义）----
+# CI 容器矩阵（debian:trixie / ubuntu:resolute / fedora / rockylinux）逐发行版原生构建：
+#   deb 依赖由 dpkg-shlibdeps 自动生成（SHLIBDEPS ON，含完整 Qt Quick 栈）；
+#   rpm 依赖声明 qt6-qtbase >= 6.8（RPM 符号依赖不带版本下限，需显式声明）。
+# 老 LTS 发行版（Qt < 6.8）不产出 deb/rpm，由 AppImage/Flatpak 覆盖（见 docs/ 调研）。
+if(UNIX AND NOT APPLE AND SERIONA_INSTALLED_MODE)
+    set(CPACK_PACKAGE_NAME "seriona")
+    set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+    set(CPACK_PACKAGE_VENDOR "kaizen857")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Seriona music player")
+    set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/kaizen857/Seriona")
+    set(CPACK_PACKAGE_LICENSE "GPL-3.0-or-later")
+    set(CPACK_PACKAGE_FILE_NAME "seriona-${CPACK_PACKAGE_VERSION}-${CMAKE_SYSTEM_PROCESSOR}")
+
+    set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "kaizen857 <noreply@github.com>")
+
+    set(CPACK_RPM_PACKAGE_REQUIRES "qt6-qtbase >= 6.8")
+    set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
+
+    include(CPack)
 endif()

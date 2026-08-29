@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.kaizen857.Seriona</id>
+  <launchable type="desktop-id">org.kaizen857.Seriona.desktop</launchable>
+  <name>Seriona</name>
+  <summary>Modern desktop music player for local music lovers</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>Seriona is a modern desktop music player built with Qt Quick and a C++23 backend.</p>
+    <p>Features include library scanning, high-quality playback (FFmpeg + miniaudio), synchronized lyrics, playlist management, waveform display and MPRIS integration.</p>
+  </description>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Player</category>
+  </categories>
+  <url type="homepage">https://github.com/kaizen857/Seriona</url>
+  <url type="bugtracker">https://github.com/kaizen857/Seriona/issues</url>
+  <developer id="io.github.kaizen857">
+    <name>kaizen857</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+</component>

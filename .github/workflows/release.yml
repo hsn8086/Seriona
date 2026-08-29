@@ -1,0 +1,404 @@
+# Seriona 发布流水线（GitHub Actions）
+#
+# 双轨触发：
+#   1. push 到 main（develop 合并后）→ 自动构建 + 测试 + 打包，产物存 artifact（不发 release）
+#   2. workflow_dispatch（Actions 页 "Run workflow" 按钮）→ 输入版本号，全量构建后自动创建
+#      GitHub Release（v<version> tag）并挂载全部资产
+#
+# 产物矩阵（Qt 6.8 下限的取舍，详见 docs/github-actions-release-pipeline.md §6）：
+#   - AppImage + tar.gz：ubuntu:22.04 容器（glibc 2.35 基线），覆盖老 LTS 发行版
+#   - deb：Debian 13 trixie / Ubuntu 26.04 resolute（原生 Qt ≥ 6.8，dpkg-shlibdeps 自动依赖）
+#   - rpm：Fedora 42 / Rocky 10（qt6-qtbase >= 6.8 显式声明）
+#   - Windows：portable zip（MSVC 2022 + Qt 6.8 官方二进制）
+# 老 LTS（Ubuntu 22.04/24.04、Debian 12、RHEL 9，Qt < 6.8）不产出 deb/rpm。
+
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        type: string
+        required: true
+        description: 版本号（如 1.0.0），用于 tag 与包内版本
+      backend_ref:
+        type: string
+        required: false
+        default: main
+        description: 进阶：钉住 Seriona_Backend 的 tag/SHA（默认 main 最新）
+      tagreader_ref:
+        type: string
+        required: false
+        default: main
+        description: 进阶：钉住 TagReader 的 tag/SHA（默认 main 最新）
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  QT_VERSION: '6.8.*'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Linux：AppImage + tar.gz（ubuntu:22.04 容器，glibc 2.35 基线）+ 全量测试
+  # ---------------------------------------------------------------------------
+  linux:
+    name: Linux (AppImage + tar.gz)
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:22.04
+    env:
+      SERIONA_VERSION: ${{ inputs.version || '0.1' }}
+      BACKEND_REF: ${{ inputs.backend_ref || 'main' }}
+      TAGREADER_REF: ${{ inputs.tagreader_ref || 'main' }}
+    steps:
+      - name: 容器准备（node + GCC 13 + 构建依赖）
+        run: |
+          set -eux
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git ca-certificates wget curl sudo software-properties-common \
+            build-essential cmake ninja-build pkg-config python3 python3-pip \
+            libgl1-mesa-dev libxkbcommon-dev \
+            libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev \
+            libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev
+          # C++23 完整支持需要 GCC 13+（22.04 默认 GCC 11 缺 std::string::contains 等）
+          add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          apt-get install -y gcc-13 g++-13
+          update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100
+          update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 100
+          # GitHub Actions JS actions 需要容器内有 node（22.04 apt 的 nodejs 仅 12）
+          wget -q https://nodejs.org/dist/v24.4.1/node-v24.4.1-linux-x64.tar.xz -O /tmp/node.tar.xz
+          tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1
+          rm /tmp/node.tar.xz
+          node --version
+          g++ --version | head -1
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: kaizen857/Seriona_Backend
+          ref: ${{ env.BACKEND_REF }}
+          path: Seriona_Backend
+      - uses: actions/checkout@v7
+        with:
+          repository: kaizen857/TagReader
+          ref: ${{ env.TAGREADER_REF }}
+          path: TagReader
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
+          cache: true
+          install-deps: true
+      - name: 配置并构建
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DSERIONA_INSTALLED_MODE=ON \
+            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }} \
+            -DSERIONA_BACKEND_SOURCE_DIR=$GITHUB_WORKSPACE/Seriona_Backend \
+            -DBUILD_TESTING=ON
+          cmake --build build --parallel 2
+      - name: 测试
+        run: ctest --test-dir build --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen
+      - name: 下载 linuxdeploy
+        run: |
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage -O linuxdeploy-plugin-qt.AppImage
+          chmod +x linuxdeploy*.AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+      - name: 组装 AppDir 并生成 AppImage + tar.gz
+        run: |
+          cmake --install build --prefix AppDir/usr
+          # AppImage 内桌面文件 Exec 需相对可执行名（安装版是绝对路径）
+          sed -i 's|^Exec=.*|Exec=seriona|' AppDir/usr/share/applications/org.kaizen857.Seriona.desktop
+          ./linuxdeploy.AppImage --appdir AppDir --plugin qt --output appimage
+          tar czf Seriona-${{ env.SERIONA_VERSION }}-linux-x86_64.tar.gz AppDir
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          QML_SOURCES_PATHS: ${{ github.workspace }}/qml
+          VERSION: ${{ env.SERIONA_VERSION }}
+      - name: AppImage 冒烟验证
+        shell: bash
+        run: |
+          export APPIMAGE_EXTRACT_AND_RUN=1 QT_QPA_PLATFORM=offscreen
+          ./Seriona-*.AppImage --smoke-scenario=startup --smoke-exit-ms=1000 --smoke-output-dir=smoke-appimage
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-appimage-targz
+          path: |
+            *.AppImage
+            *.tar.gz
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # deb：Debian 13 trixie / Ubuntu 26.04 resolute（原生 Qt，dpkg-shlibdeps 自动依赖）
+  # ---------------------------------------------------------------------------
+  deb-trixie:
+    name: deb (Debian 13 trixie)
+    runs-on: ubuntu-24.04
+    container:
+      image: debian:trixie
+    env:
+      SERIONA_VERSION: ${{ inputs.version || '0.1' }}
+      BACKEND_REF: ${{ inputs.backend_ref || 'main' }}
+      TAGREADER_REF: ${{ inputs.tagreader_ref || 'main' }}
+    steps:
+      - name: 容器准备
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends \
+            nodejs git ca-certificates cmake ninja-build g++ pkg-config dpkg-dev \
+            qt6-base-dev qt6-declarative-dev qt6-5compat-dev \
+            libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev \
+            libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: kaizen857/Seriona_Backend
+          ref: ${{ env.BACKEND_REF }}
+          path: Seriona_Backend
+      - uses: actions/checkout@v7
+        with:
+          repository: kaizen857/TagReader
+          ref: ${{ env.TAGREADER_REF }}
+          path: TagReader
+      - name: 构建
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DSERIONA_INSTALLED_MODE=ON \
+            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }} \
+            -DSERIONA_BACKEND_SOURCE_DIR=$GITHUB_WORKSPACE/Seriona_Backend \
+            -DBUILD_TESTING=OFF
+          cmake --build build --parallel 2
+      - name: 打包 deb
+        run: |
+          cpack -G DEB
+          mv seriona-*.deb seriona-${{ env.SERIONA_VERSION }}-trixie-x86_64.deb
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-deb-trixie
+          path: '*.deb'
+          if-no-files-found: error
+
+  deb-resolute:
+    name: deb (Ubuntu 26.04 resolute)
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:resolute
+    env:
+      SERIONA_VERSION: ${{ inputs.version || '0.1' }}
+      BACKEND_REF: ${{ inputs.backend_ref || 'main' }}
+      TAGREADER_REF: ${{ inputs.tagreader_ref || 'main' }}
+    steps:
+      - name: 容器准备
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends \
+            nodejs git ca-certificates cmake ninja-build g++ pkg-config dpkg-dev \
+            qt6-base-dev qt6-declarative-dev qt6-5compat-dev \
+            libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev \
+            libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: kaizen857/Seriona_Backend
+          ref: ${{ env.BACKEND_REF }}
+          path: Seriona_Backend
+      - uses: actions/checkout@v7
+        with:
+          repository: kaizen857/TagReader
+          ref: ${{ env.TAGREADER_REF }}
+          path: TagReader
+      - name: 构建
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DSERIONA_INSTALLED_MODE=ON \
+            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }} \
+            -DSERIONA_BACKEND_SOURCE_DIR=$GITHUB_WORKSPACE/Seriona_Backend \
+            -DBUILD_TESTING=OFF
+          cmake --build build --parallel 2
+      - name: 打包 deb
+        run: |
+          cpack -G DEB
+          mv seriona-*.deb seriona-${{ env.SERIONA_VERSION }}-resolute-x86_64.deb
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-deb-resolute
+          path: '*.deb'
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # rpm：Fedora 42（rpmfusion 提供 ffmpeg-devel）/ Rocky 10（EPEL + CRB）
+  # 项目为 GPL-3.0，链接含 GPL 组件的发行版 FFmpeg 无许可冲突
+  # ---------------------------------------------------------------------------
+  rpm-fedora:
+    name: rpm (Fedora 42)
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:42
+    env:
+      SERIONA_VERSION: ${{ inputs.version || '0.1' }}
+      BACKEND_REF: ${{ inputs.backend_ref || 'main' }}
+      TAGREADER_REF: ${{ inputs.tagreader_ref || 'main' }}
+    steps:
+      - name: 容器准备（启用 rpmfusion 获取 ffmpeg-devel）
+        run: |
+          dnf install -y --nodocs nodejs git cmake ninja-build gcc-c++ pkgconf-pkg-config rpm-build \
+            qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qt5compat-devel \
+            spdlog-devel sqlite-devel xxhash-devel sdbus-c++-devel \
+            https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-42.noarch.rpm
+          dnf install -y --nodocs ffmpeg-devel
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: kaizen857/Seriona_Backend
+          ref: ${{ env.BACKEND_REF }}
+          path: Seriona_Backend
+      - uses: actions/checkout@v7
+        with:
+          repository: kaizen857/TagReader
+          ref: ${{ env.TAGREADER_REF }}
+          path: TagReader
+      - name: 构建
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DSERIONA_INSTALLED_MODE=ON \
+            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }} \
+            -DSERIONA_BACKEND_SOURCE_DIR=$GITHUB_WORKSPACE/Seriona_Backend \
+            -DBUILD_TESTING=OFF
+          cmake --build build --parallel 2
+      - name: 打包 rpm
+        run: |
+          cpack -G RPM
+          mv seriona-*.rpm seriona-${{ env.SERIONA_VERSION }}-fc42.x86_64.rpm
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-rpm-fedora
+          path: '*.rpm'
+          if-no-files-found: error
+
+  rpm-rocky:
+    name: rpm (Rocky 10)
+    runs-on: ubuntu-24.04
+    container:
+      image: rockylinux:10
+    env:
+      SERIONA_VERSION: ${{ inputs.version || '0.1' }}
+      BACKEND_REF: ${{ inputs.backend_ref || 'main' }}
+      TAGREADER_REF: ${{ inputs.tagreader_ref || 'main' }}
+    steps:
+      - name: 容器准备（启用 EPEL + CRB 获取 ffmpeg-devel 等）
+        run: |
+          dnf install -y --nodocs epel-release dnf-plugins-core nodejs git cmake ninja-build gcc-c++ pkgconf-pkg-config rpm-build \
+            qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qt5compat-devel \
+            spdlog-devel sqlite-devel xxhash-devel sdbus-c++-devel
+          dnf config-manager --set-enabled crb
+          dnf install -y --nodocs ffmpeg-devel
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: kaizen857/Seriona_Backend
+          ref: ${{ env.BACKEND_REF }}
+          path: Seriona_Backend
+      - uses: actions/checkout@v7
+        with:
+          repository: kaizen857/TagReader
+          ref: ${{ env.TAGREADER_REF }}
+          path: TagReader
+      - name: 构建
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DSERIONA_INSTALLED_MODE=ON \
+            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }} \
+            -DSERIONA_BACKEND_SOURCE_DIR=$GITHUB_WORKSPACE/Seriona_Backend \
+            -DBUILD_TESTING=OFF
+          cmake --build build --parallel 2
+      - name: 打包 rpm
+        run: |
+          cpack -G RPM
+          mv seriona-*.rpm seriona-${{ env.SERIONA_VERSION }}-el10.x86_64.rpm
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-rpm-rocky
+          path: '*.rpm'
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Windows：portable zip（复用 build-package-windows.ps1，自动探测 Qt6_DIR/C:\vcpkg/VS2022）
+  # ---------------------------------------------------------------------------
+  windows:
+    name: Windows (portable zip)
+    runs-on: windows-2022
+    env:
+      BACKEND_REF: ${{ inputs.backend_ref || 'main' }}
+      TAGREADER_REF: ${{ inputs.tagreader_ref || 'main' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: kaizen857/Seriona_Backend
+          ref: ${{ env.BACKEND_REF }}
+          path: Seriona_Backend
+      - uses: actions/checkout@v7
+        with:
+          repository: kaizen857/TagReader
+          ref: ${{ env.TAGREADER_REF }}
+          path: TagReader
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          arch: win64_msvc2022_64
+          cache: true
+      - name: 构建 + 打包 + smoke 验证（脚本内置 6 场景）
+        shell: pwsh
+        run: '& .\scripts\build-package-windows.ps1 -BackendSourceDir $env:GITHUB_WORKSPACE\Seriona_Backend -TagReaderSourceDir $env:GITHUB_WORKSPACE\TagReader -Force'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-portable
+          path: 'dist/*.zip'
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # 发布：仅发版按钮（workflow_dispatch）触发；push main 只构建不发布
+  # ---------------------------------------------------------------------------
+  publish:
+    name: 发布 GitHub Release
+    needs: [linux, deb-trixie, deb-resolute, rpm-fedora, rpm-rocky, windows]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: 核对产物
+        run: ls -la artifacts
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Seriona v${{ inputs.version }}
+          body: |
+            ## Seriona v${{ inputs.version }}
+
+            GitHub Actions 自动构建（发版按钮触发）。
+
+            ### Linux
+            - **AppImage**（Ubuntu 22.04 基线，覆盖老 LTS 发行版）
+            - **tar.gz** 便携版
+            - **deb**：Debian 13 trixie / Ubuntu 26.04 resolute（Qt ≥ 6.8）
+            - **rpm**：Fedora 42 / Rocky 10（Qt ≥ 6.8）
+
+            ### Windows
+            - **portable zip**（Qt 6.8 + MSVC 2022）
+
+            引用版本：后端 `${{ inputs.backend_ref }}` / 标签库 `${{ inputs.tagreader_ref }}`
+          files: artifacts/**
+          generate_release_notes: true
+          fail_on_unmatched_files: true
