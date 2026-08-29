@@ -14,7 +14,7 @@ set(SERIONA_BACKEND_SOURCE_DIR "../../cppProject(app_and_lib)/Seriona_Backend" C
 
 它是相对 `Seriona` 仓库根目录解析的，不要在已提交文档里写个人绝对路径。当前逻辑是：
 
-- 为空时，`appSeriona` 走 mock-only mode
+- 为空时，`Seriona` 走 mock-only mode
 - 路径存在且有 `CMakeLists.txt` 时，前端 `add_subdirectory(...)` 引入后端
 - `SERIONA_BUILD_APP` 会被强制设为 `OFF`，避免把后端独立 app 一起拉进来
 - 前端最终只链接后端控制面和音频工具面，分别落在 `SERIONA_BACKEND_CONTROL_TARGET` 和 `SERIONA_BACKEND_AUDIO_TARGET`
@@ -63,9 +63,9 @@ set(SERIONA_BACKEND_SOURCE_DIR "../../cppProject(app_and_lib)/Seriona_Backend" C
 ## 已验证命令
 
 - `cmake -B build-doc-missing -DSERIONA_BACKEND_SOURCE_DIR=../missing`：已成功；配置阶段明确退化为 mock-only mode，并打印找不到后端源码的状态说明。
-- `cmake --build build-doc-missing --target appSeriona`：已成功；mock-only 前端目标完成构建。
+- `cmake --build build-doc-missing --target Seriona`：已成功；mock-only 前端目标完成构建。
 - `export https_proxy=http://127.0.0.1:7897 http_proxy=http://127.0.0.1:7897 all_proxy=socks5://127.0.0.1:7897 && cmake -B build-doc-check -DSERIONA_BACKEND_SOURCE_DIR="../../cppProject(app_and_lib)/Seriona_Backend"`：已成功；在代理环境下完成后端路径配置和依赖获取。
-- `cmake --build build-doc-check --target appSeriona`：已成功；真实后端路径下前端目标完成构建。
+- `cmake --build build-doc-check --target Seriona`：已成功；真实后端路径下前端目标完成构建。
 - `git diff --check`：已通过，没有空白或补丁格式错误。
 
 当前 T21 记录的验证状态均为成功；其中真实后端路径配置依赖代理启用后的网络环境，mock-only 路径仍按预期退化并可构建。

@@ -3,7 +3,7 @@
 // 队列下标发 removeRequested 信号（index 即 RemoveFromQueue 的 queueIndex）。
 //
 // 依赖构建目录的 Seriona QML 模块产物（build/Seriona/qmldir），
-// 因此 CMake 侧对测试目标 add_dependencies(appSeriona) 保证产物先就绪。
+// 因此 CMake 侧对测试目标 add_dependencies(Seriona) 保证产物先就绪。
 #include <QColor>
 #include <QGuiApplication>
 #include <QQuickItem>

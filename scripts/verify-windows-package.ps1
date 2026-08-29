@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 
 $PackageDirectory = [IO.Path]::GetFullPath($PackageDirectory)
 $SmokeOutputDirectory = [IO.Path]::GetFullPath($SmokeOutputDirectory)
-$Executable = Join-Path $PackageDirectory 'appSeriona.exe'
+$Executable = Join-Path $PackageDirectory 'seriona.exe'
 $RuntimeDataDirectory = Join-Path $PackageDirectory 'SerionaData'
 
 function Require-File {
@@ -49,7 +49,7 @@ if (-not (Test-Path -LiteralPath $PackageDirectory -PathType Container)) {
 }
 
 foreach ($file in @(
-    'appSeriona.exe',
+    'seriona.exe',
     'BUILD-INFO.txt',
     'README.txt',
     'LICENSE',

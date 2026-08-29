@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QStringList>
 #include <QTimer>
@@ -139,6 +140,24 @@ bool writeSmokeLog(const SmokeOptions &options, QString *error)
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+
+    // 应用图标：QWindow::icon() 未显式设置时回退到应用图标（qtbase qwindow.cpp），
+    // 因此此处一次设置即可覆盖全部 QML 窗口。多档 QIcon 让各平台按 DPI 择优：
+    // Windows 上 .exe 内嵌的 IDI_ICON1 保证启动前（资源管理器/任务栏）图标正确，
+    // 运行时窗口图标同样由本图标驱动（WM_SETICON）；Linux 上覆盖 X11 窗口与
+    // Wayland 任务栏（配合 desktopFileName 关联 .desktop 启动器条目）。
+    {
+        QIcon appIcon;
+        appIcon.addFile(QStringLiteral("qrc:/qt/qml/Seriona/qml/assets/app-icon-16.png"), QSize(16, 16));
+        appIcon.addFile(QStringLiteral("qrc:/qt/qml/Seriona/qml/assets/app-icon-32.png"), QSize(32, 32));
+        appIcon.addFile(QStringLiteral("qrc:/qt/qml/Seriona/qml/assets/app-icon-48.png"), QSize(48, 48));
+        appIcon.addFile(QStringLiteral("qrc:/qt/qml/Seriona/qml/assets/app-icon-64.png"), QSize(64, 64));
+        appIcon.addFile(QStringLiteral("qrc:/qt/qml/Seriona/qml/assets/app-icon-128.png"), QSize(128, 128));
+        appIcon.addFile(QStringLiteral("qrc:/qt/qml/Seriona/qml/assets/app-icon-256.png"), QSize(256, 256));
+        app.setWindowIcon(appIcon);
+        // Wayland 的 app_id / GNOME 关联依赖桌面文件名（不含 .desktop 后缀）。
+        app.setDesktopFileName(QStringLiteral("org.kaizen857.Seriona"));
+    }
 
 #if SERIONA_HAS_BACKEND && !defined(NDEBUG)
     av_log_set_level(AV_LOG_WARNING);

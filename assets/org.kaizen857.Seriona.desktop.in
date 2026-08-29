@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Seriona
+Comment=Modern desktop music player for local music lovers
+# Exec 必须使用安装前缀的绝对路径：GLib 2.88+ 解析 .desktop 文件时会验证
+# Exec 引用的程序是否在 PATH 中（g_find_program_for_path）。portal 等 systemd
+# 服务环境的 PATH 不含 ~/.local/bin，相对 Exec 会导致 GIO 加载失败，
+# Qt 的 host portal 注册随之报 "App info not found"。
+Exec=@SERIONA_BINDIR@/seriona
+Icon=org.kaizen857.Seriona
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupWMClass=org.kaizen857.Seriona

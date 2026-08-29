@@ -31,70 +31,15 @@ Item {
         width: Math.min(parent.width - Theme.paddingLarge * 2, 320)
         spacing: Theme.spacing16
 
-        Rectangle {
+        // 应用图标：直接展示，放大显示细节（mipmap 保证缩小/等比渲染平滑）。
+        Image {
             Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: 120
-            Layout.preferredHeight: 120
-            radius: 28
-            color: Theme.raisedSurfaceColor
-            border.color: Theme.borderColor
-            border.width: 1
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: 64
-                height: 48
-                radius: Theme.radiusMedium
-                color: "transparent"
-                border.color: Theme.textSecondary
-                border.width: 2
-
-                Rectangle {
-                    x: 8
-                    y: 9
-                    width: 10
-                    height: 10
-                    radius: 5
-                    color: Theme.textSecondary
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 9
-                    height: 18
-                    color: Theme.textSecondary
-                    opacity: 0.7
-                    rotation: -6
-                    transformOrigin: Item.BottomLeft
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 24
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 9
-                    height: 14
-                    color: Theme.textPrimary
-                    opacity: 0.45
-                    rotation: 8
-                    transformOrigin: Item.BottomLeft
-                }
-            }
-
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 14
-                text: qsTr("图标占位")
-                color: Theme.textSecondary
-                font.pixelSize: Theme.fontCaption
-            }
+            Layout.preferredWidth: 200
+            Layout.preferredHeight: 200
+            source: "qrc:/qt/qml/Seriona/qml/assets/app-icon-256.png"
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            mipmap: true
         }
 
         Text {

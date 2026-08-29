@@ -4,7 +4,7 @@
 // 语义，QTest::keyClick 无法触发 QQuickShortcut，故不做按键注入测试）。
 //
 // 依赖构建目录的 Seriona QML 模块产物（build/Seriona/qmldir），
-// 因此 CMake 侧对测试目标 add_dependencies(appSeriona) 保证产物先就绪。
+// 因此 CMake 侧对测试目标 add_dependencies(Seriona) 保证产物先就绪。
 #include <QGuiApplication>
 #include <QQuickItem>
 #include <QQuickWindow>

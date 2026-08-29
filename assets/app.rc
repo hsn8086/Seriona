@@ -1,0 +1,4 @@
+// Seriona Windows 应用图标资源
+// IDI_ICON1 是 Windows 可执行文件的标准应用图标 ID：
+// Qt Windows QPA 在窗口创建时自动拾取（WM_SETICON），资源管理器/任务栏/Alt+Tab 均使用。
+IDI_ICON1 ICON "app.ico"

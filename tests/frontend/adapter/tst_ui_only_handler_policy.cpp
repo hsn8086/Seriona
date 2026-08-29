@@ -328,8 +328,8 @@ void UiOnlyHandlerPolicyTest::qmlLayoutSourceContractsStayStable()
 
     expectContainsAll(startupViewQml, {
         "width: Math.min(parent.width - Theme.paddingLarge * 2, 320)",
-        "Layout.preferredWidth: 120",
-        "Layout.preferredHeight: 120",
+        "Layout.preferredWidth: 200",
+        "Layout.preferredHeight: 200",
         "Layout.fillWidth: true",
         "id: restoreButton",
         "id: addFolderButton"

@@ -9,7 +9,7 @@ Seriona 是一个 Qt Quick 桌面音乐播放器的**前端**。它本身不实�
 
 关键事实：
 
-- 单可执行程序 `appSeriona`（`qt_add_executable`），QML 模块 URI 为 `Seriona`，入口 `src/main.cpp` 经 `engine.loadFromModule("Seriona", "Main")` 加载 `qml/Main.qml`。
+- 单可执行程序 `Seriona`（`qt_add_executable`），QML 模块 URI 为 `Seriona`，入口 `src/main.cpp` 经 `engine.loadFromModule("Seriona", "Main")` 加载 `qml/Main.qml`。
 - 后端为可选依赖：`SERIONA_BACKEND_SOURCE_DIR` 置空时为 **mock-only 模式**（无任何真实媒体能力，前端 UI 可完整构建运行）；非空时从本地路径或 GitHub（`main` 分支）引入后端的 control/audio/app 三个目标。
 - UI 为无边框单窗口（360×720 起），包含启动页、播放页、歌词页与侧栏曲库。
 
@@ -30,7 +30,7 @@ Seriona 是一个 Qt Quick 桌面音乐播放器的**前端**。它本身不实�
 cmake -B build
 cmake --build build
 ctest --test-dir build --output-on-failure
-./build/appSeriona
+./build/seriona
 ```
 
 Release 模式（`CMAKE_BUILD_TYPE=Release`）按编译器启用全量优化：GCC `-O3 -march=native -flto=N`、Clang `-O3 -march=native -flto`、MSVC `/O2 /GL /LTCG`。
@@ -244,7 +244,7 @@ WindowControls.closeRequested / 设置菜单"退出" ──► requestApplicatio
 - QCoreApplication 动态属性：`seriona.backendBridgeAutostartEnabled`（跳过后端自启）、`seriona.smokeScenario`（smoke 场景名，见 §9.3）。
 - `Theme.qml` token：共享颜色/尺寸/动画参数。
 
-### 9.3 Smoke CLI（`./build/appSeriona`）
+### 9.3 Smoke CLI（`./build/seriona`）
 
 ```
 --smoke-scenario=<startup|main-playback|lyrics|sidebar-tree|settings-menu|empty-library>
@@ -254,7 +254,7 @@ WindowControls.closeRequested / 设置菜单"退出" ──► requestApplicatio
 
 - 启用时禁后端自启、写入 `smoke-<scenario>.log`（scenario/exit_ms/timestamp_utc/artifact 四行）后定时退出；`smokeScenario` 经初始属性传入 QML，由 `applySmokeScenario` 驱动各场景视图动作（`smokeVisualStateJson()` 聚合窗口/曲库/播放文本供后续扩展）。
 - 退出码：0 正常；2 参数/场景非法；3 日志写入失败；-1 QML 创建失败。
-- `verify-middle-layer.sh` 的 offscreen 冒烟：`QT_QPA_PLATFORM=offscreen timeout 5s ./build/appSeriona` 必须退出码 124。
+- `verify-middle-layer.sh` 的 offscreen 冒烟：`QT_QPA_PLATFORM=offscreen timeout 5s ./build/seriona` 必须退出码 124。
 
 ## 10. 测试体系
 

@@ -587,15 +587,15 @@ function Assert-RestoredVcpkgLayout {
 
 function Find-ReleaseExecutable {
     $candidates = @(
-        (Join-Path $BuildDirectory 'Release\appSeriona.exe'),
-        (Join-Path $BuildDirectory 'appSeriona.exe')
+        (Join-Path $BuildDirectory 'Release\seriona.exe'),
+        (Join-Path $BuildDirectory 'seriona.exe')
     )
     foreach ($candidate in $candidates) {
         if (Test-Executable $candidate) {
             return $candidate
         }
     }
-    throw ('Release 构建未生成 appSeriona.exe。已检查：' + ($candidates -join ', '))
+    throw ('Release 构建未生成 seriona.exe。已检查：' + ($candidates -join ', '))
 }
 
 function Get-GitRevision {
@@ -651,7 +651,7 @@ function Write-PackageDocuments {
     $packageReadme = @(
         'Seriona Windows x64',
         '',
-        '双击 appSeriona.exe 启动。请保持本目录中的 DLL、plugins 和 qml 子目录完整。',
+        '双击 seriona.exe 启动。请保持本目录中的 DLL、plugins 和 qml 子目录完整。',
         '程序数据、数据库、日志、封面缓存和设置保存在程序旁的 SerionaData 目录。',
         '首次启动后如需搬移程序，请先退出 Seriona，再整体移动此目录。',
         '',
@@ -791,7 +791,7 @@ try {
             Write-Detail '测试：ctest --config Release --output-on-failure'
         }
         Write-Detail ('部署：windeployqt --release --qmldir ' + (Join-Path $RepoRoot 'qml'))
-        Write-Detail '依赖部署：vcpkg applocal.ps1（仅递归复制 appSeriona.exe 的动态依赖）'
+        Write-Detail '依赖部署：vcpkg applocal.ps1（仅递归复制 seriona.exe 的动态依赖）'
         Write-Detail '验证：startup、main-playback、lyrics、sidebar-tree、settings-menu、empty-library'
         Write-Detail ('最终目录：' + $PackageDirectory)
         Write-Detail ('最终 ZIP：' + $PackageArchive)
@@ -868,7 +868,7 @@ try {
     Write-Phase '准备隔离的暂存包'
     New-Item -ItemType Directory -Path $StagingDirectory -Force | Out-Null
     $CreatedStagingParent = $true
-    $stagedExecutable = Join-Path $StagingDirectory 'appSeriona.exe'
+    $stagedExecutable = Join-Path $StagingDirectory 'seriona.exe'
     Copy-Item -LiteralPath $builtExecutable -Destination $stagedExecutable
 
     Write-Phase '使用 windeployqt 部署 Qt DLL、插件和 QML imports'

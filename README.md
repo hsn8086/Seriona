@@ -65,7 +65,7 @@ cd Seriona
 # 编译并运行（默认自动关联同级目录的 ../Seriona_Backend）
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
-./build/appSeriona
+./build/seriona
 ```
 
 > **💡 提示：纯前端 Mock 模式启动**  
@@ -116,7 +116,7 @@ build.bat
 ctest --test-dir build --output-on-failure
 
 # 运行自动化无头场景冒烟测试
-QT_QPA_PLATFORM=offscreen ./build/appSeriona --smoke-scenario=main-playback --smoke-exit-ms=1000
+QT_QPA_PLATFORM=offscreen ./build/seriona --smoke-scenario=main-playback --smoke-exit-ms=1000
 ```
 
 ---

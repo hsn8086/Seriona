@@ -1,6 +1,6 @@
 # Seriona 代理说明
 
-所有面向用户的回复及本仓库内新写的文档均使用中文。以根目录 `CMakeLists.txt`、`src/`、`qml/` 和 `scripts/` 为准；不要从 `build/Seriona/qml/` 或 `build-release/` 的生成或残留副本推断源码状态。
+所有面向用户的回复及本仓库内新写的文档均使用中文。以根目录 `CMakeLists.txt`、`src/`、`qml/` 和 `scripts/` 为准；不要从 `build/qml-modules/qml/` 或 `build-release/` 的生成或残留副本推断源码状态。
 
 ## 入口与边界
 - 这是单可执行 Qt Quick/CMake 项目（要求 Qt 6.8+，`qt_standard_project_setup(REQUIRES 6.8)`）；`src/main.cpp` 通过 `engine.loadFromModule("Seriona", "Main")` 加载 `qml/Main.qml`。
@@ -11,13 +11,13 @@
 - 孤儿文件（均未接入 CMake/engine，修改不影响正式应用或测试）：`src/providers/thumbnail_image_provider.{h,cpp}`、根目录 `test_popup.qml`、`qml/assets/MaterialIcons-Regular.ttf`（不在 QML 模块 RESOURCES，也无 FontLoader 引用）。根目录 `popup_log.txt` 是已跟踪的空日志残留（0 字节，`*.log` 在 .gitignore 中但该文件早于规则提交），属垃圾文件可删除。
 
 ## 构建与验证
-- 顺序是 `cmake -B build`、`cmake --build build`、`ctest --test-dir build --output-on-failure`；应用为 `./build/appSeriona`。
+- 顺序是 `cmake -B build`、`cmake --build build`、`ctest --test-dir build --output-on-failure`；应用为 `./build/seriona`。
 - Windows 打包链（git 跟踪）：`build.bat` + `scripts/build-package-windows.ps1` + `scripts/verify-windows-package.ps1`（产出 `dist\logs`）；依赖经根目录 `vcpkg.json` manifest 提供（catch2/ffmpeg/libiconv/pkgconf/spdlog/sqlite3/xxhash，ffmpeg 开 zlib feature）。
 - `.clangd` 读取 `build/`，`.qmlls.ini` 则硬编码当前工作区 `build/` 的绝对路径；新 worktree 或移动目录后先修正该路径并配置构建目录，再运行语言服务诊断。
 - 聚焦一个 CTest：`ctest --test-dir build -R '^seriona_frontend_command_result_mapping$' --output-on-failure`。同一测试二进制中的单个 QTest case 直接作为参数传入，例如 `./build/seriona_frontend_library_sort_tests titleAscendingAndDescendingSortCurrentFolderProjection`（该目标依赖后端）。
 - 前端测试全部是 C++ Qt Test（`tests/frontend/adapter/tst_*.cpp` + `Qt6::Test`），仓库没有 qmltestrunner / Qt Quick Test（`.qml` 单测）入口；QML 级验证只有 `--smoke-scenario` 场景 smoke。
-- `./scripts/verify-middle-layer.sh`（依赖 `rg`）会配置、构建、检查中间层/CMake 不变量并运行 `QT_QPA_PLATFORM=offscreen timeout 5s ./build/appSeriona`，预期退出码为 `124`；它要求 `docs/architecture/backend-integration-contract.md` 存在，但不会运行 CTest。可用 `SERIONA_BUILD_DIR` 覆盖构建目录。它是必要子集门禁而非穷举：QML 与测试目标只查固定子集（新增文件不会自动被查），新增文件仍须手动同步 CMakeLists（`SERIONA_QML_MODULE_FILES`、各 test 目标源列表）。
-- Smoke CLI：`./build/appSeriona --smoke-scenario=<name> --smoke-exit-ms=<ms>`；场景为 `startup`/`main-playback`/`lyrics`/`sidebar-tree`/`settings-menu`/`empty-library`。默认 1000 ms 后退出并写入 `.omo/evidence/smoke/smoke-<scenario>.log`；`--smoke-output-dir=<dir>` 可改目录。`Main.qml` 的 `smokeVisualStateJson()` 已定义但当前无调用方（为扩展预留），不要删除或自行接线。
+- `./scripts/verify-middle-layer.sh`（依赖 `rg`）会配置、构建、检查中间层/CMake 不变量并运行 `QT_QPA_PLATFORM=offscreen timeout 5s ./build/seriona`，预期退出码为 `124`；它要求 `docs/architecture/backend-integration-contract.md` 存在，但不会运行 CTest。可用 `SERIONA_BUILD_DIR` 覆盖构建目录。它是必要子集门禁而非穷举：QML 与测试目标只查固定子集（新增文件不会自动被查），新增文件仍须手动同步 CMakeLists（`SERIONA_QML_MODULE_FILES`、各 test 目标源列表）。
+- Smoke CLI：`./build/seriona --smoke-scenario=<name> --smoke-exit-ms=<ms>`；场景为 `startup`/`main-playback`/`lyrics`/`sidebar-tree`/`settings-menu`/`empty-library`。默认 1000 ms 后退出并写入 `.omo/evidence/smoke/smoke-<scenario>.log`；`--smoke-output-dir=<dir>` 可改目录。`Main.qml` 的 `smokeVisualStateJson()` 已定义但当前无调用方（为扩展预留），不要删除或自行接线。
 - 仓库没有独立的 lint、format、CI 或代码生成命令；QML/MOC/RCC 生成由 CMake/Qt 完成。`CMakeLists.txt` 显式 `set(CMAKE_CXX_STANDARD 23)` 并 `set(CMAKE_CXX_STANDARD_REQUIRED ON)`，C++23 是前端自身声明，不是由 Qt/后端传递。
 - 接入后端时终端日志统一走 spdlog：Qt 消息（qDebug/QML `console.log`）重定向到 spdlog 默认 logger，`find_package(spdlog CONFIG REQUIRED)` 在配置期强制（与后端同源，mock-only 不要求）；smoke 调试日志仅 Debug 构建输出（`main.cpp` 注入 `smokeLoggingEnabled`，`NDEBUG` 下恒为 false），mock-only 下通知类日志不输出到终端。
 

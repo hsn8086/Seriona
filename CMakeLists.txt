@@ -60,8 +60,12 @@ set(SERIONA_BACKEND_CONTROL_TARGET "")
 set(SERIONA_BACKEND_AUDIO_TARGET "")
 set(SERIONA_BACKEND_BINARY_DIR "")
 
+# Linux 安装模式：数据目录遵循 XDG Base Directory（由后端 SERIONA_INSTALLED_MODE 宏
+# 驱动）；默认 OFF 保持便携版（数据在可执行文件旁 SerionaData）。Windows 恒为便携版。
+option(SERIONA_INSTALLED_MODE "Linux installed build: use XDG data dirs" OFF)
+
 if(SERIONA_BACKEND_SOURCE_DIR STREQUAL "")
-    message(STATUS "SERIONA_BACKEND_SOURCE_DIR is empty; building appSeriona in mock-only mode.")
+    message(STATUS "SERIONA_BACKEND_SOURCE_DIR is empty; building Seriona in mock-only mode.")
 else()
     get_filename_component(SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR
         "${SERIONA_BACKEND_SOURCE_DIR}"
@@ -137,8 +141,15 @@ endfunction()
     set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${CMAKE_CURRENT_BINARY_DIR}/SerionaFrontendCTestIsolation.cmake")
 endif()
 
-qt_add_executable(appSeriona
+if(WIN32)
+    # Windows 应用图标：.rc 资源编译进 .exe（IDI_ICON1），Qt Windows QPA 自动
+    # 拾取为任务栏/标题栏图标（WM_SETICON）；也保证启动前资源管理器图标正确。
+    set(SERIONA_APP_ICON_RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/assets/app.rc")
+endif()
+
+qt_add_executable(seriona
     src/main.cpp
+    ${SERIONA_APP_ICON_RESOURCE}
 )
 
 # 注册 Theme.qml 为 Singleton
@@ -237,10 +248,21 @@ set(SERIONA_QML_MODULE_RESOURCES
     qml/assets/music_note.svg
     qml/assets/my_location.svg
     qml/assets/translate.svg
+    qml/assets/app-icon-16.png
+    qml/assets/app-icon-22.png
+    qml/assets/app-icon-24.png
+    qml/assets/app-icon-32.png
+    qml/assets/app-icon-48.png
+    qml/assets/app-icon-64.png
+    qml/assets/app-icon-128.png
+    qml/assets/app-icon-256.png
 )
 
-qt_add_qml_module(appSeriona
+qt_add_qml_module(seriona
     URI Seriona
+    # QML 模块产物输出到 qml-modules/ 子目录：qt_add_qml_module 默认在构建根
+    # 生成与目标同名的模块目录（build/seriona/），会与可执行文件输出冲突。
+    OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/qml-modules
     SOURCES
         ${SERIONA_APP_LAYER_SOURCES}
     QML_FILES
@@ -249,31 +271,31 @@ qt_add_qml_module(appSeriona
         ${SERIONA_QML_MODULE_RESOURCES}
 )
 
-target_include_directories(appSeriona
+target_include_directories(seriona
     PRIVATE src/app
 )
 
-target_compile_definitions(appSeriona
+target_compile_definitions(seriona
     PRIVATE SERIONA_HAS_BACKEND=$<BOOL:${SERIONA_BACKEND_CONTROL_TARGET}>
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
 # explicit, fixed bundle identifier manually though.
-set_target_properties(appSeriona PROPERTIES
-#    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.appSeriona
+set_target_properties(seriona PROPERTIES
+#    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.Seriona
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     MACOSX_BUNDLE TRUE
     WIN32_EXECUTABLE TRUE
 )
 
-target_link_libraries(appSeriona
+target_link_libraries(seriona
     PRIVATE Qt6::Quick Qt6::Concurrent Qt6::QuickDialogs2 Qt6::Widgets
 )
 
 if(SERIONA_BACKEND_CONTROL_TARGET)
-    target_link_libraries(appSeriona
+    target_link_libraries(seriona
         PRIVATE ${SERIONA_BACKEND_CONTROL_TARGET} ${SERIONA_BACKEND_AUDIO_TARGET} ${SERIONA_BACKEND_APP_TARGET} spdlog::spdlog
     )
 endif()
@@ -402,18 +424,18 @@ if(BUILD_TESTING)
     target_link_libraries(seriona_frontend_about_overlay_tests
         PRIVATE Qt6::Quick Qt6::Test
     )
-    # 测试进程复用 appSeriona 的 QML 模块资源（qrc 目录映射），使
+    # 测试进程复用 Seriona 的 QML 模块资源（qrc 目录映射），使
     # `import Seriona`（含 Theme singleton）可解析；qrc 由 qt_add_qml_module
-    # 构建期生成，故测试目标先依赖 appSeriona。
+    # 构建期生成，故测试目标先依赖 Seriona。
     qt6_add_resources(SERIONA_ABOUT_TEST_QRC
         ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qmake_Seriona.qrc
-        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0.qrc
-        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0_extra_qmldirs.qrc
+        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0.qrc
+        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0_extra_qmldirs.qrc
     )
     target_sources(seriona_frontend_about_overlay_tests PRIVATE ${SERIONA_ABOUT_TEST_QRC})
-    # 测试加载构建目录的 Seriona QML 模块产物（build/Seriona/qmldir），
-    # 依赖 appSeriona 目标的 qt_add_qml_module 输出先就绪。
-    add_dependencies(seriona_frontend_about_overlay_tests appSeriona)
+    # 测试加载构建目录的 Seriona QML 模块产物（build/seriona/qmldir），
+    # 依赖 Seriona 目标的 qt_add_qml_module 输出先就绪。
+    add_dependencies(seriona_frontend_about_overlay_tests seriona)
     add_test(NAME seriona_frontend_about_overlay COMMAND seriona_frontend_about_overlay_tests)
 
     add_executable(seriona_frontend_queue_view_tests
@@ -425,15 +447,15 @@ if(BUILD_TESTING)
     target_link_libraries(seriona_frontend_queue_view_tests
         PRIVATE Qt6::Quick Qt6::Test
     )
-    # 与 about overlay 测试同模式：复用 appSeriona 的 QML 模块资源（qrc 目录
+    # 与 about overlay 测试同模式：复用 Seriona 的 QML 模块资源（qrc 目录
     # 映射），使 `import Seriona`（含 Theme singleton）可解析。
     qt6_add_resources(SERIONA_QUEUE_VIEW_TEST_QRC
         ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qmake_Seriona.qrc
-        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0.qrc
-        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0_extra_qmldirs.qrc
+        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0.qrc
+        ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0_extra_qmldirs.qrc
     )
     target_sources(seriona_frontend_queue_view_tests PRIVATE ${SERIONA_QUEUE_VIEW_TEST_QRC})
-    add_dependencies(seriona_frontend_queue_view_tests appSeriona)
+    add_dependencies(seriona_frontend_queue_view_tests seriona)
     add_test(NAME seriona_frontend_queue_view COMMAND seriona_frontend_queue_view_tests)
 
     if(SERIONA_BACKEND_CONTROL_TARGET)
@@ -847,18 +869,18 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         )
         qt6_add_resources(SERIONA_SIDEBAR_QUEUE_TEST_QRC
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qmake_Seriona.qrc
-            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0.qrc
-            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_res_0.qrc
-            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0_extra_qmldirs.qrc
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0.qrc
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_res_0.qrc
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0_extra_qmldirs.qrc
         )
         # 复用 qt_add_qml_module 生成的静态类型注册器：Sidebar 引用的
         # AppFacade/PlaybackController/LibraryController 等 C++ 类型只有注册后
-        # QML 引擎才能解析（qmldir 无 plugin 行，类型随 appSeriona 静态注册）。
+        # QML 引擎才能解析（qmldir 无 plugin 行，类型随 Seriona 静态注册）。
         target_sources(seriona_frontend_sidebar_queue_tests PRIVATE
             ${SERIONA_SIDEBAR_QUEUE_TEST_QRC}
-            ${CMAKE_CURRENT_BINARY_DIR}/appseriona_qmltyperegistrations.cpp
+            ${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp
         )
-        add_dependencies(seriona_frontend_sidebar_queue_tests appSeriona)
+        add_dependencies(seriona_frontend_sidebar_queue_tests seriona)
         add_test(NAME seriona_frontend_sidebar_queue_switch COMMAND seriona_frontend_sidebar_queue_tests)
 
         add_executable(seriona_frontend_folder_page_tests
@@ -907,15 +929,15 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         )
         qt6_add_resources(SERIONA_FOLDER_PAGE_TEST_QRC
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qmake_Seriona.qrc
-            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0.qrc
-            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_res_0.qrc
-            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/appSeriona_raw_qml_0_extra_qmldirs.qrc
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0.qrc
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_res_0.qrc
+            ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0_extra_qmldirs.qrc
         )
         target_sources(seriona_frontend_folder_page_tests PRIVATE
             ${SERIONA_FOLDER_PAGE_TEST_QRC}
-            ${CMAKE_CURRENT_BINARY_DIR}/appseriona_qmltyperegistrations.cpp
+            ${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp
         )
-        add_dependencies(seriona_frontend_folder_page_tests appSeriona)
+        add_dependencies(seriona_frontend_folder_page_tests seriona)
         add_test(NAME seriona_frontend_folder_page_tests COMMAND seriona_frontend_folder_page_tests)
 
         add_executable(seriona_frontend_playback_command_tests
@@ -1233,8 +1255,28 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
     endif()
 endif()
 
-install(TARGETS appSeriona
-    BUNDLE DESTINATION .
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+if(SERIONA_INSTALLED_MODE)
+    # Linux installed 模式安装规则：二进制 + .desktop 启动器 + hicolor 主题图标。
+    # 便携版（默认）不安装任何内容，保持可移动目录语义。
+    include(GNUInstallDirs)
+    install(TARGETS seriona
+        BUNDLE DESTINATION .
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+    # .desktop 模板通过 configure_file 注入安装前缀的绝对 Exec 路径：
+    # GLib 2.88+ 解析 desktop 文件时会验证 Exec 程序是否在 PATH 中（g_find_program_for_path），
+    # 而 portal/systemd 服务环境 PATH 不含 ~/.local/bin，相对 Exec 会导致 GIO 加载失败，
+    # Qt 的 host portal 注册报 "App info not found"。
+    set(SERIONA_BINDIR "${CMAKE_INSTALL_FULL_BINDIR}")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/assets/org.kaizen857.Seriona.desktop.in"
+                   "${CMAKE_CURRENT_BINARY_DIR}/org.kaizen857.Seriona.desktop"
+                   @ONLY)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/org.kaizen857.Seriona.desktop"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
+    foreach(icon_size 16 22 24 32 48 64 128 256)
+        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/hicolor/${icon_size}x${icon_size}/app.png"
+                DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/${icon_size}x${icon_size}/apps"
+                RENAME "org.kaizen857.Seriona.png")
+    endforeach()
+endif()

@@ -264,7 +264,7 @@ fi
 
 log "Offscreen startup smoke"
 set +e
-QT_QPA_PLATFORM=offscreen timeout 5s "./$SERIONA_BUILD_DIR/appSeriona"
+QT_QPA_PLATFORM=offscreen timeout 5s "./$SERIONA_BUILD_DIR/seriona"
 smoke_status=$?
 set -e
 
