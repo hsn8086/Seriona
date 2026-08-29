@@ -93,6 +93,8 @@ jobs:
           arch: linux_gcc_64
           cache: true
           install-deps: true
+          # 容器内使用自带 python3（glibc 2.35）；runner 的 Python 3.12 需 GLIBC 2.38
+          setup-python: false
       - name: 配置并构建
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
@@ -251,7 +253,8 @@ jobs:
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qt5compat-devel \
             spdlog-devel sqlite-devel xxhash-devel sdbus-cpp-devel pipewire-devel \
             https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-42.noarch.rpm
-          dnf install -y --nodocs ffmpeg-devel
+          # Fedora 自带 ffmpeg-free 拆分包（libavcodec-free 等）与 rpmfusion 冲突，需 --allowerasing 替换
+          dnf install -y --nodocs --allowerasing ffmpeg-devel
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
@@ -293,11 +296,12 @@ jobs:
     steps:
       - name: 容器准备（启用 EPEL + CRB 获取 ffmpeg-devel 等）
         run: |
-          dnf install -y --nodocs epel-release dnf-plugins-core nodejs git cmake ninja-build gcc-c++ pkgconf-pkg-config rpm-build \
+          dnf install -y --nodocs epel-release dnf-plugins-core
+          dnf config-manager --set-enabled crb appstream baseos extras || true
+          dnf install -y --nodocs nodejs git cmake ninja-build gcc-c++ pkgconf-pkg-config rpm-build \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qt5compat-devel \
             spdlog-devel sqlite-devel xxhash-devel sdbus-cpp-devel pipewire-devel
-          dnf config-manager --set-enabled crb
-          dnf install -y --nodocs ffmpeg-devel
+          dnf install -y --nodocs --allowerasing ffmpeg-devel
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
@@ -357,6 +361,13 @@ jobs:
       - name: 构建 + 打包 + smoke 验证（脚本内置 6 场景）
         shell: pwsh
         run: '& .\scripts\build-package-windows.ps1 -BackendSourceDir $env:GITHUB_WORKSPACE\Seriona_Backend -TagReaderSourceDir $env:GITHUB_WORKSPACE\TagReader -Force'
+      - name: 上传构建日志（失败诊断）
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-build-logs
+          path: 'dist/logs/**'
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v7
         with:
           name: windows-portable
