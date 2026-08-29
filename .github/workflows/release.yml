@@ -391,6 +391,17 @@ jobs:
           host: windows
           arch: win64_msvc2022_64
           cache: true
+      # vcpkg 二进制缓存：ffmpeg 等依赖首次需源码编译（约 37 分钟），
+      # 命中后 vcpkg install 直接从缓存解压（约 1 分钟）
+      - name: 缓存 vcpkg 二进制（archives + registries）
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/vcpkg/archives
+            ~/AppData/Local/vcpkg/registries
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-
       - name: 构建 + 打包 + smoke 验证（脚本内置 6 场景）
         shell: pwsh
         run: '& .\scripts\build-package-windows.ps1 -BackendSourceDir $env:GITHUB_WORKSPACE\Seriona_Backend -TagReaderSourceDir $env:GITHUB_WORKSPACE\TagReader -Force'
