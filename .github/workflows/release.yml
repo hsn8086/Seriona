@@ -76,6 +76,9 @@ jobs:
           rm /tmp/node.tar.xz
           node --version
           g++ --version | head -1
+          # 后端 MPRIS 用 sdbus 连 session bus，容器无 dbus 时异常逃逸致测试崩溃
+          apt-get install -y dbus
+          echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
           # apt 的 cmake 3.22 不支持 DOWNLOAD_EXTRACT_TIMESTAMP（CMake 3.24+，TagReader catch2 FetchContent 用到），
           # pip 官方二进制装新版覆盖（/usr/local/bin 优先于 /usr/bin）
           python3 -m pip install --upgrade pip
@@ -398,7 +401,7 @@ jobs:
       # vcpkg 二进制缓存：ffmpeg 等依赖首次需源码编译（约 37 分钟），
       # 命中后 vcpkg install 直接从缓存解压（约 1 分钟）
       - name: 缓存 vcpkg 二进制（archives + registries）
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/AppData/Local/vcpkg/archives
