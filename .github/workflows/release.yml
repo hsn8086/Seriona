@@ -112,6 +112,26 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTS=OFF -DBUILD_DOC=OFF -DBUILD_EXAMPLES=OFF
           cmake --build /tmp/sdbus-cpp/build --parallel 2
           cmake --install /tmp/sdbus-cpp/build
+      # ---- A2 顺序链 ①：TagReader 独立建测 → install 共享前缀 ----
+      - name: ① TagReader 构建+测试+install
+        working-directory: TagReader
+        run: |
+          cmake --preset release -G Ninja
+          cmake --build --preset release --parallel 2
+          ctest --preset release --output-on-failure
+          cmake --install build/release --prefix /opt/seriona-deps
+      # ---- A2 顺序链 ②：Seriona_Backend find_package 复用 ① → 建测 → install ----
+      - name: ② Seriona_Backend 构建+测试+install
+        working-directory: Seriona_Backend
+        run: |
+          cmake --preset release -G Ninja \
+            -DCMAKE_PREFIX_PATH=/opt/seriona-deps \
+            -DSERIONA_BUILD_APP=OFF \
+            -DSERIONA_INSTALL_EXPORT=ON
+          cmake --build --preset release --parallel 2
+          ctest --preset release --output-on-failure
+          cmake --install build/release --prefix /opt/seriona-deps
+      # Qt 仅前端段需要：放在 ①② 之后安装，与 TagReader/后端建测并行推进（省 ~5 分钟）
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
@@ -123,33 +143,39 @@ jobs:
           # Qt5Compat 不在默认安装列表，QML 运行时 import Qt5Compat.GraphicalEffects 会失败；
           # GraphicalEffects 插件依赖 Qt6ShaderTools，qtshadertools 也需一并安装
           modules: qt5compat qtshadertools
-      - name: 配置并构建
+      # ---- A2 顺序链 ③：Seriona 前端 find_package 复用 ①② → 建测（打包见后） ----
+      - name: ③ Seriona 前端构建（find_package 复用）
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          cmake --preset release -G Ninja \
+            -DCMAKE_PREFIX_PATH=/opt/seriona-deps \
             -DSERIONA_INSTALLED_MODE=ON \
-            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }} \
-            -DSERIONA_BACKEND_SOURCE_DIR=$GITHUB_WORKSPACE/Seriona_Backend \
-            -DBUILD_TESTING=ON
-          cmake --build build --parallel 2
-      - name: 测试
-        run: ctest --test-dir build --output-on-failure
+            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }}
+          cmake --build --preset release --parallel 2
+      - name: 前端全量测试
+        run: ctest --preset release --output-on-failure
         env:
           QT_QPA_PLATFORM: offscreen
       - name: gdb 抓崩溃栈（仅失败轮诊断用）
         if: failure()
         run: |
           apt-get install -y --no-install-recommends gdb
-          cd build
+          cd build/release
           for t in \
             "seriona_frontend_backend_bridge_tests threading" \
             "seriona_frontend_app_facade_smoke_mode" \
             "seriona_frontend_startup_restore_tests" \
             "seriona_frontend_track_detail_tests"; do
+            set -- $t
+            bin="./$1"; shift
             echo "========== $t =========="
-            # shellcheck disable=SC2086
+            # 配置/构建失败时二进制不存在：显式提示而非让 gdb 静默退出
+            if [ ! -x "$bin" ]; then
+              echo "二进制不存在（配置/构建失败所致）：$bin"
+              continue
+            fi
+            # 不 grep：完整保留 gdb 输出（栈走 stderr），过滤会吞掉诊断信息
             QT_QPA_PLATFORM=offscreen gdb -batch -ex "set pagination off" -ex run \
-              -ex "thread apply all bt" --args ./$t 2>&1 \
-              | grep -A 45 -E "Program received|SIGSEGV|SIGABRT" | head -100
+              -ex "thread apply all bt" --args "$bin" "$@" 2>&1 || true
           done
         env:
           QT_QPA_PLATFORM: offscreen
@@ -162,7 +188,7 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN: '1'
       - name: 组装 AppDir 并生成 AppImage + tar.gz
         run: |
-          cmake --install build --prefix AppDir/usr
+          cmake --install build/release --prefix AppDir/usr
           # AppImage 内桌面文件 Exec 需相对可执行名（安装版是绝对路径）
           sed -i 's|^Exec=.*|Exec=seriona|' AppDir/usr/share/applications/org.kaizen857.Seriona.desktop
           ./linuxdeploy.AppImage --appdir AppDir --plugin qt --output appimage
@@ -203,7 +229,9 @@ jobs:
             nodejs git ca-certificates cmake ninja-build g++ pkg-config dpkg-dev \
             qt6-base-dev qt6-declarative-dev qt6-5compat-dev file \
             libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev libsystemd-dev \
-            libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev
+            libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev \
+            dbus libxkbcommon0 qt6-shadertools-dev
+          echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
@@ -215,17 +243,40 @@ jobs:
           repository: kaizen857/TagReader
           ref: ${{ env.TAGREADER_REF }}
           path: TagReader
-      - name: 构建
+      # ---- A2 顺序链 ①：TagReader 独立建测 → install 共享前缀 ----
+      - name: ① TagReader 构建+测试+install
+        working-directory: TagReader
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          cmake --preset release -G Ninja
+          cmake --build --preset release --parallel 2
+          ctest --preset release --output-on-failure
+          cmake --install build/release --prefix /opt/seriona-deps
+      # ---- A2 顺序链 ②：Seriona_Backend find_package 复用 ① → 建测 → install ----
+      - name: ② Seriona_Backend 构建+测试+install
+        working-directory: Seriona_Backend
+        run: |
+          cmake --preset release -G Ninja \
+            -DCMAKE_PREFIX_PATH=/opt/seriona-deps \
+            -DSERIONA_BUILD_APP=OFF \
+            -DSERIONA_INSTALL_EXPORT=ON
+          cmake --build --preset release --parallel 2
+          ctest --preset release --output-on-failure
+          cmake --install build/release --prefix /opt/seriona-deps
+      # ---- A2 顺序链 ③：Seriona 前端 find_package 复用 ①② → 建测（打包见后） ----
+      - name: ③ Seriona 前端构建（find_package 复用）
+        run: |
+          cmake --preset release -G Ninja \
+            -DCMAKE_PREFIX_PATH=/opt/seriona-deps \
             -DSERIONA_INSTALLED_MODE=ON \
-            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }} \
-            -DSERIONA_BACKEND_SOURCE_DIR=$GITHUB_WORKSPACE/Seriona_Backend \
-            -DBUILD_TESTING=OFF
-          cmake --build build --parallel 2
+            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }}
+          cmake --build --preset release --parallel 2
+      - name: 前端全量测试
+        run: ctest --preset release --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen
       - name: 打包 deb
         run: |
-          cpack -G DEB --config build/CPackConfig.cmake
+          cpack -G DEB --config build/release/CPackConfig.cmake
           mv seriona-*.deb seriona-${{ env.SERIONA_VERSION }}-trixie-x86_64.deb
       - uses: actions/upload-artifact@v7
         with:
@@ -249,7 +300,9 @@ jobs:
             nodejs git ca-certificates cmake ninja-build g++ pkg-config dpkg-dev \
             qt6-base-dev qt6-declarative-dev qt6-5compat-dev file \
             libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev libsystemd-dev \
-            libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev
+            libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev \
+            dbus libxkbcommon0 qt6-shadertools-dev
+          echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
@@ -261,17 +314,40 @@ jobs:
           repository: kaizen857/TagReader
           ref: ${{ env.TAGREADER_REF }}
           path: TagReader
-      - name: 构建
+      # ---- A2 顺序链 ①：TagReader 独立建测 → install 共享前缀 ----
+      - name: ① TagReader 构建+测试+install
+        working-directory: TagReader
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          cmake --preset release -G Ninja
+          cmake --build --preset release --parallel 2
+          ctest --preset release --output-on-failure
+          cmake --install build/release --prefix /opt/seriona-deps
+      # ---- A2 顺序链 ②：Seriona_Backend find_package 复用 ① → 建测 → install ----
+      - name: ② Seriona_Backend 构建+测试+install
+        working-directory: Seriona_Backend
+        run: |
+          cmake --preset release -G Ninja \
+            -DCMAKE_PREFIX_PATH=/opt/seriona-deps \
+            -DSERIONA_BUILD_APP=OFF \
+            -DSERIONA_INSTALL_EXPORT=ON
+          cmake --build --preset release --parallel 2
+          ctest --preset release --output-on-failure
+          cmake --install build/release --prefix /opt/seriona-deps
+      # ---- A2 顺序链 ③：Seriona 前端 find_package 复用 ①② → 建测（打包见后） ----
+      - name: ③ Seriona 前端构建（find_package 复用）
+        run: |
+          cmake --preset release -G Ninja \
+            -DCMAKE_PREFIX_PATH=/opt/seriona-deps \
             -DSERIONA_INSTALLED_MODE=ON \
-            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }} \
-            -DSERIONA_BACKEND_SOURCE_DIR=$GITHUB_WORKSPACE/Seriona_Backend \
-            -DBUILD_TESTING=OFF
-          cmake --build build --parallel 2
+            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }}
+          cmake --build --preset release --parallel 2
+      - name: 前端全量测试
+        run: ctest --preset release --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen
       - name: 打包 deb
         run: |
-          cpack -G DEB --config build/CPackConfig.cmake
+          cpack -G DEB --config build/release/CPackConfig.cmake
           mv seriona-*.deb seriona-${{ env.SERIONA_VERSION }}-resolute-x86_64.deb
       - uses: actions/upload-artifact@v7
         with:
@@ -298,9 +374,11 @@ jobs:
           dnf install -y --nodocs nodejs git cmake ninja-build gcc-c++ pkgconf-pkg-config rpm-build \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qt5compat-devel \
             spdlog-devel sqlite-devel xxhash-devel sdbus-cpp-devel pipewire-devel \
+            dbus libxkbcommon qt6-qtshadertools-devel \
             https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-42.noarch.rpm
           # Fedora 自带 ffmpeg-free 拆分包（libavcodec-free 等）与 rpmfusion 冲突，需 --allowerasing 替换
           dnf install -y --nodocs --allowerasing ffmpeg-devel
+          echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
@@ -322,17 +400,40 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTS=OFF -DBUILD_DOC=OFF -DBUILD_EXAMPLES=OFF
           cmake --build /tmp/sdbus-cpp/build --parallel 2
           cmake --install /tmp/sdbus-cpp/build
-      - name: 构建
+      # ---- A2 顺序链 ①：TagReader 独立建测 → install 共享前缀 ----
+      - name: ① TagReader 构建+测试+install
+        working-directory: TagReader
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          cmake --preset release -G Ninja
+          cmake --build --preset release --parallel 2
+          ctest --preset release --output-on-failure
+          cmake --install build/release --prefix /opt/seriona-deps
+      # ---- A2 顺序链 ②：Seriona_Backend find_package 复用 ① → 建测 → install ----
+      - name: ② Seriona_Backend 构建+测试+install
+        working-directory: Seriona_Backend
+        run: |
+          cmake --preset release -G Ninja \
+            -DCMAKE_PREFIX_PATH=/opt/seriona-deps \
+            -DSERIONA_BUILD_APP=OFF \
+            -DSERIONA_INSTALL_EXPORT=ON
+          cmake --build --preset release --parallel 2
+          ctest --preset release --output-on-failure
+          cmake --install build/release --prefix /opt/seriona-deps
+      # ---- A2 顺序链 ③：Seriona 前端 find_package 复用 ①② → 建测（打包见后） ----
+      - name: ③ Seriona 前端构建（find_package 复用）
+        run: |
+          cmake --preset release -G Ninja \
+            -DCMAKE_PREFIX_PATH=/opt/seriona-deps \
             -DSERIONA_INSTALLED_MODE=ON \
-            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }} \
-            -DSERIONA_BACKEND_SOURCE_DIR=$GITHUB_WORKSPACE/Seriona_Backend \
-            -DBUILD_TESTING=OFF
-          cmake --build build --parallel 2
+            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }}
+          cmake --build --preset release --parallel 2
+      - name: 前端全量测试
+        run: ctest --preset release --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen
       - name: 打包 rpm
         run: |
-          cpack -G RPM --config build/CPackConfig.cmake
+          cpack -G RPM --config build/release/CPackConfig.cmake
           mv seriona-*.rpm seriona-${{ env.SERIONA_VERSION }}-fc42.x86_64.rpm
       - uses: actions/upload-artifact@v7
         with:
@@ -356,9 +457,11 @@ jobs:
           dnf config-manager --set-enabled crb appstream baseos extras || true
           dnf install -y --nodocs nodejs git cmake ninja-build gcc-c++ pkgconf-pkg-config rpm-build \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qt5compat-devel \
-            spdlog-devel sqlite-devel xxhash-devel sdbus-cpp-devel pipewire-devel
+            spdlog-devel sqlite-devel xxhash-devel sdbus-cpp-devel pipewire-devel \
+            dbus libxkbcommon qt6-qtshadertools-devel
           # EPEL 10 无完整 ffmpeg；RHEL 10 AppStream 的 ffmpeg-free-devel 提供同名 pkg-config 文件
           dnf install -y --nodocs ffmpeg-free-devel
+          echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
@@ -370,17 +473,40 @@ jobs:
           repository: kaizen857/TagReader
           ref: ${{ env.TAGREADER_REF }}
           path: TagReader
-      - name: 构建
+      # ---- A2 顺序链 ①：TagReader 独立建测 → install 共享前缀 ----
+      - name: ① TagReader 构建+测试+install
+        working-directory: TagReader
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          cmake --preset release -G Ninja
+          cmake --build --preset release --parallel 2
+          ctest --preset release --output-on-failure
+          cmake --install build/release --prefix /opt/seriona-deps
+      # ---- A2 顺序链 ②：Seriona_Backend find_package 复用 ① → 建测 → install ----
+      - name: ② Seriona_Backend 构建+测试+install
+        working-directory: Seriona_Backend
+        run: |
+          cmake --preset release -G Ninja \
+            -DCMAKE_PREFIX_PATH=/opt/seriona-deps \
+            -DSERIONA_BUILD_APP=OFF \
+            -DSERIONA_INSTALL_EXPORT=ON
+          cmake --build --preset release --parallel 2
+          ctest --preset release --output-on-failure
+          cmake --install build/release --prefix /opt/seriona-deps
+      # ---- A2 顺序链 ③：Seriona 前端 find_package 复用 ①② → 建测（打包见后） ----
+      - name: ③ Seriona 前端构建（find_package 复用）
+        run: |
+          cmake --preset release -G Ninja \
+            -DCMAKE_PREFIX_PATH=/opt/seriona-deps \
             -DSERIONA_INSTALLED_MODE=ON \
-            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }} \
-            -DSERIONA_BACKEND_SOURCE_DIR=$GITHUB_WORKSPACE/Seriona_Backend \
-            -DBUILD_TESTING=OFF
-          cmake --build build --parallel 2
+            -DSERIONA_VERSION=${{ env.SERIONA_VERSION }}
+          cmake --build --preset release --parallel 2
+      - name: 前端全量测试
+        run: ctest --preset release --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen
       - name: 打包 rpm
         run: |
-          cpack -G RPM --config build/CPackConfig.cmake
+          cpack -G RPM --config build/release/CPackConfig.cmake
           mv seriona-*.rpm seriona-${{ env.SERIONA_VERSION }}-el10.x86_64.rpm
       - uses: actions/upload-artifact@v7
         with:
