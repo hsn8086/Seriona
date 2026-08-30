@@ -77,9 +77,9 @@ jobs:
           rm /tmp/node.tar.xz
           node --version
           g++ --version | head -1
-          # 后端 MPRIS 用 sdbus 连 session bus，容器无 dbus 时异常逃逸致测试崩溃
+          # 后端 MPRIS 在各自的 ctest 命令中通过 dbus-run-session 创建隔离 session bus
           apt-get install -y dbus
-          echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
+          command -v dbus-run-session
           # apt 的 cmake 3.22 不支持 DOWNLOAD_EXTRACT_TIMESTAMP（CMake 3.24+，TagReader catch2 FetchContent 用到），
           # pip 官方二进制装新版覆盖（/usr/local/bin 优先于 /usr/bin）
           python3 -m pip install --upgrade pip
@@ -125,7 +125,7 @@ jobs:
         run: |
           cmake --preset release -G Ninja
           cmake --build --preset release --parallel 2
-          ctest --preset release --output-on-failure
+          timeout --foreground --kill-after=30s 30m ctest --preset release --output-on-failure --timeout 300
           cmake --install build/release --prefix /opt/seriona-deps
       # ---- A2 顺序链 ②：Seriona_Backend find_package 复用 ① → 建测 → install ----
       - name: ② Seriona_Backend 构建+测试+install
@@ -136,7 +136,7 @@ jobs:
             -DSERIONA_BUILD_APP=OFF \
             -DSERIONA_INSTALL_EXPORT=ON
           cmake --build --preset release --parallel 2
-          ctest --preset release --output-on-failure
+          timeout --foreground --kill-after=30s 30m dbus-run-session -- ctest --preset release --output-on-failure --timeout 300
           cmake --install build/release --prefix /opt/seriona-deps
       # Qt 仅前端段需要：放在 ①② 之后安装，与 TagReader/后端建测并行推进（省 ~5 分钟）
       - uses: jurplel/install-qt-action@v4
@@ -159,12 +159,17 @@ jobs:
             -DSERIONA_VERSION=${{ env.SERIONA_VERSION }}
           cmake --build --preset release --parallel 2
       - name: 前端全量测试
-        run: ctest --preset release --output-on-failure
+        run: |
+          timeout --foreground --kill-after=30s 30m ctest --preset release --output-on-failure --timeout 300
         env:
           QT_QPA_PLATFORM: offscreen
       - name: gdb 抓崩溃栈（仅失败轮诊断用）
         if: failure()
         run: |
+          if [ ! -d build/release ]; then
+            echo "构建目录不存在，跳过 gdb 诊断：build/release"
+            exit 0
+          fi
           apt-get install -y --no-install-recommends gdb
           cd build/release
           for t in \
@@ -181,8 +186,11 @@ jobs:
               continue
             fi
             # 不 grep：完整保留 gdb 输出（栈走 stderr），过滤会吞掉诊断信息
-            QT_QPA_PLATFORM=offscreen gdb -batch -ex "set pagination off" -ex run \
-              -ex "thread apply all bt" --args "$bin" "$@" 2>&1 || true
+            if ! timeout --foreground --kill-after=10s 2m env QT_QPA_PLATFORM=offscreen gdb \
+              -batch -ex "set pagination off" -ex run -ex "thread apply all bt" \
+              --args "$bin" "$@" 2>&1; then
+              echo "gdb 诊断未完成（超时或 gdb 返回非零）：$bin"
+            fi
           done
         env:
           QT_QPA_PLATFORM: offscreen
@@ -239,7 +247,7 @@ jobs:
             libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev \
             ffmpeg \
             dbus libxkbcommon0 qt6-shadertools-dev
-          echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
+          command -v dbus-run-session
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
@@ -257,7 +265,7 @@ jobs:
         run: |
           cmake --preset release -G Ninja
           cmake --build --preset release --parallel 2
-          ctest --preset release --output-on-failure
+          timeout --foreground --kill-after=30s 30m ctest --preset release --output-on-failure --timeout 300
           cmake --install build/release --prefix /opt/seriona-deps
       # ---- A2 顺序链 ②：Seriona_Backend find_package 复用 ① → 建测 → install ----
       - name: ② Seriona_Backend 构建+测试+install
@@ -268,7 +276,7 @@ jobs:
             -DSERIONA_BUILD_APP=OFF \
             -DSERIONA_INSTALL_EXPORT=ON
           cmake --build --preset release --parallel 2
-          ctest --preset release --output-on-failure
+          timeout --foreground --kill-after=30s 30m dbus-run-session -- ctest --preset release --output-on-failure --timeout 300
           cmake --install build/release --prefix /opt/seriona-deps
       # ---- A2 顺序链 ③：Seriona 前端 find_package 复用 ①② → 建测（打包见后） ----
       - name: ③ Seriona 前端构建（find_package 复用）
@@ -279,7 +287,8 @@ jobs:
             -DSERIONA_VERSION=${{ env.SERIONA_VERSION }}
           cmake --build --preset release --parallel 2
       - name: 前端全量测试
-        run: ctest --preset release --output-on-failure
+        run: |
+          timeout --foreground --kill-after=30s 30m ctest --preset release --output-on-failure --timeout 300
         env:
           QT_QPA_PLATFORM: offscreen
       - name: 打包 deb
@@ -311,7 +320,7 @@ jobs:
             libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev \
             ffmpeg \
             dbus libxkbcommon0 qt6-shadertools-dev
-          echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
+          command -v dbus-run-session
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
@@ -329,7 +338,7 @@ jobs:
         run: |
           cmake --preset release -G Ninja
           cmake --build --preset release --parallel 2
-          ctest --preset release --output-on-failure
+          timeout --foreground --kill-after=30s 30m ctest --preset release --output-on-failure --timeout 300
           cmake --install build/release --prefix /opt/seriona-deps
       # ---- A2 顺序链 ②：Seriona_Backend find_package 复用 ① → 建测 → install ----
       - name: ② Seriona_Backend 构建+测试+install
@@ -340,7 +349,7 @@ jobs:
             -DSERIONA_BUILD_APP=OFF \
             -DSERIONA_INSTALL_EXPORT=ON
           cmake --build --preset release --parallel 2
-          ctest --preset release --output-on-failure
+          timeout --foreground --kill-after=30s 30m dbus-run-session -- ctest --preset release --output-on-failure --timeout 300
           cmake --install build/release --prefix /opt/seriona-deps
       # ---- A2 顺序链 ③：Seriona 前端 find_package 复用 ①② → 建测（打包见后） ----
       - name: ③ Seriona 前端构建（find_package 复用）
@@ -351,7 +360,8 @@ jobs:
             -DSERIONA_VERSION=${{ env.SERIONA_VERSION }}
           cmake --build --preset release --parallel 2
       - name: 前端全量测试
-        run: ctest --preset release --output-on-failure
+        run: |
+          timeout --foreground --kill-after=30s 30m ctest --preset release --output-on-failure --timeout 300
         env:
           QT_QPA_PLATFORM: offscreen
       - name: 打包 deb
@@ -383,11 +393,11 @@ jobs:
           dnf install -y --nodocs nodejs git cmake ninja-build gcc-c++ pkgconf-pkg-config rpm-build \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qt5compat-devel \
             spdlog-devel sqlite-devel xxhash-devel sdbus-cpp-devel pipewire-devel \
-            dbus libxkbcommon qt6-qtshadertools-devel \
+            dbus-daemon libxkbcommon qt6-qtshadertools-devel \
             https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-42.noarch.rpm
           # Fedora 自带 ffmpeg-free 拆分包（libavcodec-free 等）与 rpmfusion 冲突，需 --allowerasing 替换
           dnf install -y --nodocs --allowerasing ffmpeg ffmpeg-devel
-          echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
+          command -v dbus-run-session
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
@@ -415,7 +425,7 @@ jobs:
         run: |
           cmake --preset release -G Ninja
           cmake --build --preset release --parallel 2
-          ctest --preset release --output-on-failure
+          timeout --foreground --kill-after=30s 30m ctest --preset release --output-on-failure --timeout 300
           cmake --install build/release --prefix /opt/seriona-deps
       # ---- A2 顺序链 ②：Seriona_Backend find_package 复用 ① → 建测 → install ----
       - name: ② Seriona_Backend 构建+测试+install
@@ -426,7 +436,7 @@ jobs:
             -DSERIONA_BUILD_APP=OFF \
             -DSERIONA_INSTALL_EXPORT=ON
           cmake --build --preset release --parallel 2
-          ctest --preset release --output-on-failure
+          timeout --foreground --kill-after=30s 30m dbus-run-session -- ctest --preset release --output-on-failure --timeout 300
           cmake --install build/release --prefix /opt/seriona-deps
       # ---- A2 顺序链 ③：Seriona 前端 find_package 复用 ①② → 建测（打包见后） ----
       - name: ③ Seriona 前端构建（find_package 复用）
@@ -437,7 +447,8 @@ jobs:
             -DSERIONA_VERSION=${{ env.SERIONA_VERSION }}
           cmake --build --preset release --parallel 2
       - name: 前端全量测试
-        run: ctest --preset release --output-on-failure
+        run: |
+          timeout --foreground --kill-after=30s 30m ctest --preset release --output-on-failure --timeout 300
         env:
           QT_QPA_PLATFORM: offscreen
       - name: 打包 rpm
@@ -467,10 +478,10 @@ jobs:
           dnf install -y --nodocs nodejs git cmake ninja-build gcc-c++ pkgconf-pkg-config rpm-build \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qt5compat-devel \
             spdlog-devel sqlite-devel xxhash-devel sdbus-cpp-devel pipewire-devel \
-            dbus libxkbcommon qt6-qtshadertools-devel
+            dbus-daemon libxkbcommon qt6-qtshadertools-devel
           # EPEL 10 无完整 ffmpeg；RHEL 10 AppStream 的 ffmpeg-free 提供同名 pkg-config 文件与 CLI
           dnf install -y --nodocs ffmpeg-free ffmpeg-free-devel
-          echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
+          command -v dbus-run-session
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
@@ -488,7 +499,7 @@ jobs:
         run: |
           cmake --preset release -G Ninja
           cmake --build --preset release --parallel 2
-          ctest --preset release --output-on-failure
+          timeout --foreground --kill-after=30s 30m ctest --preset release --output-on-failure --timeout 300
           cmake --install build/release --prefix /opt/seriona-deps
       # ---- A2 顺序链 ②：Seriona_Backend find_package 复用 ① → 建测 → install ----
       - name: ② Seriona_Backend 构建+测试+install
@@ -499,7 +510,7 @@ jobs:
             -DSERIONA_BUILD_APP=OFF \
             -DSERIONA_INSTALL_EXPORT=ON
           cmake --build --preset release --parallel 2
-          ctest --preset release --output-on-failure
+          timeout --foreground --kill-after=30s 30m dbus-run-session -- ctest --preset release --output-on-failure --timeout 300
           cmake --install build/release --prefix /opt/seriona-deps
       # ---- A2 顺序链 ③：Seriona 前端 find_package 复用 ①② → 建测（打包见后） ----
       - name: ③ Seriona 前端构建（find_package 复用）
@@ -510,7 +521,8 @@ jobs:
             -DSERIONA_VERSION=${{ env.SERIONA_VERSION }}
           cmake --build --preset release --parallel 2
       - name: 前端全量测试
-        run: ctest --preset release --output-on-failure
+        run: |
+          timeout --foreground --kill-after=30s 30m ctest --preset release --output-on-failure --timeout 300
         env:
           QT_QPA_PLATFORM: offscreen
       - name: 打包 rpm
@@ -530,6 +542,7 @@ jobs:
     name: Windows (portable zip)
     runs-on: windows-2022
     env:
+      SERIONA_VERSION: ${{ inputs.version || '0.1' }}
       BACKEND_REF: ${{ inputs.backend_ref || 'main' }}
       TAGREADER_REF: ${{ inputs.tagreader_ref || 'main' }}
     steps:
@@ -566,7 +579,7 @@ jobs:
             vcpkg-${{ runner.os }}-
       - name: 构建 + 打包 + smoke 验证（脚本内置 6 场景）
         shell: pwsh
-        run: '& .\scripts\build-package-windows.ps1 -BackendSourceDir $env:GITHUB_WORKSPACE\Seriona_Backend -TagReaderSourceDir $env:GITHUB_WORKSPACE\TagReader -Force'
+        run: '& .\scripts\build-package-windows.ps1 -Version $env:SERIONA_VERSION -BackendSourceDir $env:GITHUB_WORKSPACE\Seriona_Backend -TagReaderSourceDir $env:GITHUB_WORKSPACE\TagReader -Force'
       - name: 上传构建日志（失败诊断）
         if: always()
         uses: actions/upload-artifact@v7
