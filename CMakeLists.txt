@@ -11,31 +11,12 @@ set(QT_QML_GENERATE_QMLLS_INI ON)
 
 include(FetchContent)
 
-# Release 模式全量优化配置
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-        include(ProcessorCount)
-        ProcessorCount(N)
-        if(N EQUAL 0)
-            set(N 4)
-        endif()
-        
-        # LTO 配置：GCC 支持 -flto=N，Clang 只支持 -flto
-        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-            add_compile_options(-O3 -march=native -flto=${N} -DNDEBUG)
-            add_link_options(-flto=${N} -fuse-linker-plugin)
-        else()
-            # Clang: 使用 -flto 不带数字，并行由链接器自动处理
-            add_compile_options(-O3 -march=native -flto -DNDEBUG)
-            add_link_options(-flto)
-        endif()
-        
-        message(STATUS "Seriona frontend: Release mode with full optimization enabled (LTO jobs: ${N})")
-    elseif(MSVC)
-        add_compile_options(/O2 /GL /DNDEBUG)
-        add_link_options(/LTCG)
-        message(STATUS "Seriona frontend: Release mode with full optimization enabled")
-    endif()
+# Release 优化基线（三仓库统一方案）：LTO 由 CMakePresets.json 的
+# CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE 提供（GCC -flto / MSVC /GL+/LTCG），
+# 编译选项由 CMake 默认 Release 提供（GCC -O3 -DNDEBUG / MSVC /O2 /DNDEBUG）；
+# 指令集显式 x86-64 基线（替代 -march=native，保证产物可跨机器分发）。
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-march=x86-64)
 endif()
 
 # 多线程编译配置（充分利用 32 核 CPU）
@@ -69,7 +50,18 @@ option(SERIONA_INSTALLED_MODE "Linux installed build: use XDG data dirs" OFF)
 if(SERIONA_BACKEND_SOURCE_DIR STREQUAL "")
     message(STATUS "SERIONA_BACKEND_SOURCE_DIR is empty; building Seriona in mock-only mode.")
 else()
-    get_filename_component(SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR
+    # CI 顺序链：优先复用已安装的 SerionaBackend（TagReader/后端独立建测后 install
+    # 到共享前缀，find_package 命中则不再重复编译）；未命中走源码嵌入链（本地开发）。
+    find_package(SerionaBackend CONFIG QUIET)
+    if(TARGET SerionaBackend::seriona_control)
+        message(STATUS "Seriona frontend: reusing installed SerionaBackend via find_package")
+        set(SERIONA_BACKEND_CONTROL_TARGET SerionaBackend::seriona_control)
+        set(SERIONA_BACKEND_AUDIO_TARGET SerionaBackend::seriona_audio)
+        set(SERIONA_BACKEND_APP_TARGET SerionaBackend::seriona_app)
+        find_package(spdlog CONFIG REQUIRED)
+        message(STATUS "Seriona frontend will link backend target: ${SERIONA_BACKEND_CONTROL_TARGET}")
+    else()
+        get_filename_component(SERIONA_BACKEND_ABSOLUTE_SOURCE_DIR
         "${SERIONA_BACKEND_SOURCE_DIR}"
         ABSOLUTE
         BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -124,7 +116,8 @@ else()
         message(STATUS "Seriona frontend will link backend target: ${SERIONA_BACKEND_CONTROL_TARGET}")
         find_package(spdlog CONFIG REQUIRED)
     else()
-        message(FATAL_ERROR "Seriona backend source is required unless SERIONA_BACKEND_SOURCE_DIR is empty for mock-only mode.")
+            message(FATAL_ERROR "Seriona backend source is required unless SERIONA_BACKEND_SOURCE_DIR is empty for mock-only mode.")
+        endif()
     endif()
 endif()
 
@@ -276,6 +269,13 @@ qt_add_qml_module(seriona
 # 测试进程复用 Seriona 的 QML 类型注册器：AUTOGEN 生成的 qmltyperegistrations.cpp
 # 带 GENERATED 属性，测试目标直接引用会让 VS 生成器产生空 CustomBuild（MSB4035）。
 # seriona 构建后复制为普通源供测试目标引用（避免 unset GENERATED 触发 CMP0118）。
+# 复制产物标记 GENERATED TRUE：CMake 配置期不再校验文件存在（全新构建目录时
+# POST_BUILD 尚未执行，target_sources 引用不存在的普通源会直接配置失败），
+# 文件在构建 seriona 时由 POST_BUILD 复制产生，add_dependencies 保证编译顺序。
+set_source_files_properties(
+    "${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations_test.cpp"
+    PROPERTIES GENERATED TRUE
+)
 add_custom_command(TARGET seriona POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp"
