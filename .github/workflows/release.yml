@@ -65,7 +65,7 @@ jobs:
             libgl1-mesa-dev libxkbcommon-dev \
             libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev libsystemd-dev \
             libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev \
-            ffmpeg
+            libvorbis-dev libopus-dev libmp3lame-dev
           # C++23 完整支持需要 GCC 13+（22.04 默认 GCC 11 缺 std::string::contains 等）
           add-apt-repository -y ppa:ubuntu-toolchain-r/test
           apt-get install -y gcc-13 g++-13
@@ -86,15 +86,21 @@ jobs:
           python3 -m pip install cmake
           cmake --version | head -1
           # apt 的 FFmpeg 4.4 太老（后端用 av_channel_layout_* 新 API，需 FFmpeg 5.1+）；
-          # 源码构建 6.1 装到 /usr/local（AppImage glibc 2.35 基线不变，产物自带 FFmpeg）
+          # 源码构建 6.1 装到 /usr/local（AppImage glibc 2.35 基线不变，产物自带 FFmpeg）。
+          # 保留 CLI 与 avdevice（lavfi 输入）并补外部编码器：TagReader 回归测试用
+          # ffmpeg -f lavfi 生成样本（flac/libmp3lame/libvorbis/libopus/aac），样本必须由与
+          # TagReader/后端链接的同一 6.1.2 库同源生成（apt 4.4 CLI 生成样本混用 6.1.2 库
+          # 曾致 43 个封面测试失败；--disable-avdevice 会禁 lavfi 导致 -f lavfi 不可用）
           git clone --depth 1 --branch n6.1.2 https://github.com/FFmpeg/FFmpeg.git /tmp/ffmpeg
           cd /tmp/ffmpeg
           ./configure --prefix=/usr/local --enable-shared --disable-static \
-            --disable-programs --disable-doc --disable-network --disable-avdevice --disable-postproc
+            --disable-doc --disable-network --disable-postproc \
+            --enable-libvorbis --enable-libopus --enable-libmp3lame
           make -j$(nproc)
           make install
           ldconfig
           pkg-config --modversion libavformat libavcodec
+          ffmpeg -version | head -1
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
