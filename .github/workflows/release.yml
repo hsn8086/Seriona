@@ -64,7 +64,8 @@ jobs:
             build-essential cmake ninja-build pkg-config python3 python3-pip yasm nasm \
             libgl1-mesa-dev libxkbcommon-dev \
             libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev libsystemd-dev \
-            libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev
+            libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev \
+            ffmpeg
           # C++23 完整支持需要 GCC 13+（22.04 默认 GCC 11 缺 std::string::contains 等）
           add-apt-repository -y ppa:ubuntu-toolchain-r/test
           apt-get install -y gcc-13 g++-13
@@ -230,6 +231,7 @@ jobs:
             qt6-base-dev qt6-declarative-dev qt6-5compat-dev file \
             libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev libsystemd-dev \
             libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev \
+            ffmpeg \
             dbus libxkbcommon0 qt6-shadertools-dev
           echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
@@ -301,6 +303,7 @@ jobs:
             qt6-base-dev qt6-declarative-dev qt6-5compat-dev file \
             libspdlog-dev libsqlite3-dev libxxhash-dev libsdbus-c++-dev libpipewire-0.3-dev libsystemd-dev \
             libavformat-dev libavcodec-dev libavutil-dev libavfilter-dev libswresample-dev \
+            ffmpeg \
             dbus libxkbcommon0 qt6-shadertools-dev
           echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
@@ -377,7 +380,7 @@ jobs:
             dbus libxkbcommon qt6-qtshadertools-devel \
             https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-42.noarch.rpm
           # Fedora 自带 ffmpeg-free 拆分包（libavcodec-free 等）与 rpmfusion 冲突，需 --allowerasing 替换
-          dnf install -y --nodocs --allowerasing ffmpeg-devel
+          dnf install -y --nodocs --allowerasing ffmpeg ffmpeg-devel
           echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
@@ -459,8 +462,8 @@ jobs:
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qt5compat-devel \
             spdlog-devel sqlite-devel xxhash-devel sdbus-cpp-devel pipewire-devel \
             dbus libxkbcommon qt6-qtshadertools-devel
-          # EPEL 10 无完整 ffmpeg；RHEL 10 AppStream 的 ffmpeg-free-devel 提供同名 pkg-config 文件
-          dnf install -y --nodocs ffmpeg-free-devel
+          # EPEL 10 无完整 ffmpeg；RHEL 10 AppStream 的 ffmpeg-free 提供同名 pkg-config 文件与 CLI
+          dnf install -y --nodocs ffmpeg-free ffmpeg-free-devel
           echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
