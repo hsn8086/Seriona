@@ -273,6 +273,15 @@ qt_add_qml_module(seriona
         ${SERIONA_QML_MODULE_RESOURCES}
 )
 
+# 测试进程复用 Seriona 的 QML 类型注册器：AUTOGEN 生成的 qmltyperegistrations.cpp
+# 带 GENERATED 属性，测试目标直接引用会让 VS 生成器产生空 CustomBuild（MSB4035）。
+# seriona 构建后复制为普通源供测试目标引用（避免 unset GENERATED 触发 CMP0118）。
+add_custom_command(TARGET seriona POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp"
+        "${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations_test.cpp"
+)
+
 target_include_directories(seriona
     PRIVATE src/app
 )
@@ -876,19 +885,18 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qmake_Seriona.qrc
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0.qrc
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0_extra_qmldirs.qrc
+            # 模块目录映射：qrc:/qt/qml/Seriona -> build/qml-modules，引擎凭此
+            # 找到 qmldir（构建 seriona 时生成，add_dependencies 保证顺序）
+            ${CMAKE_CURRENT_BINARY_DIR}/qml-modules/seriona_qml_module_dir_map.qrc
         )
         # 复用 qt_add_qml_module 生成的静态类型注册器：Sidebar 引用的
         # AppFacade/PlaybackController/LibraryController 等 C++ 类型只有注册后
         # QML 引擎才能解析（qmldir 无 plugin 行，类型随 Seriona 静态注册）。
         target_sources(seriona_frontend_sidebar_queue_tests PRIVATE
             ${SERIONA_SIDEBAR_QUEUE_TEST_QRC}
-            ${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp
+            # seriona POST_BUILD 复制的普通源（见 qt_add_qml_module 后的说明）
+            ${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations_test.cpp
         )
-        # qmltyperegistrations 由 qt_add_qml_module 标记 GENERATED；测试目标直接引用
-        # 会让 VS 生成器生成空 CustomBuild（MSB4035）。文件实际配置期已生成，
-        # 按普通源处理即可（add_dependencies 已保证 seriona 先构建）。
-        set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp
-            PROPERTIES GENERATED FALSE)
         add_dependencies(seriona_frontend_sidebar_queue_tests seriona)
         add_test(NAME seriona_frontend_sidebar_queue_switch COMMAND seriona_frontend_sidebar_queue_tests)
 
@@ -940,13 +948,14 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qmake_Seriona.qrc
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0.qrc
             ${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/seriona_raw_qml_0_extra_qmldirs.qrc
+            # 模块目录映射：qrc:/qt/qml/Seriona -> build/qml-modules，引擎凭此
+            # 找到 qmldir（构建 seriona 时生成，add_dependencies 保证顺序）
+            ${CMAKE_CURRENT_BINARY_DIR}/qml-modules/seriona_qml_module_dir_map.qrc
         )
         target_sources(seriona_frontend_folder_page_tests PRIVATE
             ${SERIONA_FOLDER_PAGE_TEST_QRC}
-            ${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp
+            ${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations_test.cpp
         )
-        set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp
-            PROPERTIES GENERATED FALSE)
         add_dependencies(seriona_frontend_folder_page_tests seriona)
         add_test(NAME seriona_frontend_folder_page_tests COMMAND seriona_frontend_folder_page_tests)
 
