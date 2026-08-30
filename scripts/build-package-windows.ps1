@@ -2,6 +2,8 @@
 
 [CmdletBinding()]
 param(
+    [ValidatePattern('^\d+\.\d+(\.\d+){0,2}$')]
+    [string]$Version = '0.1',
     [string]$QtRoot,
     [string]$VcpkgRoot,
     [string]$VcpkgInstalledDir,
@@ -820,6 +822,7 @@ try {
         ('-DPKG_CONFIG_EXECUTABLE=' + $vcpkg.PkgConfigExecutable),
         ('-DPython3_EXECUTABLE=' + $python.Path),
         ('-DQt6_DIR=' + $qt.Qt6Dir),
+        ('-DSERIONA_VERSION=' + $Version),
         ('-DBUILD_TESTING=' + $(if ($SkipTests) { 'OFF' } else { 'ON' }))
     )
     if ($mockOnly) {
