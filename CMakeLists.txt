@@ -268,18 +268,20 @@ qt_add_qml_module(seriona
 
 # 测试进程复用 Seriona 的 QML 类型注册器：AUTOGEN 生成的 qmltyperegistrations.cpp
 # 带 GENERATED 属性，测试目标直接引用会让 VS 生成器产生空 CustomBuild（MSB4035）。
-# seriona 构建后复制为普通源供测试目标引用（避免 unset GENERATED 触发 CMP0118）。
-# 复制产物标记 GENERATED TRUE：CMake 配置期不再校验文件存在（全新构建目录时
-# POST_BUILD 尚未执行，target_sources 引用不存在的普通源会直接配置失败），
-# 文件在构建 seriona 时由 POST_BUILD 复制产生，add_dependencies 保证编译顺序。
-set_source_files_properties(
-    "${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations_test.cpp"
-    PROPERTIES GENERATED TRUE
-)
-add_custom_command(TARGET seriona POST_BUILD
+# 复制为独立源文件供测试目标引用（避免 unset GENERATED 触发 CMP0118）。
+# 必须用 add_custom_command(OUTPUT ...) 声明真正的文件生成规则：POST_BUILD 复制
+# 只是 target 附加命令，在 ninja 依赖图里不构成该文件的生成 edge，全新构建目录下
+# 测试目标 autogen 直接依赖它时会报 "missing and no known rule to make it"。
+# OUTPUT 产物自动带 GENERATED 属性（配置期不校验存在性），DEPENDS 上 AUTOGEN 产物
+# 把复制 edge 连到 seriona 的 qmltyperegistrations 生成步骤，测试目标另有
+# add_dependencies(seriona) 保证整体顺序。
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations_test.cpp"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp"
         "${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations_test.cpp"
+    DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations.cpp"
+    VERBATIM
 )
 
 target_include_directories(seriona
@@ -894,7 +896,7 @@ add_test(NAME seriona_frontend_library_scan_backend_unavailable COMMAND seriona_
         # QML 引擎才能解析（qmldir 无 plugin 行，类型随 Seriona 静态注册）。
         target_sources(seriona_frontend_sidebar_queue_tests PRIVATE
             ${SERIONA_SIDEBAR_QUEUE_TEST_QRC}
-            # seriona POST_BUILD 复制的普通源（见 qt_add_qml_module 后的说明）
+            # seriona qmltyperegistrations 复制产物（见 qt_add_qml_module 后的说明）
             ${CMAKE_CURRENT_BINARY_DIR}/seriona_qmltyperegistrations_test.cpp
         )
         add_dependencies(seriona_frontend_sidebar_queue_tests seriona)
