@@ -398,13 +398,15 @@ jobs:
           arch: win64_msvc2022_64
           cache: true
           modules: qt5compat qtshadertools
-      # vcpkg 二进制缓存：ffmpeg 等依赖首次需源码编译（约 37 分钟），
-      # 命中后 vcpkg install 直接从缓存解压（约 1 分钟）
-      - name: 缓存 vcpkg 二进制（archives + registries）
+      # vcpkg 二进制缓存：build-package-windows.ps1 把 VCPKG_DEFAULT_BINARY_CACHE
+      # 设为 dist/.vcpkg/archives（脚本内 vcpkg install 实际使用的目录）；
+      # ffmpeg 等首次需源码编译约 37 分钟，命中后直接从缓存解压（约 1 分钟）
+      - name: 缓存 vcpkg 二进制（archives + downloads + registries）
         uses: actions/cache@v5
         with:
           path: |
-            ~/AppData/Local/vcpkg/archives
+            dist/.vcpkg/archives
+            dist/.vcpkg/downloads
             ~/AppData/Local/vcpkg/registries
           key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
